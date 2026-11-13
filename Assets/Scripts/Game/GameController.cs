@@ -70,6 +70,7 @@ namespace Firstlight.Game
                 if (kb.f1Key.wasPressedThisFrame) MaterialLibrary.SetDensity(8);
                 if (kb.f2Key.wasPressedThisFrame) MaterialLibrary.SetDensity(16);
                 if (kb.f3Key.wasPressedThisFrame) MaterialLibrary.SetDensity(32);
+                if (kb.f4Key.wasPressedThisFrame) MaterialLibrary.SetDensity(64);
                 if (kb.escapeKey.wasPressedThisFrame && !Application.isEditor) Application.Quit();
             }
             Map.CommitCostChanges();
@@ -82,7 +83,7 @@ namespace Firstlight.Game
             if (_hideGui) return;
             var style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 14 };
             style.normal.textColor = new Color(0.92f, 0.9f, 0.85f);
-            GUI.Box(new Rect(10, 10, 360, 48), $"Firstlight  seed {_seed}  texture density {MaterialLibrary.Density} px/m\nF1/F2/F3 = 8/16/32 px/m   WASD, Q/E, wheel, right-drag", style);
+            GUI.Box(new Rect(10, 10, 360, 48), $"Firstlight  seed {_seed}  texture density {MaterialLibrary.Density} px/m\nF1-F4 = 8/16/32/64 px/m   WASD, Q/E, wheel, right-drag", style);
         }
 
         bool _hideGui;
@@ -96,7 +97,7 @@ namespace Firstlight.Game
             var focus = new Vector3(site.x, Map.HeightAt(site.x, site.y), site.y);
             var views = new (string name, float dist, float pitch)[] { ("wide", 110f, 55f), ("default", 45f, 50f), ("close", 15f, 38f) };
             yield return new WaitForSeconds(1f);
-            foreach (int d in new[] { 8, 16, 32 })
+            foreach (int d in MaterialLibrary.Densities)
             {
                 MaterialLibrary.SetDensity(d);
                 foreach (var v in views)
