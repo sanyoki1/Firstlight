@@ -54,6 +54,7 @@ namespace Firstlight.Game
             if (HasArg("-shots")) StartCoroutine(DensityShots());
             if (HasArg("-watershots")) StartCoroutine(WaterShots());
             if (HasArg("-deershots")) StartCoroutine(DeerShots());
+            if (HasArg("-deerpair")) StartCoroutine(DeerPairShots());
         }
 
         /// <summary>An interesting spot: open ground near forest, rocks and the river.</summary>
@@ -267,6 +268,73 @@ namespace Firstlight.Game
             Debug.Log($"[Deer] done: {Wild.DrinksTaken} drinks in total");
             yield return new WaitForSeconds(0.5f);
             Application.Quit();
+        }
+
+        /// <summary>
+        /// Two deer only (one herd thinned to a doe and a stag, the others hidden): they wander and graze, then
+        /// get thirsty, walk to the river, drink and walk home. Frames go to deer_pair/ at 12 fps, 1.5x speed.
+        /// </summary>
+        IEnumerator DeerPairShots()
+        {
+            _hideGui = true;
+            string outDir = Arg("-outdir") ?? Path.Combine(Application.dataPath, "..", "..", "runs");
+            Directory.CreateDirectory(Path.Combine(outDir, "deer_pair"));
+            // The herd with the most open ground between home and water (trees hide deer from above).
+            int herd = 0; float best = float.MaxValue, bestScore = float.MaxValue;
+            for (int h = 0; h < Map.Herds.Count; h++)
+            {
+                int wc = Wild.WateringPlace(h);
+                if (wc < 0) continue;
+                var hp = Map.Herds[h].Pos; var wp = new float2(wc % Map.W + 0.5f, wc / Map.W + 0.5f);
+                float d = math.distance(hp, wp);
+                float score = d + TreesAlongPath(Map.CellAt(hp), wc) * 3f;
+                if (score < bestScore) { bestScore = score; best = d; herd = h; }
+            }
+            for (int h = 0; h < Map.Herds.Count; h++) Map.Herds[h].Pop = h == herd ? 2.5f : 0f;   // deer 0 is a stag, 1 a doe
+            for (int i = 0; i < 2; i++) Wild.Herds[herd][i].Thirst = 0.2f + i * 0.05f;
+
+            int water = Wild.WateringPlace(herd);
+            var home = Map.Herds[herd].Pos;
+            var bank = new float2(water % Map.W + 0.5f, water / Map.W + 0.5f);
+            var focus = math.lerp(home, bank, 0.35f);
+            // Side-on to the walk, so the deer cross the picture.
+            float yaw = math.degrees(math.atan2(bank.x - home.x, bank.y - home.y)) - 90f;
+            // A fixed camera (so the GIF only stores what moves), framing home and the bank together.
+            Cam.SetView(new Vector3(focus.x, Map.HeightAt(focus.x, focus.y), focus.y), math.max(9f, best * 1.6f), 50f, yaw);
+            for (int i = 0; i < 20; i++) yield return null;
+
+            Time.captureFramerate = 12;
+            Time.timeScale = 2.5f;                 // each frame = 0.21 s of game time
+            Wild.StartWander(herd);
+            int frame = 0, sinceHome = -1;
+            for (; frame < 520; frame++)
+            {
+                yield return null;
+                ScreenCapture.CaptureScreenshot(Path.Combine(outDir, "deer_pair", $"f{frame:000}.png"));
+                if (frame == 30) Wild.MakeThirsty(herd);               // about 6 s of wandering first
+                if (frame > 120 && sinceHome < 0 && Wild.DrinksTaken > 0 && AllHome(herd)) sinceHome = frame;
+                if (sinceHome >= 0 && frame - sinceHome > 15) break;   // a moment of grazing back home
+            }
+            Time.timeScale = 1f; Time.captureFramerate = 0;
+            Debug.Log($"[DeerPair] herd {herd} ({best:F1} cells to water), {frame + 1} frames, {Wild.DrinksTaken} drinks, home after {sinceHome}; " +
+                      $"{Wild.Herds[herd][0].State} {Wild.Herds[herd][1].State}");
+            yield return new WaitForSeconds(0.5f);
+            Application.Quit();
+        }
+
+        /// <summary>Trees on or beside the flow-field path from one cell to another (deer under canopy can't be seen).</summary>
+        int TreesAlongPath(int from, int to)
+        {
+            int slot = Map.Flow.Resolve(to), cell = from, trees = 0;
+            for (int s = 0; s < 64 && cell != to; s++)
+            {
+                trees += Map.CountFeature("trees", new float2(cell % Map.W + 0.5f, cell / Map.W + 0.5f), 1);
+                byte code = Map.Flow.Fields[slot * Map.Flow.Cells + cell];
+                if (code == FlowDir.None || code == FlowDir.Target) break;
+                int2 xy = Map.XY(cell) + FlowDir.Offset(code);
+                cell = Map.Cell(xy.x, xy.y);
+            }
+            return trees;
         }
 
         bool AllHome(int herd)

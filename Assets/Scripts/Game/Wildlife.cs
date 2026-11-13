@@ -90,6 +90,13 @@ namespace Firstlight.Game
         public int WateringPlace(int herd) => _waterCell[herd];
 
         /// <summary>Makes a herd thirsty now (used by the screenshot mode).</summary>
+        /// <summary>Sends every idle deer in a herd off to a new grazing spot now (used by the screenshot mode).</summary>
+        public void StartWander(int herd)
+        {
+            for (int i = 0; i < Herds[herd].Length; i++)
+                if (Herds[herd][i].State is DeerState.Graze or DeerState.Look) PickWander(ref Herds[herd][i], _map.Herds[herd]);
+        }
+
         public void MakeThirsty(int herd)
         {
             for (int i = 0; i < Herds[herd].Length; i++) Herds[herd][i].Thirst = math.max(Herds[herd][i].Thirst, 0.97f + i * 0.004f);
@@ -179,7 +186,7 @@ namespace Firstlight.Game
                     if (FollowRoute(ref d, _route[h][i], DrinkPos(d), dt))
                     {
                         d.State = DeerState.Drink;
-                        d.Timer = R(DrinkSeconds * 0.75f, DrinkSeconds * 1.25f);
+                        d.Timer = DrinkSeconds * 2f;             // drinks until no longer thirsty; this is a cap
                     }
                     break;
 
@@ -188,7 +195,7 @@ namespace Firstlight.Game
                     d.Yaw = TurnTowards(d.Yaw, math.atan2(d.Face.x, d.Face.y), dt * 3f);
                     if (d.Head > 0.9f) d.Thirst = math.max(0f, d.Thirst - dt / DrinkSeconds);
                     if (!IsDrinkSpot(d.DrinkCell, true)) d.Timer = 0;        // water moved away or rose over it
-                    if (d.Timer <= 0)
+                    if (d.Timer <= 0 || d.Thirst <= 0f)
                     {
                         if (d.Thirst < 0.3f) DrinksTaken++;
                         Release(ref d);
