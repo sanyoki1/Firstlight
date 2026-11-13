@@ -71,6 +71,7 @@ namespace Firstlight.Game
                 if (kb.f2Key.wasPressedThisFrame) MaterialLibrary.SetDensity(16);
                 if (kb.f3Key.wasPressedThisFrame) MaterialLibrary.SetDensity(32);
                 if (kb.f4Key.wasPressedThisFrame) MaterialLibrary.SetDensity(64);
+                if (kb.f5Key.wasPressedThisFrame) MaterialLibrary.SetDensity(128);
                 if (kb.escapeKey.wasPressedThisFrame && !Application.isEditor) Application.Quit();
             }
             Map.CommitCostChanges();
@@ -83,7 +84,7 @@ namespace Firstlight.Game
             if (_hideGui) return;
             var style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 14 };
             style.normal.textColor = new Color(0.92f, 0.9f, 0.85f);
-            GUI.Box(new Rect(10, 10, 360, 48), $"Firstlight  seed {_seed}  texture density {MaterialLibrary.Density} px/m\nF1-F4 = 8/16/32/64 px/m   WASD, Q/E, wheel, right-drag", style);
+            GUI.Box(new Rect(10, 10, 360, 48), $"Firstlight  seed {_seed}  texture density {MaterialLibrary.Density} px/m\nF1-F5 = 8/16/32/64/128 px/m   WASD, Q/E, wheel, right-drag", style);
         }
 
         bool _hideGui;

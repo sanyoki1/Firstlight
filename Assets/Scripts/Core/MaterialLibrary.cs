@@ -16,7 +16,7 @@ namespace Firstlight.Core
     {
         public const float MetresPerUnit = 2f;
 
-        [Serializable] class SpriteEntry { public string name; public int[] d8, d16, d32, d64; }
+        [Serializable] class SpriteEntry { public string name; public int[] d8, d16, d32, d64, d128; }
         [Serializable] class Manifest { public string[] layers; public int[] densities; public int[] tileTexels; public SpriteEntry[] sprites; }
 
         static Manifest _m;
@@ -105,7 +105,7 @@ namespace Firstlight.Core
             foreach (var s in _m.sprites)
             {
                 if (s.name != name) continue;
-                int[] v = Density == 8 ? s.d8 : Density == 32 ? s.d32 : Density == 64 ? s.d64 : s.d16;
+                int[] v = Density == 8 ? s.d8 : Density == 32 ? s.d32 : Density == 64 ? s.d64 : Density == 128 ? s.d128 : s.d16;
                 return new Vector2Int(v[0], v[1]);
             }
             return new Vector2Int(8, 8);
