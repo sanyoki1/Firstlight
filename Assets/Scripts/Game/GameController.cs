@@ -18,13 +18,17 @@ namespace Firstlight.Game
         public GameMap Map { get; private set; }
         public WorldView View { get; private set; }
         public OrbitCamera Cam { get; private set; }
+        public WaterSim Water { get; private set; }
         Light _sun;
         int _seed;
+        float _waterAccum, _waterSyncTimer;
+        float _floodTimer = -1f;      // seconds since a flood surge started (-1 = none)
+        public const float FloodPeak = 0.6f;
 
         void Start()
         {
             Data = GameData.Load();
-            MaterialLibrary.SetDensity(ArgInt("-texels", 16));
+            MaterialLibrary.SetDensity(ArgInt("-texels", 64));
             Cam = WorldLighting.CreateCamera();
             _sun = WorldLighting.CreateSun();
 
@@ -33,6 +37,10 @@ namespace Firstlight.Game
             Map.Generate(_seed, Data.Balance);
             View = new WorldView(Map);
             View.Build();
+            Water = new WaterSim(Map);
+            Water.SyncWaterClasses();
+            Map.CommitCostChanges();
+            View.AttachWater(Water);
 
             Cam.BoundsMax = new Vector2(Map.W, Map.H);
             Cam.MaxDistance = 160f;
@@ -41,6 +49,7 @@ namespace Firstlight.Game
             Cam.SetView(new Vector3(site.x, Map.HeightAt(site.x, site.y), site.y), 45f, 50f, 30f);
 
             if (HasArg("-shots")) StartCoroutine(DensityShots());
+            if (HasArg("-watershots")) StartCoroutine(WaterShots());
         }
 
         /// <summary>An interesting spot: open ground near forest, rocks and the river.</summary>
@@ -67,13 +76,10 @@ namespace Firstlight.Game
             var kb = Keyboard.current;
             if (kb != null)
             {
-                if (kb.f1Key.wasPressedThisFrame) MaterialLibrary.SetDensity(8);
-                if (kb.f2Key.wasPressedThisFrame) MaterialLibrary.SetDensity(16);
-                if (kb.f3Key.wasPressedThisFrame) MaterialLibrary.SetDensity(32);
-                if (kb.f4Key.wasPressedThisFrame) MaterialLibrary.SetDensity(64);
-                if (kb.f5Key.wasPressedThisFrame) MaterialLibrary.SetDensity(128);
                 if (kb.escapeKey.wasPressedThisFrame && !Application.isEditor) Application.Quit();
+                if (kb.f6Key.wasPressedThisFrame) StartFlood();
             }
+            UpdateWater(Time.deltaTime);
             Map.CommitCostChanges();
             WorldLighting.UpdateForZoom(Cam.Distance);
             View.Draw(Time.time);
@@ -84,10 +90,107 @@ namespace Firstlight.Game
             if (_hideGui) return;
             var style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 14 };
             style.normal.textColor = new Color(0.92f, 0.9f, 0.85f);
-            GUI.Box(new Rect(10, 10, 360, 48), $"Firstlight  seed {_seed}  texture density {MaterialLibrary.Density} px/m\nF1-F5 = 8/16/32/64/128 px/m   WASD, Q/E, wheel, right-drag", style);
+            GUI.Box(new Rect(10, 10, 380, 66), $"Firstlight  seed {_seed}  texture density {MaterialLibrary.Density} px/m\nF6 = flood surge   WASD, Q/E, wheel, right-drag\nwater sim {Water.LastStepMs:F2} ms/frame   river level +{Water.SourceBoost:F2}", style);
         }
 
         bool _hideGui;
+
+        // ------------------------------------------------------------------ water
+
+        public void StartFlood() => _floodTimer = 0f;
+
+        /// <summary>Flood surge: the upstream level rises over 10 s, holds 40 s, falls back over 30 s.</summary>
+        float FloodBoost(float t)
+        {
+            if (t < 0) return 0;
+            if (t < 10) return FloodPeak * t / 10f;
+            if (t < 50) return FloodPeak;
+            if (t < 80) return FloodPeak * (1 - (t - 50) / 30f);
+            return 0;
+        }
+
+        void UpdateWater(float dt)
+        {
+            if (_floodTimer >= 0)
+            {
+                _floodTimer += dt;
+                Water.SourceBoost = FloodBoost(_floodTimer);
+                if (_floodTimer > 80) _floodTimer = -1;
+            }
+            _waterAccum += dt;
+            int steps = Mathf.Min(12, (int)(_waterAccum / WaterSim.StepSeconds));
+            if (steps > 0)
+            {
+                _waterAccum -= steps * WaterSim.StepSeconds;
+                if (_waterAccum > 1f) _waterAccum = 0;
+                Water.Step(WaterSim.StepSeconds, steps);
+            }
+            _waterSyncTimer += dt;
+            if (_waterSyncTimer > 1f)
+            {
+                _waterSyncTimer = 0;
+                Water.SyncWaterClasses();
+            }
+        }
+
+        /// <summary>Records two clips as numbered frames: the current up close, and a flood time-lapse.</summary>
+        IEnumerator WaterShots()
+        {
+            _hideGui = true;
+            string outDir = Arg("-outdir") ?? Path.Combine(Application.dataPath, "..", "..", "runs");
+            Directory.CreateDirectory(Path.Combine(outDir, "water_frames"));
+            Directory.CreateDirectory(Path.Combine(outDir, "flood_frames"));
+            var site = FindViewpoint();
+            int rc = NearestRiverCell(site);
+            var river = new Vector3(rc % Map.W + 0.5f, 0, rc / Map.W + 0.5f);
+            river.y = Map.HeightAt(river.x, river.z);
+            Cam.SetView(river, 24f, 60f, 20f);
+            yield return new WaitForSeconds(1f);
+            Time.captureFramerate = 15;
+            for (int i = 0; i < 60; i++)
+            {
+                yield return null;
+                ScreenCapture.CaptureScreenshot(Path.Combine(outDir, "water_frames", $"f{i:000}.png"));
+            }
+            // Flood time-lapse: each frame advances the water by 2 seconds.
+            Cam.SetView(river, 70f, 55f, 30f);
+            for (int i = 0; i < 15; i++) yield return null;
+            Debug.Log($"[Water] before flood: {WetCells()} wet cells");
+            int peak = 0;
+            for (int i = 0; i < 72; i++)
+            {
+                float t = i * 2f;
+                Water.SourceBoost = FloodBoost(t);
+                Water.Step(WaterSim.StepSeconds, 40);
+                peak = Mathf.Max(peak, WetCells());
+                yield return null;
+                ScreenCapture.CaptureScreenshot(Path.Combine(outDir, "flood_frames", $"f{i:000}.png"));
+            }
+            Time.captureFramerate = 0;
+            Debug.Log($"[Water] flood peak: {peak} wet cells, after: {WetCells()} wet cells, step {Water.LastStepMs:F2} ms per 40 steps");
+            yield return new WaitForSeconds(0.5f);
+            Application.Quit();
+        }
+
+        int WetCells()
+        {
+            Water.SyncWaterClasses();
+            int n = 0;
+            foreach (var w in Map.WaterClass) if (w > 0) n++;
+            return n;
+        }
+
+        int NearestRiverCell(float2 p)
+        {
+            int best = 0; float bestD = float.MaxValue;
+            for (int c = 0; c < Map.W * Map.H; c++)
+            {
+                if (Map.WaterClass[c] < 2) continue;
+                float d = math.distancesq(new float2(c % Map.W + 0.5f, c / Map.W + 0.5f), p);
+                if (d < bestD) { bestD = d; best = c; }
+            }
+            return best;
+        }
 
         IEnumerator DensityShots()
         {
@@ -144,6 +247,7 @@ namespace Firstlight.Game
         void OnDestroy()
         {
             View?.Dispose();
+            Water?.Dispose();
             Map?.Dispose();
         }
     }

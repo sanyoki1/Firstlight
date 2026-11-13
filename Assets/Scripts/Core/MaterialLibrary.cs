@@ -23,7 +23,7 @@ namespace Firstlight.Core
         static readonly Dictionary<string, int> _layer = new();
         static readonly Dictionary<int, Texture2DArray> _arrays = new();
 
-        public static int Density { get; private set; } = 16;
+        public static int Density { get; private set; } = 64;
         public static int TileTexels { get; private set; } = 64;
         public static int[] Densities => _m?.densities ?? new[] { 8, 16, 32 };
         public static event Action DensityChanged;
@@ -42,6 +42,7 @@ namespace Firstlight.Core
             Shader.SetGlobalFloat("_FL_LayerGrass", Layer("grass"));
             Shader.SetGlobalFloat("_FL_LayerLitter", Layer("litter"));
             Shader.SetGlobalFloat("_FL_LayerSnow", Layer("snow"));
+            Shader.SetGlobalFloat("_FL_LayerShallow", Layer("shallow"));
         }
 
         public static int Layer(string name)
@@ -56,7 +57,7 @@ namespace Firstlight.Core
         {
             Load();
             int k = Array.IndexOf(_m.densities, d);
-            if (k < 0) { d = 16; k = Array.IndexOf(_m.densities, d); }
+            if (k < 0) { k = 0; d = _m.densities[0]; }
             Density = d;
             TileTexels = _m.tileTexels[k];
             if (!_arrays.TryGetValue(d, out var arr))

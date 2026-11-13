@@ -13,7 +13,7 @@ TEXTURE2D_ARRAY(_FL_Tex);
 SAMPLER(sampler_FL_Tex);
 float _FL_TexelsPerUnit;   // texture pixels per world unit (unit = 2 m)
 float _FL_TileTexels;      // size of one layer in pixels
-float _FL_LayerDirt, _FL_LayerGrass, _FL_LayerLitter, _FL_LayerSnow;
+float _FL_LayerDirt, _FL_LayerGrass, _FL_LayerLitter, _FL_LayerSnow, _FL_LayerShallow;
 
 // Terrain material map: one texel per grid cell holding a layer index.
 TEXTURE2D(_FL_MatMap);
@@ -51,6 +51,27 @@ half4 SampleBoxProjected(float3 p, float3 n, float layer, float2 offset)
 half4 SampleExplicit(float2 uv, float layer)
 {
     return SAMPLE_TEXTURE2D_ARRAY(_FL_Tex, sampler_FL_Tex, uv, layer);
+}
+
+// Flowing water: the texture is carried along the simulated flow (flow = velocity in units/s) using two
+// phases half a cycle apart, cross-faded so the texture never stretches far. Shallow water shows the
+// shallow texture (bed visible), deep water the deep one.
+half3 SampleWater(float3 posWS, float2 flow, float depth01, float layer)
+{
+    const float period = 1.6;
+    float k = _FL_TexelsPerUnit / _FL_TileTexels;
+    float2 base = posWS.xz * k;
+    float t = _Time.y / period;
+    float p0 = frac(t), p1 = frac(t + 0.5);
+    float wB = abs(p0 * 2 - 1);
+    float2 dx = ddx(base), dy = ddy(base);
+    float2 o0 = flow * (p0 * period) * k, o1 = flow * (p1 * period) * k;
+    half3 deepA = SAMPLE_TEXTURE2D_ARRAY_GRAD(_FL_Tex, sampler_FL_Tex, base - o0, layer, dx, dy).rgb;
+    half3 deepB = SAMPLE_TEXTURE2D_ARRAY_GRAD(_FL_Tex, sampler_FL_Tex, base - o1 + 0.37, layer, dx, dy).rgb;
+    half3 shA = SAMPLE_TEXTURE2D_ARRAY_GRAD(_FL_Tex, sampler_FL_Tex, base - o0, _FL_LayerShallow, dx, dy).rgb;
+    half3 shB = SAMPLE_TEXTURE2D_ARRAY_GRAD(_FL_Tex, sampler_FL_Tex, base - o1 + 0.37, _FL_LayerShallow, dx, dy).rgb;
+    half3 deep = lerp(deepA, deepB, wB), shallow = lerp(shA, shB, wB);
+    return lerp(shallow, deep, smoothstep(0.15, 0.75, depth01));
 }
 
 float2 Hash22(float2 p)

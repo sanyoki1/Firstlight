@@ -62,6 +62,11 @@ Shader "Firstlight/FlatLit"
                 float3 n = FlatNormal(i.positionWS);
                 float layer = i.mat.x;
                 if (_UseMatMap > 0.5) layer = TerrainLayer(i.positionWS, n);
+                if (i.mat.y > 1.5)
+                {
+                    half3 wc = SampleWater(i.positionWS, i.uv, i.color.a, layer);
+                    return half4(MixFog(FlatShade(i.positionWS, n, wc), i.fog), 1);
+                }
                 float2 scroll = floor(_Time.y * _UVScroll.xy) / _FL_TileTexels;
                 half4 t = i.mat.y > 0.5 ? SampleExplicit(i.uv + scroll, layer) : SampleBoxProjected(i.positionOS, n, layer, scroll);
                 clip(t.a - 0.5);

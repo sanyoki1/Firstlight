@@ -21,7 +21,7 @@ from pixelforge.palette import Palette, make_ramp  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "Assets" / "Resources" / "Textures"
-DENSITIES = [8, 16, 32, 64, 128]
+DENSITIES = [64]   # chosen by Nico 2026-11-13 (comparison of 8-128 in docs/art)
 TILE_METRES = {8: 8.0, 16: 8.0, 32: 8.0, 64: 8.0, 128: 8.0}   # 64 ... 1024 px tiles
 
 # Muted, natural base colours (Firstlight is neutral, not cozy). One 5-step hue-shifted ramp each.

@@ -63,7 +63,7 @@ namespace Firstlight.StressTest
         {
             Application.targetFrameRate = -1;
             QualitySettings.vSyncCount = 0;
-            MaterialLibrary.SetDensity(16);
+            MaterialLibrary.SetDensity(64);
             _cam = WorldLighting.CreateCamera();
             _cam.BoundsMax = new Vector2(MapSize, MapSize);
             _cam.MaxDistance = 380f;

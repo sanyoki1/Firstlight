@@ -34,7 +34,6 @@ namespace Firstlight.Game
             RiverDist = _map.RiverDistance();
             BuildMaterialMap();
             BuildTerrain();
-            BuildWater();
             _conifers = new InstanceBatch(Shapes.Conifer, 4096);
             _broadleaves = new InstanceBatch(Shapes.Broadleaf, 4096);
             _rocks = new InstanceBatch(Shapes.Rock, 1024);
@@ -127,26 +126,111 @@ namespace Firstlight.Game
             _terrainGo.AddComponent<MeshRenderer>().sharedMaterial = mat;
         }
 
-        void BuildWater()
+        // ------------------------------------------------------------------ water
+
+        WaterSim _water;
+        Mesh _waterMesh;
+        Vector3[] _wv; Color[] _wc; Vector2[] _wuv, _wmat; int[] _wt;
+        float[] _cs, _cd; Vector2[] _cvel;
+        public float WaterFlowScale = 1f;
+
+        /// <summary>The water surface is rebuilt from the simulation every frame (only wet cells get quads).</summary>
+        public void AttachWater(WaterSim water)
         {
-            var b = new MeshBuilder();
-            int water = MaterialLibrary.Layer("water"), shallow = MaterialLibrary.Layer("shallow");
-            float y = _map.WaterLevel - 0.1f;
-            for (int c = 0; c < _map.W * _map.H; c++)
-            {
-                if (RiverDist[c] > 2.01f) continue;
-                int x = c % _map.W, z = c / _map.W;
-                b.Layer = _map.Ground[c] == Ground.Ford ? shallow : water;
-                b.Tri(new Vector3(x, y, z), new Vector3(x, y, z + 1), new Vector3(x + 1, y, z + 1), Color.white);
-                b.Tri(new Vector3(x, y, z), new Vector3(x + 1, y, z + 1), new Vector3(x + 1, y, z), Color.white);
-            }
+            _water = water;
+            int n = _map.W * _map.H, nc = (_map.W + 1) * (_map.H + 1);
+            _wv = new Vector3[n * 4]; _wc = new Color[n * 4]; _wuv = new Vector2[n * 4]; _wmat = new Vector2[n * 4];
+            _wt = new int[n * 6];
+            _cs = new float[nc]; _cd = new float[nc]; _cvel = new Vector2[nc];
+            _waterMesh = new Mesh { name = "Water", indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
+            _waterMesh.MarkDynamic();
             _waterGo = new GameObject("Water");
-            _waterGo.AddComponent<MeshFilter>().sharedMesh = b.ToMesh("Water");
-            var mat = WorldLighting.FlatMaterial(Color.white);
-            mat.SetVector("_UVScroll", new Vector4(1.5f, 0.4f, 0, 0));
+            _waterGo.AddComponent<MeshFilter>().sharedMesh = _waterMesh;
             var mr = _waterGo.AddComponent<MeshRenderer>();
-            mr.sharedMaterial = mat;
+            mr.sharedMaterial = WorldLighting.FlatMaterial(Color.white);
             mr.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            UpdateWaterMesh();
+        }
+
+        const float WetDepth = 0.015f;
+
+        static bool WetNeighbour(Unity.Collections.NativeArray<float> depth, int x, int y, int w, int h)
+        {
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    int nx = x + dx, ny = y + dy;
+                    if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+                    if (depth[ny * w + nx] > WetDepth) return true;
+                }
+            return false;
+        }
+
+        void UpdateWaterMesh()
+        {
+            int w = _map.W, h = _map.H, w1 = w + 1;
+            var depth = _water.Depth; var bed = _water.Bed; var vel = _water.Velocity;
+            for (int cy = 0; cy <= h; cy++)
+                for (int cx = 0; cx <= w; cx++)
+                {
+                    float s = 0, d = 0; float2 v = 0; int k = 0;
+                    for (int dy = -1; dy <= 0; dy++)
+                        for (int dx = -1; dx <= 0; dx++)
+                        {
+                            int x = cx + dx, y = cy + dy;
+                            if (x < 0 || y < 0 || x >= w || y >= h) continue;
+                            int c = y * w + x;
+                            float dc = depth[c];
+                            if (dc <= WetDepth) continue;
+                            s += bed[c] + dc; d += dc; v += vel[c]; k++;
+                        }
+                    if (k == 0)
+                    {
+                        // Skirt corner: take the surface of wet cells a little further out, so the water plane
+                        // continues under the bank and the shoreline is where terrain and water meet.
+                        for (int dy = -2; dy <= 1; dy++)
+                            for (int dx = -2; dx <= 1; dx++)
+                            {
+                                int x = cx + dx, y = cy + dy;
+                                if (x < 0 || y < 0 || x >= w || y >= h) continue;
+                                int c = y * w + x;
+                                if (depth[c] <= WetDepth) continue;
+                                s += bed[c] + depth[c]; v += vel[c]; k++;
+                            }
+                    }
+                    int ci = cy * w1 + cx;
+                    if (k > 0) { _cs[ci] = s / k; _cd[ci] = d / k; _cvel[ci] = new Vector2(v.x, v.y) / k; }
+                    else { _cs[ci] = -99; _cd[ci] = 0; _cvel[ci] = Vector2.zero; }
+                }
+            int layer = MaterialLibrary.Layer("water");
+            var mat = new Vector2(layer, 2);
+            int nv = 0, nt = 0;
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    int c = y * w + x;
+                    if (depth[c] <= WetDepth && !WetNeighbour(depth, x, y, w, h)) continue;
+                    int v0 = nv;
+                    for (int q = 0; q < 4; q++)
+                    {
+                        int cxx = x + (q >= 2 ? 1 : 0), cyy = y + (q == 1 || q == 2 ? 1 : 0);
+                        int ci = cyy * w1 + cxx;
+                        _wv[nv] = new Vector3(cxx, _cs[ci] - 0.01f, cyy);
+                        _wc[nv] = new Color(1, 1, 1, Mathf.Clamp01(_cd[ci] / 0.45f));
+                        _wuv[nv] = _cvel[ci] * WaterFlowScale;
+                        _wmat[nv] = mat;
+                        nv++;
+                    }
+                    _wt[nt++] = v0; _wt[nt++] = v0 + 1; _wt[nt++] = v0 + 2;
+                    _wt[nt++] = v0; _wt[nt++] = v0 + 2; _wt[nt++] = v0 + 3;
+                }
+            _waterMesh.Clear(false);
+            _waterMesh.SetVertices(_wv, 0, nv);
+            _waterMesh.SetColors(_wc, 0, nv);
+            _waterMesh.SetUVs(0, _wuv, 0, nv);
+            _waterMesh.SetUVs(1, _wmat, 0, nv);
+            _waterMesh.SetTriangles(_wt, 0, nt, 0, false);
+            _waterMesh.bounds = new Bounds(new Vector3(w / 2f, 0, h / 2f), new Vector3(w, 20, h));
         }
 
         // ------------------------------------------------------------------ nature
@@ -196,7 +280,7 @@ namespace Firstlight.Game
             int grass = MaterialLibrary.Layer("grass"), litter = MaterialLibrary.Layer("litter");
             for (int c = 0; c < _map.W * _map.H; c++)
             {
-                if (_map.Tree[c] || _map.Rock[c] > 0 || _map.Ground[c] != Ground.Grass || RiverDist[c] <= 1.01f) continue;
+                if (_map.Tree[c] || _map.Rock[c] > 0 || _map.Ground[c] != Ground.Grass || RiverDist[c] <= 2.01f) continue;
                 int x = c % _map.W, y = c / _map.W;
                 int trees = 0;
                 for (int dy = -1; dy <= 1; dy++)
@@ -251,6 +335,7 @@ namespace Firstlight.Game
             if (_map.TreesDirty) RefreshTrees();
             if (_map.RocksDirty) RefreshRocks();
             UpdateAnimals(time);
+            if (_water != null) UpdateWaterMesh();
             _conifers.Draw(); _broadleaves.Draw(); _rocks.Draw(); _animals.Draw();
             _bushes.Draw(); _tufts.Draw(); _flowers.Draw();
         }

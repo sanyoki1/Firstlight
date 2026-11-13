@@ -26,6 +26,11 @@ namespace Firstlight.Game
     {
         public readonly int W, H;
         public readonly float WaterLevel = 0f;
+        /// <summary>River surface height where it enters (y = 0) and leaves (y = H-1) the map; it runs downhill.</summary>
+        public readonly float RiverTop = 0.35f, RiverBottom = -0.55f;
+        public float RiverLevelAt(float y) => math.lerp(RiverTop, RiverBottom, math.saturate(y / (H - 1)));
+        /// <summary>Live water state from the simulation: 0 dry, 1 shallow (wade, slow), 2 deep (blocks walking).</summary>
+        public readonly byte[] WaterClass;
         public NativeArray<float> Corners;        // (W+1)*(H+1) heights
         public readonly Ground[] Ground;
         public readonly bool[] Tree;
@@ -50,6 +55,7 @@ namespace Firstlight.Game
             Tree = new bool[n]; TreeKind = new byte[n]; TreeScale = new float[n]; TreeYaw = new float[n];
             TreeOffset = new float2[n];
             Rock = new float[n];
+            WaterClass = new byte[n];
             BuildingAt = new int[n];
             Reserved = new bool[n];
             for (int i = 0; i < n; i++) BuildingAt[i] = -1;
@@ -77,15 +83,15 @@ namespace Firstlight.Game
             return (Corners[y * w1 + x] + Corners[y * w1 + x + 1] + Corners[(y + 1) * w1 + x] + Corners[(y + 1) * w1 + x + 1]) * 0.25f;
         }
 
-        public bool IsWater(int c) => Ground[c] == Game.Ground.Water;
+        public bool IsWater(int c) => WaterClass[c] > 0;
 
         /// <summary>Price of walking into a cell (0 = blocked).</summary>
         public byte CostOf(int c)
         {
-            if (Ground[c] == Game.Ground.Water) return 0;
+            if (WaterClass[c] >= 2) return 0;
             if (BuildingAt[c] >= 0) return 0;
             if (Rock[c] > 0) return 0;
-            if (Ground[c] == Game.Ground.Ford) return 4;
+            if (WaterClass[c] == 1) return 4;
             if (Tree[c]) return 2;
             return 1;
         }
@@ -128,7 +134,7 @@ namespace Firstlight.Game
                     {
                         case "trees": if (Tree[c]) count++; break;
                         case "rocks": if (Rock[c] > 0) count++; break;
-                        case "water": if (Ground[c] != Game.Ground.Grass) count++; break;
+                        case "water": if (WaterClass[c] > 0) count++; break;
                     }
                 }
             return count;
@@ -233,8 +239,10 @@ namespace Firstlight.Game
                             d = Mathf.Min(d, dist[c]);
                             if (Ground[c] == Game.Ground.Water) touchesWater = true;
                         }
-                    if (touchesWater) h = WaterLevel - 0.45f;
-                    else h = Mathf.Min(h, WaterLevel + 0.12f + Mathf.Max(0, d - 1) * 0.32f);
+                    float wl = RiverLevelAt(y);
+                    if (touchesWater) h = wl - 0.45f;
+                    // Low floodplain (about 8 m each side) that spring floods can spread over, then the valley side.
+                    else h = Mathf.Min(h, wl + 0.14f + Mathf.Clamp(d - 1, 0, 4) * 0.07f + Mathf.Max(0, d - 5) * 0.32f);
                     Corners[y * w1 + x] = h;
                 }
             // Fords sit just under the water surface.
@@ -242,7 +250,7 @@ namespace Firstlight.Game
             {
                 if (Ground[c] != Game.Ground.Ford) continue;
                 int x = c % W, y = c / W;
-                Corners[y * w1 + x] = Corners[y * w1 + x + 1] = Corners[(y + 1) * w1 + x] = Corners[(y + 1) * w1 + x + 1] = WaterLevel - 0.28f;
+                Corners[y * w1 + x] = Corners[y * w1 + x + 1] = Corners[(y + 1) * w1 + x] = Corners[(y + 1) * w1 + x + 1] = RiverLevelAt(y) - 0.2f;
             }
 
             // Forests: clustered by noise, denser in the middle of each patch.
@@ -300,6 +308,8 @@ namespace Firstlight.Game
                 Herds.Add(herd);
             }
 
+            for (int c = 0; c < n; c++)
+                WaterClass[c] = (byte)(Ground[c] == Game.Ground.Water ? 2 : Ground[c] == Game.Ground.Ford ? 1 : 0);
             for (int c = 0; c < n; c++) Flow.Cost[c] = CostOf(c);
             Flow.Invalidate();
             TreesDirty = RocksDirty = true;
