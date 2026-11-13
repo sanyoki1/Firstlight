@@ -1,0 +1,14 @@
+{
+  "resources": [
+    { "id": "wild_food", "name": "Wild food", "category": "food", "isFood": true, "spoilPerDay": 0.025, "color": "#8c6e7a", "note": "Berries, roots and nuts from gatherers" },
+    { "id": "meat", "name": "Meat", "category": "food", "isFood": true, "spoilPerDay": 0.04, "color": "#9a5a4c" },
+    { "id": "fish", "name": "Fish", "category": "food", "isFood": true, "spoilPerDay": 0.05, "color": "#8197a0" },
+    { "id": "preserved", "name": "Preserved food", "category": "food", "isFood": true, "spoilPerDay": 0.004, "color": "#7d5d40", "note": "Dried meat and fish, keeps through winter" },
+    { "id": "wood", "name": "Wood", "category": "material", "isFood": false, "spoilPerDay": 0, "color": "#7a5b3e" },
+    { "id": "firewood", "name": "Firewood", "category": "fuel", "isFood": false, "spoilPerDay": 0, "color": "#a07850" },
+    { "id": "stone", "name": "Stone", "category": "material", "isFood": false, "spoilPerDay": 0, "color": "#8e8b85" },
+    { "id": "hides", "name": "Hides", "category": "material", "isFood": false, "spoilPerDay": 0.003, "color": "#8a6a4f" },
+    { "id": "clothing", "name": "Clothing", "category": "goods", "isFood": false, "spoilPerDay": 0, "color": "#6f604c", "note": "Hide clothing, adds warmth in cold seasons" },
+    { "id": "herbs", "name": "Herbs", "category": "goods", "isFood": false, "spoilPerDay": 0.01, "color": "#6d7d52", "note": "Used by herbalists to treat the sick" }
+  ]
+}

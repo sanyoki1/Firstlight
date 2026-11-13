@@ -1,0 +1,76 @@
+{
+  "_comment": "Global tuning numbers. Rates are per game day unless noted. Seasons are ordered spring, summer, autumn, winter.",
+
+  "mapSize": 128,
+  "dayLengthSeconds": 24,
+  "daysPerSeason": 8,
+  "seasonNames": ["Spring", "Summer", "Autumn", "Winter"],
+  "seasonTemperature": [0.55, 0.9, 0.4, 0.05],
+  "ageYearsPerGameYear": 4,
+  "workdayStart": 0.22,
+  "workdayEnd": 0.8,
+  "walkSpeed": 2.0,
+  "carryCapacity": 5,
+  "builderWorkPerDay": 1.0,
+  "defaultBuilders": 3,
+
+  "startPeople": 10,
+  "startResources": [
+    { "id": "wild_food", "amount": 30 },
+    { "id": "meat", "amount": 12 },
+    { "id": "wood", "amount": 55 },
+    { "id": "firewood", "amount": 12 },
+    { "id": "stone", "amount": 6 }
+  ],
+
+  "foodPerAdult": 1.0,
+  "foodPerChild": 0.6,
+  "firewoodPerHome": [0.3, 0.0, 0.6, 1.2],
+
+  "warmthComfort": 0.6,
+  "unheatedHomeFactor": 0.35,
+  "clothingWarmth": 0.25,
+  "campfireWarmth": 0.2,
+  "clothingWearDays": 64,
+
+  "starveDamage": 0.12,
+  "coldDamage": 0.25,
+  "sickDamage": 0.05,
+  "recoverPerDay": 0.05,
+
+  "sickBase": 0.002,
+  "sickPerCrowding": 0.002,
+  "crowdingFreeOccupants": 4,
+  "sickCold": 0.01,
+  "sickStarving": 0.01,
+  "sickDaysMin": 4,
+  "sickDaysMax": 10,
+  "herbalistChanceMult": 0.5,
+  "herbalistDamageMult": 0.4,
+  "herbsPerSickDay": 0.25,
+
+  "adultAge": 14,
+  "elderAge": 50,
+  "elderKnowledgeMult": 1.5,
+  "fertileMin": 16,
+  "fertileMax": 40,
+  "birthChancePerDay": 0.02,
+  "birthMinFoodDays": 5,
+  "birthCooldownDays": 32,
+  "oldAgeStart": 55,
+  "oldAgeChancePerYearOver": 0.0006,
+
+  "migrantMinFreeHousing": 2,
+  "migrantMinFoodDays": 8,
+  "migrantMinHappiness": 0.5,
+  "migrantsMin": 2,
+  "migrantsMax": 4,
+
+  "leaveHappiness": 0.3,
+  "leaveAfterDays": 6,
+  "workSpeedMin": 0.5,
+
+  "treeRegrowPerDay": 3,
+  "rockStone": 30,
+  "herdRegrowPerDay": 0.04
+}

@@ -1,0 +1,213 @@
+{
+  "buildings": [
+    {
+      "id": "campfire", "name": "Campfire", "age": "stone", "category": "Town",
+      "description": "Heart of the settlement. Warms people living nearby in cold seasons (burns firewood), keeps a small stash of goods and is where builders gather.",
+      "sizeX": 3, "sizeY": 3, "cost": [], "buildWork": 0, "unlockedBy": "", "unique": true, "townCenter": true,
+      "maxWorkers": 0, "housing": 0, "homeWarmth": 0,
+      "storageCapacity": 80, "spoilMultiplier": 1.0,
+      "warmthRadius": 9, "fuelPerDay": [0.3, 0.0, 0.5, 0.8],
+      "color": "#6f6458",
+      "parts": [
+        { "prim": "cylinder", "pos": [0, 0, 0], "size": [1.3, 0.16, 1.3], "color": "#7d7a74" },
+        { "prim": "box", "pos": [0, 0.12, 0], "size": [1.0, 0.14, 0.18], "yaw": 30, "color": "#5b4532" },
+        { "prim": "box", "pos": [0, 0.12, 0], "size": [1.0, 0.14, 0.18], "yaw": -30, "color": "#5b4532" },
+        { "prim": "cone", "pos": [0, 0.16, 0], "size": [0.55, 0.6, 0.55], "color": "#b86a35" },
+        { "prim": "box", "pos": [0, 0, 1.15], "size": [1.1, 0.28, 0.3], "color": "#6b5340" },
+        { "prim": "box", "pos": [1.1, 0, -0.5], "size": [0.3, 0.28, 1.1], "yaw": 20, "color": "#6b5340" },
+        { "prim": "box", "pos": [-1.1, 0, -0.5], "size": [0.3, 0.28, 1.1], "yaw": -20, "color": "#6b5340" },
+        { "prim": "box", "pos": [1.0, 0, 1.0], "size": [0.5, 0.45, 0.5], "yaw": 15, "color": "#7a6247" }
+      ]
+    },
+    {
+      "id": "lean_to", "name": "Lean-to", "age": "stone", "category": "Housing",
+      "description": "Branches propped against a pole. Houses 4. Poor protection from the cold.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 10 } ], "buildWork": 2, "unlockedBy": "",
+      "maxWorkers": 0, "housing": 4, "homeWarmth": 0.35,
+      "color": "#7a6247",
+      "parts": [
+        { "prim": "wedge", "pos": [0, 0, 0.1], "size": [1.7, 1.1, 1.5], "color": "#7a6247" },
+        { "prim": "cylinder", "pos": [-0.8, 0, -0.65], "size": [0.12, 1.25, 0.12], "color": "#5b4532" },
+        { "prim": "cylinder", "pos": [0.8, 0, -0.65], "size": [0.12, 1.25, 0.12], "color": "#5b4532" },
+        { "prim": "box", "pos": [0, 1.12, -0.65], "size": [1.9, 0.1, 0.1], "color": "#5b4532" }
+      ]
+    },
+    {
+      "id": "hide_tent", "name": "Hide Tent", "age": "stone", "category": "Housing",
+      "description": "Poles covered in stitched hides. Houses 6 and keeps the cold out well.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 10 }, { "id": "hides", "amount": 8 } ], "buildWork": 3, "unlockedBy": "hide_working",
+      "maxWorkers": 0, "housing": 6, "homeWarmth": 0.7,
+      "color": "#9b8164",
+      "parts": [
+        { "prim": "cone", "pos": [0, 0, 0], "size": [1.85, 1.7, 1.85], "color": "#9b8164" },
+        { "prim": "cylinder", "pos": [0.08, 1.45, 0], "size": [0.06, 0.45, 0.06], "color": "#5b4532" },
+        { "prim": "cylinder", "pos": [-0.08, 1.45, 0.05], "size": [0.06, 0.45, 0.06], "color": "#5b4532" },
+        { "prim": "box", "pos": [0, 0, -0.88], "size": [0.45, 0.6, 0.05], "color": "#4d4034" }
+      ]
+    },
+    {
+      "id": "gatherers_camp", "name": "Gatherers' Camp", "age": "stone", "category": "Food",
+      "description": "Gatherers collect berries, roots and nuts from nearby woodland. Plentiful in summer and autumn, almost nothing in winter.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 12 } ], "buildWork": 3, "unlockedBy": "",
+      "maxWorkers": 3, "workerTitle": "Gatherer",
+      "outputs": [ { "id": "wild_food", "amount": 1.6 } ], "yieldTag": "gathering",
+      "seasonYield": [0.8, 1.2, 1.4, 0.12],
+      "nearby": { "feature": "trees", "radius": 8, "min": 4, "full": 24 },
+      "color": "#8a7458",
+      "parts": [
+        { "prim": "prism", "pos": [-0.3, 0, 0.35], "size": [1.2, 0.8, 1.0], "color": "#8a7458" },
+        { "prim": "cylinder", "pos": [0.55, 0, -0.5], "size": [0.38, 0.32, 0.38], "color": "#a08a62" },
+        { "prim": "cylinder", "pos": [0.1, 0, -0.65], "size": [0.32, 0.28, 0.32], "color": "#a08a62" },
+        { "prim": "sphere", "pos": [0.55, 0.22, -0.5], "size": [0.3, 0.16, 0.3], "color": "#6e4a5a" }
+      ]
+    },
+    {
+      "id": "woodcutter", "name": "Woodcutter", "age": "stone", "category": "Materials",
+      "description": "Fells nearby trees for building wood and splits firewood for winter. Thins the forest over time.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 8 }, { "id": "stone", "amount": 4 } ], "buildWork": 3, "unlockedBy": "",
+      "maxWorkers": 2, "workerTitle": "Woodcutter",
+      "outputs": [ { "id": "wood", "amount": 1.4 }, { "id": "firewood", "amount": 1.4 } ], "yieldTag": "woodcutting",
+      "seasonYield": [1, 1, 1, 0.85],
+      "nearby": { "feature": "trees", "radius": 7, "min": 5, "full": 20 },
+      "consumesFeaturePer": 6,
+      "color": "#6e5038",
+      "parts": [
+        { "prim": "box", "pos": [-0.3, 0, 0.15], "size": [1.2, 0.25, 0.3], "color": "#6e5038" },
+        { "prim": "box", "pos": [-0.3, 0, 0.5], "size": [1.2, 0.25, 0.3], "color": "#6a4c35" },
+        { "prim": "box", "pos": [-0.3, 0.25, 0.32], "size": [1.2, 0.25, 0.3], "color": "#735540" },
+        { "prim": "cylinder", "pos": [0.55, 0, -0.45], "size": [0.5, 0.4, 0.5], "color": "#7a5d42" },
+        { "prim": "box", "pos": [0.2, 0, -0.7], "size": [0.6, 0.35, 0.4], "color": "#a07850" }
+      ]
+    },
+    {
+      "id": "stone_gatherer", "name": "Stone Gatherer", "age": "stone", "category": "Materials",
+      "description": "Collects loose stone from nearby rock outcrops. Rocks run out eventually.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 10 } ], "buildWork": 3, "unlockedBy": "",
+      "maxWorkers": 2, "workerTitle": "Stone gatherer",
+      "outputs": [ { "id": "stone", "amount": 1.2 } ], "yieldTag": "stone",
+      "seasonYield": [1, 1, 1, 0.8],
+      "nearby": { "feature": "rocks", "radius": 8, "min": 1, "full": 6 },
+      "color": "#8e8b85",
+      "parts": [
+        { "prim": "sphere", "pos": [-0.35, 0, 0.3], "size": [0.7, 0.5, 0.7], "color": "#8e8b85" },
+        { "prim": "sphere", "pos": [0.3, 0, 0.4], "size": [0.5, 0.4, 0.5], "color": "#7f7c76" },
+        { "prim": "sphere", "pos": [0.0, 0.3, 0.35], "size": [0.4, 0.3, 0.4], "color": "#9a968f" },
+        { "prim": "wedge", "pos": [0.2, 0, -0.45], "size": [1.2, 0.7, 0.8], "color": "#7a6247" }
+      ]
+    },
+    {
+      "id": "storage_pile", "name": "Storage Pile", "age": "stone", "category": "Storage",
+      "description": "An open pile on a log platform. Holds 250 goods. Food stored in the open spoils at the normal rate.",
+      "sizeX": 3, "sizeY": 3, "cost": [ { "id": "wood", "amount": 8 } ], "buildWork": 2, "unlockedBy": "",
+      "maxWorkers": 0, "storageCapacity": 250, "spoilMultiplier": 1.0,
+      "color": "#7a6247",
+      "parts": [
+        { "prim": "box", "pos": [0, 0, 0], "size": [2.6, 0.12, 2.6], "color": "#6b5340" },
+        { "prim": "box", "pos": [-0.8, 0.12, -0.8], "size": [0.7, 0.55, 0.7], "color": "#8a6d4c" },
+        { "prim": "box", "pos": [0.75, 0.12, -0.8], "size": [0.6, 0.5, 0.6], "yaw": 15, "color": "#7f6446" },
+        { "prim": "sphere", "pos": [0.7, 0.12, 0.7], "size": [0.7, 0.45, 0.6], "color": "#9a8564" },
+        { "prim": "sphere", "pos": [0.1, 0.12, 0.8], "size": [0.6, 0.4, 0.6], "color": "#8f7a5a" },
+        { "prim": "box", "pos": [-0.6, 0.12, 0.5], "size": [1.1, 0.3, 0.35], "color": "#6e5038" },
+        { "prim": "box", "pos": [-0.6, 0.42, 0.5], "size": [1.1, 0.3, 0.35], "color": "#6a4c35" }
+      ]
+    },
+    {
+      "id": "elders_fire", "name": "Elders' Fire", "age": "stone", "category": "Knowledge",
+      "description": "Elders gather here to remember and teach. Produces knowledge for research. Older workers are worth more.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 15 }, { "id": "stone", "amount": 8 } ], "buildWork": 4, "unlockedBy": "",
+      "maxWorkers": 3, "workerTitle": "Elder", "knowledgePerWorker": 1.0, "yieldTag": "knowledge",
+      "color": "#6f6458",
+      "parts": [
+        { "prim": "cylinder", "pos": [0, 0, 0], "size": [0.9, 0.14, 0.9], "color": "#7d7a74" },
+        { "prim": "cone", "pos": [0, 0.12, 0], "size": [0.4, 0.45, 0.4], "color": "#b86a35" },
+        { "prim": "box", "pos": [0, 0, 0.8], "size": [0.9, 0.25, 0.25], "color": "#6b5340" },
+        { "prim": "box", "pos": [0, 0, -0.8], "size": [0.9, 0.25, 0.25], "color": "#6b5340" },
+        { "prim": "box", "pos": [0.8, 0, 0], "size": [0.25, 0.25, 0.9], "color": "#6b5340" },
+        { "prim": "cylinder", "pos": [-0.75, 0, 0.75], "size": [0.18, 1.7, 0.18], "color": "#5e5040" },
+        { "prim": "box", "pos": [-0.75, 1.45, 0.75], "size": [0.3, 0.22, 0.3], "color": "#7a6a55" }
+      ]
+    },
+    {
+      "id": "hunters_camp", "name": "Hunters' Camp", "age": "stone", "category": "Food",
+      "description": "Hunters track wildlife herds within range for meat and hides. Over-hunting thins the herds.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 15 }, { "id": "stone", "amount": 5 } ], "buildWork": 3, "unlockedBy": "spears",
+      "maxWorkers": 3, "workerTitle": "Hunter",
+      "outputs": [ { "id": "meat", "amount": 2.0 }, { "id": "hides", "amount": 0.35 } ], "yieldTag": "hunting",
+      "seasonYield": [1, 1, 1.1, 0.6],
+      "nearby": { "feature": "wildlife", "radius": 16, "min": 1, "full": 12 },
+      "consumesFeaturePer": 2,
+      "color": "#7d6650",
+      "parts": [
+        { "prim": "prism", "pos": [0.2, 0, 0.35], "size": [1.3, 0.85, 1.0], "yaw": 90, "color": "#7d6650" },
+        { "prim": "box", "pos": [-0.6, 0, -0.5], "size": [0.75, 0.65, 0.05], "color": "#9b8164" },
+        { "prim": "cylinder", "pos": [0.6, 0, -0.6], "size": [0.05, 1.4, 0.05], "color": "#5b4532" },
+        { "prim": "cylinder", "pos": [0.75, 0, -0.55], "size": [0.05, 1.3, 0.05], "color": "#5b4532" }
+      ]
+    },
+    {
+      "id": "drying_rack", "name": "Drying Rack", "age": "stone", "category": "Food",
+      "description": "Smokes and dries meat or fish into preserved food that barely spoils. Key to getting through winter.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 12 } ], "buildWork": 2, "unlockedBy": "food_preservation",
+      "maxWorkers": 2, "workerTitle": "Food preserver",
+      "inputs": [ { "ids": ["meat", "fish"], "amount": 2.0 } ],
+      "outputs": [ { "id": "preserved", "amount": 1.6 } ], "yieldTag": "preserving",
+      "color": "#6e5038",
+      "parts": [
+        { "prim": "cylinder", "pos": [-0.75, 0, 0], "size": [0.1, 1.2, 0.1], "color": "#5b4532" },
+        { "prim": "cylinder", "pos": [0.75, 0, 0], "size": [0.1, 1.2, 0.1], "color": "#5b4532" },
+        { "prim": "box", "pos": [0, 1.15, 0], "size": [1.7, 0.08, 0.08], "color": "#5b4532" },
+        { "prim": "box", "pos": [-0.35, 0.7, 0], "size": [0.15, 0.45, 0.04], "color": "#7d4a3c" },
+        { "prim": "box", "pos": [0, 0.75, 0], "size": [0.15, 0.4, 0.04], "color": "#86523f" },
+        { "prim": "box", "pos": [0.35, 0.7, 0], "size": [0.15, 0.45, 0.04], "color": "#7d4a3c" },
+        { "prim": "cylinder", "pos": [0, 0, -0.6], "size": [0.6, 0.1, 0.6], "color": "#7d7a74" }
+      ]
+    },
+    {
+      "id": "fishing_spot", "name": "Fishing Spot", "age": "stone", "category": "Food",
+      "description": "Fishers work the river from the bank. Must be built next to water. Poor in winter.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 10 } ], "buildWork": 2, "unlockedBy": "fishing",
+      "maxWorkers": 2, "workerTitle": "Fisher",
+      "outputs": [ { "id": "fish", "amount": 1.9 } ], "yieldTag": "fishing",
+      "seasonYield": [1, 1.1, 1, 0.4],
+      "nearby": { "feature": "water", "radius": 3, "min": 3, "full": 10 },
+      "color": "#6b5340",
+      "parts": [
+        { "prim": "box", "pos": [0, 0, 0], "size": [1.6, 0.12, 1.2], "color": "#6b5340" },
+        { "prim": "cylinder", "pos": [0.6, 0, 0.4], "size": [0.06, 1.5, 0.06], "color": "#5b4532" },
+        { "prim": "cylinder", "pos": [-0.5, 0.12, -0.3], "size": [0.4, 0.3, 0.4], "color": "#a08a62" },
+        { "prim": "box", "pos": [-0.3, 0.12, 0.3], "size": [0.6, 0.1, 0.4], "color": "#8197a0" }
+      ]
+    },
+    {
+      "id": "hide_worker", "name": "Hide Worker", "age": "stone", "category": "Materials",
+      "description": "Scrapes and stitches hides into clothing. Clothed people stay warm in autumn and winter.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 12 } ], "buildWork": 3, "unlockedBy": "hide_working",
+      "maxWorkers": 2, "workerTitle": "Hide worker",
+      "inputs": [ { "ids": ["hides"], "amount": 1.0 } ],
+      "outputs": [ { "id": "clothing", "amount": 0.5 } ], "yieldTag": "hideworking",
+      "color": "#8a6a4f",
+      "parts": [
+        { "prim": "prism", "pos": [-0.3, 0, 0.3], "size": [1.1, 0.8, 1.2], "color": "#8a6a4f" },
+        { "prim": "cylinder", "pos": [0.35, 0, -0.6], "size": [0.08, 1.0, 0.08], "color": "#5b4532" },
+        { "prim": "cylinder", "pos": [0.95, 0, -0.6], "size": [0.08, 1.0, 0.08], "color": "#5b4532" },
+        { "prim": "box", "pos": [0.65, 0.3, -0.6], "size": [0.55, 0.6, 0.04], "color": "#9b8164" }
+      ]
+    },
+    {
+      "id": "herbalist", "name": "Herbalist", "age": "stone", "category": "Services",
+      "description": "Gathers medicinal herbs and treats the sick living within range, halving sickness and its harm while herbs last.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 12 } ], "buildWork": 3, "unlockedBy": "herbal_knowledge",
+      "maxWorkers": 1, "workerTitle": "Herbalist",
+      "outputs": [ { "id": "herbs", "amount": 0.8 } ], "yieldTag": "herbs",
+      "nearby": { "feature": "trees", "radius": 8, "min": 3, "full": 12 },
+      "healthRadius": 16,
+      "color": "#6d7d52",
+      "parts": [
+        { "prim": "cone", "pos": [-0.2, 0, 0.2], "size": [1.3, 1.3, 1.3], "color": "#7d7058" },
+        { "prim": "sphere", "pos": [0.6, 0, -0.5], "size": [0.35, 0.3, 0.35], "color": "#6d7d52" },
+        { "prim": "sphere", "pos": [0.2, 0, -0.7], "size": [0.3, 0.25, 0.3], "color": "#62734a" },
+        { "prim": "sphere", "pos": [0.7, 0, -0.05], "size": [0.3, 0.28, 0.3], "color": "#74845a" }
+      ]
+    }
+  ]
+}
