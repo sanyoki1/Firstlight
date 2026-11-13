@@ -1,0 +1,79 @@
+{
+  "layers": [
+    "grass",
+    "litter",
+    "dirt",
+    "bank",
+    "bed",
+    "rock_ground",
+    "rock",
+    "water",
+    "shallow",
+    "bark_conifer",
+    "bark_broad",
+    "needles",
+    "leaves",
+    "fur",
+    "snow",
+    "bush",
+    "tuft",
+    "flowers"
+  ],
+  "densities": [
+    8,
+    16,
+    32
+  ],
+  "tileTexels": [
+    64,
+    128,
+    256
+  ],
+  "sprites": [
+    {
+      "name": "bush",
+      "d8": [
+        11,
+        9
+      ],
+      "d16": [
+        22,
+        18
+      ],
+      "d32": [
+        45,
+        35
+      ]
+    },
+    {
+      "name": "tuft",
+      "d8": [
+        5,
+        4
+      ],
+      "d16": [
+        10,
+        7
+      ],
+      "d32": [
+        19,
+        14
+      ]
+    },
+    {
+      "name": "flowers",
+      "d8": [
+        5,
+        4
+      ],
+      "d16": [
+        10,
+        6
+      ],
+      "d32": [
+        19,
+        13
+      ]
+    }
+  ]
+}

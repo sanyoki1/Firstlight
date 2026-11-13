@@ -42,10 +42,17 @@ namespace Firstlight.Core
         readonly List<Vector3> _n = new();
         readonly List<Color> _c = new();
         readonly List<int> _t = new();
+        readonly List<Vector2> _uv = new();
+        readonly List<Vector2> _mat = new();
+
+        /// <summary>Material layer (MaterialLibrary) given to the triangles added next.</summary>
+        public int Layer;
 
         public int VertexCount => _v.Count;
 
-        public void Clear() { _v.Clear(); _n.Clear(); _c.Clear(); _t.Clear(); }
+        public void Clear() { _v.Clear(); _n.Clear(); _c.Clear(); _t.Clear(); _uv.Clear(); _mat.Clear(); }
+
+        public MeshBuilder Mat(string layer) { Layer = MaterialLibrary.Layer(layer); return this; }
 
         /// <summary>Adds a triangle wound so its face points away from <paramref name="inside"/>.</summary>
         public void TriOut(Vector3 a, Vector3 b, Vector3 c, Vector3 inside, Color col)
@@ -69,6 +76,37 @@ namespace Firstlight.Core
             _n.Add(n); _n.Add(n); _n.Add(n);
             _c.Add(lin); _c.Add(lin); _c.Add(lin);
             _t.Add(i); _t.Add(i + 1); _t.Add(i + 2);
+            _uv.Add(Vector2.zero); _uv.Add(Vector2.zero); _uv.Add(Vector2.zero);
+            var m = new Vector2(Layer, 0);
+            _mat.Add(m); _mat.Add(m); _mat.Add(m);
+        }
+
+        /// <summary>Quad with explicit UVs (sprites). a,b,c,d go round the quad; uv likewise.</summary>
+        public void QuadUV(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector2 ua, Vector2 ub, Vector2 uc, Vector2 ud, Color col)
+        {
+            Vector3 n = Vector3.Cross(b - a, c - a).normalized;
+            int i = _v.Count;
+            Color lin = col.linear; lin.a = col.a;
+            foreach (var (p, uv) in new[] { (a, ua), (b, ub), (c, uc), (d, ud) })
+            {
+                _v.Add(p); _n.Add(n); _c.Add(lin); _uv.Add(uv); _mat.Add(new Vector2(Layer, 1));
+            }
+            _t.Add(i); _t.Add(i + 1); _t.Add(i + 2);
+            _t.Add(i); _t.Add(i + 2); _t.Add(i + 3);
+        }
+
+        /// <summary>Two crossed upright quads showing a sprite (plants, the Minecraft way). Needs Cull Off.</summary>
+        public void CrossQuad(Matrix4x4 m, Rect uv, Color col)
+        {
+            for (int k = 0; k < 2; k++)
+            {
+                float ang = k * Mathf.PI * 0.5f + Mathf.PI * 0.25f;
+                var dir = new Vector3(Mathf.Cos(ang), 0, Mathf.Sin(ang)) * 0.5f;
+                Vector3 a = m.MultiplyPoint3x4(-dir), b = m.MultiplyPoint3x4(dir);
+                Vector3 c = m.MultiplyPoint3x4(dir + Vector3.up), d = m.MultiplyPoint3x4(-dir + Vector3.up);
+                QuadUV(a, b, c, d, new Vector2(uv.xMin, uv.yMin), new Vector2(uv.xMax, uv.yMin),
+                    new Vector2(uv.xMax, uv.yMax), new Vector2(uv.xMin, uv.yMax), col);
+            }
         }
 
         public void QuadOut(Vector3 a, Vector3 b, Vector3 c, Vector3 d, Vector3 inside, Color col)
@@ -218,6 +256,8 @@ namespace Firstlight.Core
             mesh.SetVertices(_v);
             mesh.SetNormals(_n);
             mesh.SetColors(_c);
+            mesh.SetUVs(0, _uv);
+            mesh.SetUVs(1, _mat);
             mesh.SetTriangles(_t, 0);
             mesh.RecalculateBounds();
             return mesh;
@@ -227,72 +267,90 @@ namespace Firstlight.Core
             Matrix4x4.TRS(pos, Quaternion.Euler(0, yawDeg, 0), size);
     }
 
-    /// <summary>Shared placeholder meshes.</summary>
+    /// <summary>Shared meshes for nature and placeholders. Sprite meshes are rebuilt when the texture density changes.</summary>
     public static class Shapes
     {
-        static Mesh _citizen, _carry, _conifer, _broadleaf, _rock, _animal, _box;
+        static Mesh _citizen, _carry, _conifer, _broadleaf, _rock, _animal, _box, _bush, _tuft, _flowers;
 
-        /// <summary>Simple standing figure ~0.85 units tall (a 1.7 m person at 2 m per cell).</summary>
+        static Shapes() { MaterialLibrary.DensityChanged += Reset; }
+
+        public static void Reset()
+        {
+            _bush = _tuft = _flowers = null; // sprite UVs and sizes depend on density
+        }
+
+        static readonly Color Tinted = new(1, 1, 1, 1), Fixed = new(1, 1, 1, 0);
+
         public static Mesh Citizen => _citizen ??= BuildCitizen();
-        public static Mesh CarryBox => _carry ??= Build(b => b.Box(MeshBuilder.TRS(Vector3.zero, 0, new Vector3(0.22f, 0.16f, 0.22f)), new Color(1, 1, 1, 1)), "carry");
+        public static Mesh CarryBox => _carry ??= Build(b => b.Mat("bark_conifer").Box(MeshBuilder.TRS(Vector3.zero, 0, new Vector3(0.22f, 0.16f, 0.22f)), Tinted), "carry");
         public static Mesh Conifer => _conifer ??= BuildConifer();
         public static Mesh Broadleaf => _broadleaf ??= BuildBroadleaf();
         public static Mesh Rock => _rock ??= BuildRock();
         public static Mesh Animal => _animal ??= BuildAnimal();
-        public static Mesh UnitBox => _box ??= Build(b => b.Box(Matrix4x4.identity, new Color(1, 1, 1, 1)), "box");
+        public static Mesh UnitBox => _box ??= Build(b => b.Mat("rock").Box(Matrix4x4.identity, Tinted), "box");
+        public static Mesh Bush => _bush ??= Sprite("bush");
+        public static Mesh Tuft => _tuft ??= Sprite("tuft");
+        public static Mesh Flowers => _flowers ??= Sprite("flowers");
 
         static Mesh Build(System.Action<MeshBuilder> f, string name)
         {
             var b = new MeshBuilder(); f(b); return b.ToMesh(name);
         }
 
+        /// <summary>A crossed-quad plant at its true pixel size (same texel density as everything else).</summary>
+        static Mesh Sprite(string name)
+        {
+            var size = MaterialLibrary.SpriteUnits(name);
+            var b = new MeshBuilder().Mat(name);
+            b.CrossQuad(MeshBuilder.TRS(Vector3.zero, 0, new Vector3(size.x, size.y, size.x)), MaterialLibrary.SpriteUV(name), Tinted);
+            return b.ToMesh(name);
+        }
+
+        /// <summary>Standing figure ~0.85 units tall (a 1.7 m person at 2 m per unit).</summary>
         static Mesh BuildCitizen()
         {
             var b = new MeshBuilder();
-            var cloth = new Color(1, 1, 1, 1);           // tinted by instance colour
-            var skin = new Color(0.62f, 0.50f, 0.40f, 0); // not tinted
-            b.Frustum(MeshBuilder.TRS(Vector3.zero, 0, new Vector3(0.34f, 0.62f, 0.34f)), 6, 0.42f, 0.32f, cloth);
-            b.Sphere(MeshBuilder.TRS(new Vector3(0, 0.6f, 0), 0, new Vector3(0.22f, 0.24f, 0.22f)), skin, 1);
+            b.Mat("fur").Frustum(MeshBuilder.TRS(Vector3.zero, 0, new Vector3(0.34f, 0.62f, 0.34f)), 6, 0.42f, 0.32f, Tinted);
+            b.Mat("bank").Sphere(MeshBuilder.TRS(new Vector3(0, 0.6f, 0), 0, new Vector3(0.22f, 0.24f, 0.22f)), new Color(0.85f, 0.72f, 0.62f, 0), 1);
             return b.ToMesh("citizen");
         }
 
         static Mesh BuildConifer()
         {
             var b = new MeshBuilder();
-            var trunk = new Color(0.36f, 0.27f, 0.19f, 0);
-            var leaf = new Color(1, 1, 1, 1);
-            b.Cylinder(MeshBuilder.TRS(Vector3.zero, 0, new Vector3(0.18f, 0.5f, 0.18f)), 5, trunk);
-            b.Cone(MeshBuilder.TRS(new Vector3(0, 0.35f, 0), 0, new Vector3(1.0f, 1.1f, 1.0f)), 7, leaf);
-            b.Cone(MeshBuilder.TRS(new Vector3(0, 0.95f, 0), 20, new Vector3(0.72f, 0.95f, 0.72f)), 7, leaf);
+            b.Mat("bark_conifer").Cylinder(MeshBuilder.TRS(Vector3.zero, 0, new Vector3(0.18f, 0.55f, 0.18f)), 6, Fixed);
+            b.Mat("needles");
+            b.Cone(MeshBuilder.TRS(new Vector3(0, 0.3f, 0), 0, new Vector3(1.0f, 0.85f, 1.0f)), 7, Tinted);
+            b.Cone(MeshBuilder.TRS(new Vector3(0, 0.75f, 0), 25, new Vector3(0.78f, 0.75f, 0.78f)), 7, Tinted);
+            b.Cone(MeshBuilder.TRS(new Vector3(0, 1.15f, 0), 50, new Vector3(0.52f, 0.7f, 0.52f)), 7, Tinted);
             return b.ToMesh("conifer");
         }
 
         static Mesh BuildBroadleaf()
         {
             var b = new MeshBuilder();
-            var trunk = new Color(0.38f, 0.29f, 0.21f, 0);
-            var leaf = new Color(1, 1, 1, 1);
-            b.Frustum(MeshBuilder.TRS(Vector3.zero, 0, new Vector3(0.2f, 0.75f, 0.2f)), 5, 0.5f, 0.35f, trunk);
-            b.Sphere(MeshBuilder.TRS(new Vector3(0, 0.55f, 0), 0, new Vector3(1.0f, 0.95f, 1.0f)), leaf, 1);
+            b.Mat("bark_broad").Frustum(MeshBuilder.TRS(Vector3.zero, 0, new Vector3(0.22f, 0.8f, 0.22f)), 6, 0.5f, 0.35f, Fixed);
+            b.Mat("leaves");
+            b.Sphere(MeshBuilder.TRS(new Vector3(0, 0.6f, 0), 0, new Vector3(1.0f, 0.85f, 1.0f)), Tinted, 1);
+            b.Sphere(MeshBuilder.TRS(new Vector3(0.28f, 0.95f, 0.1f), 40, new Vector3(0.6f, 0.55f, 0.6f)), Tinted, 1);
+            b.Sphere(MeshBuilder.TRS(new Vector3(-0.25f, 0.9f, -0.15f), 80, new Vector3(0.55f, 0.5f, 0.55f)), Tinted, 1);
             return b.ToMesh("broadleaf");
         }
 
         static Mesh BuildRock()
         {
-            var b = new MeshBuilder();
-            var col = new Color(1, 1, 1, 1);
-            b.Sphere(MeshBuilder.TRS(new Vector3(0, -0.15f, 0), 0, new Vector3(1.0f, 0.75f, 0.85f)), col, 1);
-            b.Sphere(MeshBuilder.TRS(new Vector3(0.3f, -0.1f, 0.25f), 30, new Vector3(0.55f, 0.5f, 0.5f)), col, 1);
+            var b = new MeshBuilder().Mat("rock");
+            b.Sphere(MeshBuilder.TRS(new Vector3(0, -0.15f, 0), 0, new Vector3(1.0f, 0.75f, 0.85f)), Tinted, 1);
+            b.Sphere(MeshBuilder.TRS(new Vector3(0.3f, -0.1f, 0.25f), 30, new Vector3(0.55f, 0.5f, 0.5f)), Tinted, 1);
             return b.ToMesh("rock");
         }
 
         static Mesh BuildAnimal()
         {
-            var b = new MeshBuilder();
-            var fur = new Color(1, 1, 1, 1);
-            var dark = new Color(0.25f, 0.2f, 0.16f, 0);
-            b.Box(MeshBuilder.TRS(new Vector3(0, 0.3f, 0), 0, new Vector3(0.22f, 0.22f, 0.55f)), fur);
-            b.Box(MeshBuilder.TRS(new Vector3(0, 0.45f, 0.3f), 0, new Vector3(0.14f, 0.16f, 0.18f)), fur);
+            var b = new MeshBuilder().Mat("fur");
+            var dark = new Color(0.55f, 0.48f, 0.42f, 0);
+            b.Box(MeshBuilder.TRS(new Vector3(0, 0.3f, 0), 0, new Vector3(0.22f, 0.22f, 0.55f)), Tinted);
+            b.Box(MeshBuilder.TRS(new Vector3(0, 0.45f, 0.3f), 0, new Vector3(0.14f, 0.16f, 0.18f)), Tinted);
             for (int i = 0; i < 4; i++)
             {
                 float x = (i % 2 == 0) ? -0.07f : 0.07f, z = (i < 2) ? -0.2f : 0.2f;

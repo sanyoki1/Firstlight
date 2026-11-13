@@ -1,9 +1,14 @@
-// Flat-shaded, vertex-coloured lit shader for regular meshes (terrain, buildings, water).
+// Pixel-art material shader for regular meshes (terrain, water, buildings).
+// Vertex data: COLOR = tint, TEXCOORD0 = explicit UV, TEXCOORD1 = (material layer, uv mode: 0 box projection, 1 explicit).
+// _UseMatMap = 1 takes the layer from the terrain material map instead.
 Shader "Firstlight/FlatLit"
 {
     Properties
     {
         _BaseColor ("Tint", Color) = (1,1,1,1)
+        _UseMatMap ("Terrain material map", Float) = 0
+        _UVScroll ("Scroll (texels/sec x, y)", Vector) = (0,0,0,0)
+        [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull", Float) = 2
     }
     SubShader
     {
@@ -13,6 +18,9 @@ Shader "Firstlight/FlatLit"
         #include "FlatCommon.hlsl"
         CBUFFER_START(UnityPerMaterial)
             half4 _BaseColor;
+            float _UseMatMap;
+            float4 _UVScroll;
+            float _Cull;
         CBUFFER_END
         ENDHLSL
 
@@ -20,32 +28,46 @@ Shader "Firstlight/FlatLit"
         {
             Name "ForwardLit"
             Tags { "LightMode"="UniversalForward" }
+            Cull [_Cull]
             HLSLPROGRAM
-            #pragma target 3.5
+            #pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
             #pragma multi_compile_fragment _ _SHADOWS_SOFT _SHADOWS_SOFT_LOW _SHADOWS_SOFT_MEDIUM _SHADOWS_SOFT_HIGH
             #pragma multi_compile_fog
 
-            struct Attributes { float4 positionOS : POSITION; half4 color : COLOR; };
-            struct Varyings { float4 positionCS : SV_POSITION; float3 positionWS : TEXCOORD0; half4 color : COLOR; half fog : TEXCOORD1; };
+            struct Attributes { float4 positionOS : POSITION; half4 color : COLOR; float2 uv : TEXCOORD0; float2 mat : TEXCOORD1; };
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION; float3 positionWS : TEXCOORD0; float3 positionOS : TEXCOORD1;
+                half4 color : COLOR; float2 uv : TEXCOORD2; nointerpolation float2 mat : TEXCOORD3; half fog : TEXCOORD4;
+            };
 
             Varyings vert(Attributes v)
             {
                 Varyings o;
                 o.positionWS = TransformObjectToWorld(v.positionOS.xyz);
+                o.positionOS = v.positionOS.xyz;
                 o.positionCS = TransformWorldToHClip(o.positionWS);
                 o.color = v.color * _BaseColor;
+                o.uv = v.uv;
+                o.mat = v.mat;
                 o.fog = ComputeFogFactor(o.positionCS.z);
                 return o;
             }
 
             half4 frag(Varyings i) : SV_Target
             {
-                half3 c = FlatShade(i.positionWS, i.color.rgb);
-                c = MixFog(c, i.fog);
-                return half4(c, 1);
+                float3 n = FlatNormal(i.positionWS);
+                float layer = i.mat.x;
+                if (_UseMatMap > 0.5) layer = TerrainLayer(i.positionWS, n);
+                float2 scroll = floor(_Time.y * _UVScroll.xy) / _FL_TileTexels;
+                half4 t = i.mat.y > 0.5 ? SampleExplicit(i.uv + scroll, layer) : SampleBoxProjected(i.positionOS, n, layer, scroll);
+                clip(t.a - 0.5);
+                if (_UseMatMap > 0.5) t.rgb *= MacroVariation(i.positionWS.xz);
+                half3 c = FlatShade(i.positionWS, n, t.rgb * i.color.rgb);
+                return half4(MixFog(c, i.fog), 1);
             }
             ENDHLSL
         }
@@ -54,18 +76,26 @@ Shader "Firstlight/FlatLit"
         {
             Name "ShadowCaster"
             Tags { "LightMode"="ShadowCaster" }
-            ZWrite On ZTest LEqual ColorMask 0
+            ZWrite On ZTest LEqual ColorMask 0 Cull [_Cull]
             HLSLPROGRAM
-            #pragma target 3.5
+            #pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
-            struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; };
-            float4 vert(Attributes v) : SV_POSITION
+            struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; float2 uv : TEXCOORD0; float2 mat : TEXCOORD1; };
+            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; nointerpolation float2 mat : TEXCOORD1; };
+            Varyings vert(Attributes v)
             {
-                return ShadowCasterClip(TransformObjectToWorld(v.positionOS.xyz), TransformObjectToWorldNormal(v.normalOS));
+                Varyings o;
+                o.positionCS = ShadowCasterClip(TransformObjectToWorld(v.positionOS.xyz), TransformObjectToWorldNormal(v.normalOS));
+                o.uv = v.uv; o.mat = v.mat;
+                return o;
             }
-            half4 frag() : SV_Target { return 0; }
+            half4 frag(Varyings i) : SV_Target
+            {
+                if (i.mat.y > 0.5) clip(SAMPLE_TEXTURE2D_ARRAY_LOD(_FL_Tex, sampler_FL_Tex, i.uv, i.mat.x, 0).a - 0.5);
+                return 0;
+            }
             ENDHLSL
         }
 
@@ -73,13 +103,22 @@ Shader "Firstlight/FlatLit"
         {
             Name "DepthOnly"
             Tags { "LightMode"="DepthOnly" }
-            ZWrite On ColorMask R
+            ZWrite On ColorMask R Cull [_Cull]
             HLSLPROGRAM
-            #pragma target 3.5
+            #pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-            float4 vert(float4 positionOS : POSITION) : SV_POSITION { return TransformObjectToHClip(positionOS.xyz); }
-            half4 frag() : SV_Target { return 0; }
+            struct Attributes { float4 positionOS : POSITION; float2 uv : TEXCOORD0; float2 mat : TEXCOORD1; };
+            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; nointerpolation float2 mat : TEXCOORD1; };
+            Varyings vert(Attributes v)
+            {
+                Varyings o; o.positionCS = TransformObjectToHClip(v.positionOS.xyz); o.uv = v.uv; o.mat = v.mat; return o;
+            }
+            half4 frag(Varyings i) : SV_Target
+            {
+                if (i.mat.y > 0.5) clip(SAMPLE_TEXTURE2D_ARRAY_LOD(_FL_Tex, sampler_FL_Tex, i.uv, i.mat.x, 0).a - 0.5);
+                return 0;
+            }
             ENDHLSL
         }
     }

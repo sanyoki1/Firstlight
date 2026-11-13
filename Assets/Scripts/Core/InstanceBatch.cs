@@ -42,7 +42,23 @@ namespace Firstlight.Core
             }
         }
 
-        public readonly Mesh Mesh;
+        static Material _doubleSided;
+        /// <summary>Same shader with back faces drawn, for crossed-quad plant sprites.</summary>
+        public static Material DoubleSidedMaterial
+        {
+            get
+            {
+                if (_doubleSided == null)
+                {
+                    _doubleSided = new Material(SharedMaterial) { name = "InstancedFlatDoubleSided" };
+                    _doubleSided.SetFloat("_Cull", 0f);
+                }
+                return _doubleSided;
+            }
+        }
+
+        public Mesh Mesh;
+        public Material Material;
         public int Capacity { get; private set; }
         public int Count { get; private set; }
         public bool CastShadows = true;
@@ -52,9 +68,10 @@ namespace Firstlight.Core
         readonly MaterialPropertyBlock _mpb = new();
         static readonly int InstancesId = Shader.PropertyToID("_Instances");
 
-        public InstanceBatch(Mesh mesh, int capacity)
+        public InstanceBatch(Mesh mesh, int capacity, Material material = null)
         {
             Mesh = mesh;
+            Material = material;
             Allocate(Mathf.Max(1, capacity));
         }
 
@@ -83,7 +100,7 @@ namespace Firstlight.Core
         public void Draw(Camera cam = null)
         {
             if (Count <= 0) return;
-            var rp = new RenderParams(SharedMaterial)
+            var rp = new RenderParams(Material != null ? Material : SharedMaterial)
             {
                 worldBounds = WorldBounds,
                 matProps = _mpb,

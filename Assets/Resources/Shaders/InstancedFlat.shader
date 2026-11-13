@@ -1,9 +1,13 @@
-// Draws many copies of one mesh from a GPU buffer (citizens, trees, rocks, animals).
-// Each instance: position, yaw, scale, packed RGBA colour. Vertex colour alpha decides how much the
-// instance colour tints that vertex (alpha 0 keeps the mesh colour, e.g. tree trunks).
+// Draws many copies of one mesh from a GPU buffer (citizens, trees, rocks, animals, plants).
+// Each instance: position, yaw, scale, packed sRGB colour. Vertex COLOR = tint, alpha = how much the instance
+// colour applies. TEXCOORD1 = (material layer, uv mode). Box projection uses the instance's own (scaled)
+// local space, so texture pixels stay the same size on every copy and turn with it.
 Shader "Firstlight/InstancedFlat"
 {
-    Properties { }
+    Properties
+    {
+        [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull", Float) = 2
+    }
     SubShader
     {
         Tags { "RenderType"="Opaque" "RenderPipeline"="UniversalPipeline" "Queue"="Geometry" }
@@ -13,17 +17,15 @@ Shader "Firstlight/InstancedFlat"
         struct InstanceData { float3 pos; float yaw; float3 scale; uint color; };
         StructuredBuffer<InstanceData> _Instances;
 
-        float3 InstanceToWorld(InstanceData d, float3 p)
+        float3 Rotate(float yaw, float3 p)
         {
-            p *= d.scale;
-            float s, c; sincos(d.yaw, s, c);
-            return float3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z) + d.pos;
+            float s, c; sincos(yaw, s, c);
+            return float3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z);
         }
-        float3 InstanceDirToWorld(InstanceData d, float3 n)
+        float3 Unrotate(float yaw, float3 p)
         {
-            n /= d.scale;
-            float s, c; sincos(d.yaw, s, c);
-            return normalize(float3(c * n.x + s * n.z, n.y, -s * n.x + c * n.z));
+            float s, c; sincos(yaw, s, c);
+            return float3(c * p.x - s * p.z, p.y, s * p.x + c * p.z);
         }
         half4 UnpackColor(uint c)
         {
@@ -35,6 +37,7 @@ Shader "Firstlight/InstancedFlat"
         {
             Name "ForwardLit"
             Tags { "LightMode"="UniversalForward" }
+            Cull [_Cull]
             HLSLPROGRAM
             #pragma target 4.5
             #pragma vertex vert
@@ -43,25 +46,35 @@ Shader "Firstlight/InstancedFlat"
             #pragma multi_compile_fragment _ _SHADOWS_SOFT _SHADOWS_SOFT_LOW _SHADOWS_SOFT_MEDIUM _SHADOWS_SOFT_HIGH
             #pragma multi_compile_fog
 
-            struct Attributes { float4 positionOS : POSITION; half4 color : COLOR; uint id : SV_InstanceID; };
-            struct Varyings { float4 positionCS : SV_POSITION; float3 positionWS : TEXCOORD0; half3 color : COLOR; half fog : TEXCOORD1; };
+            struct Attributes { float4 positionOS : POSITION; half4 color : COLOR; float2 uv : TEXCOORD0; float2 mat : TEXCOORD1; uint id : SV_InstanceID; };
+            struct Varyings
+            {
+                float4 positionCS : SV_POSITION; float3 positionWS : TEXCOORD0; float3 local : TEXCOORD1;
+                half3 color : COLOR; float2 uv : TEXCOORD2; nointerpolation float3 mat : TEXCOORD3; half fog : TEXCOORD4;
+            };
 
             Varyings vert(Attributes v)
             {
                 InstanceData d = _Instances[v.id];
                 Varyings o;
-                o.positionWS = InstanceToWorld(d, v.positionOS.xyz);
+                o.local = v.positionOS.xyz * d.scale;
+                o.positionWS = Rotate(d.yaw, o.local) + d.pos;
                 o.positionCS = TransformWorldToHClip(o.positionWS);
                 half4 ic = UnpackColor(d.color);
                 ic.rgb = SRGBToLinear(ic.rgb);
-                o.color = lerp(v.color.rgb, v.color.rgb * ic.rgb, v.color.a);
+                o.color = v.color.rgb * lerp(half3(1, 1, 1), ic.rgb, v.color.a);
+                o.uv = v.uv;
+                o.mat = float3(v.mat, d.yaw);
                 o.fog = ComputeFogFactor(o.positionCS.z);
                 return o;
             }
 
             half4 frag(Varyings i) : SV_Target
             {
-                half3 c = FlatShade(i.positionWS, i.color);
+                float3 n = FlatNormal(i.positionWS);
+                half4 t = i.mat.y > 0.5 ? SampleExplicit(i.uv, i.mat.x) : SampleBoxProjected(i.local, Unrotate(i.mat.z, n), i.mat.x, 0);
+                clip(t.a - 0.5);
+                half3 c = FlatShade(i.positionWS, n, t.rgb * i.color);
                 return half4(MixFog(c, i.fog), 1);
             }
             ENDHLSL
@@ -71,19 +84,28 @@ Shader "Firstlight/InstancedFlat"
         {
             Name "ShadowCaster"
             Tags { "LightMode"="ShadowCaster" }
-            ZWrite On ZTest LEqual ColorMask 0
+            ZWrite On ZTest LEqual ColorMask 0 Cull [_Cull]
             HLSLPROGRAM
             #pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
             #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
-            struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; uint id : SV_InstanceID; };
-            float4 vert(Attributes v) : SV_POSITION
+            struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; float2 uv : TEXCOORD0; float2 mat : TEXCOORD1; uint id : SV_InstanceID; };
+            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; nointerpolation float2 mat : TEXCOORD1; };
+            Varyings vert(Attributes v)
             {
                 InstanceData d = _Instances[v.id];
-                return ShadowCasterClip(InstanceToWorld(d, v.positionOS.xyz), InstanceDirToWorld(d, v.normalOS));
+                Varyings o;
+                float3 n = normalize(Rotate(d.yaw, v.normalOS / d.scale));
+                o.positionCS = ShadowCasterClip(Rotate(d.yaw, v.positionOS.xyz * d.scale) + d.pos, n);
+                o.uv = v.uv; o.mat = v.mat;
+                return o;
             }
-            half4 frag() : SV_Target { return 0; }
+            half4 frag(Varyings i) : SV_Target
+            {
+                if (i.mat.y > 0.5) clip(SAMPLE_TEXTURE2D_ARRAY_LOD(_FL_Tex, sampler_FL_Tex, i.uv, i.mat.x, 0).a - 0.5);
+                return 0;
+            }
             ENDHLSL
         }
 
@@ -91,17 +113,26 @@ Shader "Firstlight/InstancedFlat"
         {
             Name "DepthOnly"
             Tags { "LightMode"="DepthOnly" }
-            ZWrite On ColorMask R
+            ZWrite On ColorMask R Cull [_Cull]
             HLSLPROGRAM
             #pragma target 4.5
             #pragma vertex vert
             #pragma fragment frag
-            struct Attributes { float4 positionOS : POSITION; uint id : SV_InstanceID; };
-            float4 vert(Attributes v) : SV_POSITION
+            struct Attributes { float4 positionOS : POSITION; float2 uv : TEXCOORD0; float2 mat : TEXCOORD1; uint id : SV_InstanceID; };
+            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; nointerpolation float2 mat : TEXCOORD1; };
+            Varyings vert(Attributes v)
             {
-                return TransformWorldToHClip(InstanceToWorld(_Instances[v.id], v.positionOS.xyz));
+                InstanceData d = _Instances[v.id];
+                Varyings o;
+                o.positionCS = TransformWorldToHClip(Rotate(d.yaw, v.positionOS.xyz * d.scale) + d.pos);
+                o.uv = v.uv; o.mat = v.mat;
+                return o;
             }
-            half4 frag() : SV_Target { return 0; }
+            half4 frag(Varyings i) : SV_Target
+            {
+                if (i.mat.y > 0.5) clip(SAMPLE_TEXTURE2D_ARRAY_LOD(_FL_Tex, sampler_FL_Tex, i.uv, i.mat.x, 0).a - 0.5);
+                return 0;
+            }
             ENDHLSL
         }
     }
