@@ -19,6 +19,7 @@ namespace Firstlight.Game
         public WorldView View { get; private set; }
         public OrbitCamera Cam { get; private set; }
         public WaterSim Water { get; private set; }
+        public Wildlife Wild { get; private set; }
         Light _sun;
         int _seed;
         float _waterAccum, _waterSyncTimer;
@@ -41,6 +42,8 @@ namespace Firstlight.Game
             Water.SyncWaterClasses();
             Map.CommitCostChanges();
             View.AttachWater(Water);
+            Wild = new Wildlife(Map, Water, _seed);
+            View.AttachWildlife(Wild);
 
             Cam.BoundsMax = new Vector2(Map.W, Map.H);
             Cam.MaxDistance = 160f;
@@ -50,6 +53,7 @@ namespace Firstlight.Game
 
             if (HasArg("-shots")) StartCoroutine(DensityShots());
             if (HasArg("-watershots")) StartCoroutine(WaterShots());
+            if (HasArg("-deershots")) StartCoroutine(DeerShots());
         }
 
         /// <summary>An interesting spot: open ground near forest, rocks and the river.</summary>
@@ -81,6 +85,7 @@ namespace Firstlight.Game
             }
             UpdateWater(Time.deltaTime);
             Map.CommitCostChanges();
+            Wild.Update(Time.deltaTime);
             WorldLighting.UpdateForZoom(Cam.Distance);
             View.Draw(Time.time);
         }
@@ -90,7 +95,7 @@ namespace Firstlight.Game
             if (_hideGui) return;
             var style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 14 };
             style.normal.textColor = new Color(0.92f, 0.9f, 0.85f);
-            GUI.Box(new Rect(10, 10, 380, 66), $"Firstlight  seed {_seed}  texture density {MaterialLibrary.Density} px/m\nF6 = flood surge   WASD, Q/E, wheel, right-drag\nwater sim {Water.LastStepMs:F2} ms/frame   river level +{Water.SourceBoost:F2}", style);
+            GUI.Box(new Rect(10, 10, 380, 84), $"Firstlight  seed {_seed}  texture density {MaterialLibrary.Density} px/m\nF6 = flood surge   WASD, Q/E, wheel, right-drag\nwater sim {Water.LastStepMs:F2} ms/frame   river level +{Water.SourceBoost:F2}\ndeer drinks so far: {Wild.DrinksTaken}", style);
         }
 
         bool _hideGui;
@@ -171,6 +176,118 @@ namespace Firstlight.Game
             yield return new WaitForSeconds(0.5f);
             Application.Quit();
         }
+
+        /// <summary>
+        /// Deer review: a still of the model line-up, a sped-up clip of one herd walking to the river and
+        /// drinking, and a real-time close-up of drinking. Frames go to deer_frames / deer_close (and deer_lineup.png).
+        /// </summary>
+        IEnumerator DeerShots()
+        {
+            _hideGui = true;
+            string outDir = Arg("-outdir") ?? Path.Combine(Application.dataPath, "..", "..", "runs");
+            Directory.CreateDirectory(Path.Combine(outDir, "deer_frames"));
+            Directory.CreateDirectory(Path.Combine(outDir, "deer_close"));
+
+            // 1. Model line-up on open ground, seen from the side: doe and stag standing, walking, head down.
+            var site = FindViewpoint();
+            var ground = OpenGroundNear(new Vector3(site.x, 0, site.y));
+            var lineup = new (int pose, bool stag)[]
+            {
+                ((int)DeerModel.Pose.Stand, false), ((int)DeerModel.Pose.Walk0 + 2, false), ((int)DeerModel.Pose.HeadDown, false),
+                ((int)DeerModel.Pose.Stand, true), ((int)DeerModel.Pose.Walk0 + 6, true), ((int)DeerModel.Pose.HeadMid, true),
+            };
+            for (int k = 0; k < lineup.Length; k++)
+            {
+                float x = ground.x + (k - 2.5f) * 1.15f, z = ground.z;
+                View.ExtraDeer.Add((lineup[k].pose, lineup[k].stag, new InstanceData(new float3(x, Map.HeightAt(x, z), z), math.PI * 0.5f, new float3(1f), Pal.Pack(Color.white))));
+            }
+            Cam.SetView(new Vector3(ground.x, Map.HeightAt(ground.x, ground.z) + 0.3f, ground.z), 6.5f, 14f, 0f);
+            for (int i = 0; i < 30; i++) yield return null;
+            ScreenCapture.CaptureScreenshot(Path.Combine(outDir, "deer_lineup.png"));
+            yield return null; yield return null;
+            View.ExtraDeer.Clear();
+
+            // 2. The herd with the closest water goes to drink; the camera frames home and bank together.
+            int herd = 0; float best = float.MaxValue;
+            for (int h = 0; h < Map.Herds.Count; h++)
+            {
+                int wc = Wild.WateringPlace(h);
+                if (wc < 0) continue;
+                float d = math.distance(Map.Herds[h].Pos, new float2(wc % Map.W + 0.5f, wc / Map.W + 0.5f));
+                if (d < best) { best = d; herd = h; }
+            }
+            int water = Wild.WateringPlace(herd);
+            var home = Map.Herds[herd].Pos;
+            var bank = new float2(water % Map.W + 0.5f, water / Map.W + 0.5f);
+            var mid = (home + bank) * 0.5f;
+            Debug.Log($"[Deer] herd {herd} of {Map.Herds.Count}: home {home}, watering place {bank}, {best:F1} cells apart");
+            // Look from behind the herd's home towards the water, so the walk runs away from the camera.
+            float toWater = math.degrees(math.atan2(bank.x - home.x, bank.y - home.y));
+            var focus = math.lerp(home, bank, 0.6f);
+            Cam.SetView(new Vector3(focus.x, Map.HeightAt(focus.x, focus.y), focus.y), math.max(16f, best * 1.6f), 62f, toWater);
+            Wild.MakeThirsty(herd);
+            Time.captureFramerate = 10;
+            Time.timeScale = 3f;                 // each frame = 0.3 s of game time
+            int frame = 0;
+            for (; frame < 400; frame++)
+            {
+                yield return null;
+                ScreenCapture.CaptureScreenshot(Path.Combine(outDir, "deer_frames", $"f{frame:000}.png"));
+                if (frame > 60 && Wild.DrinksTaken > 0 && AllHome(herd)) break;
+            }
+            var states = new System.Text.StringBuilder();
+            for (int i = 0; i < Wildlife.ActiveCount(Map.Herds[herd], Wild.Herds[herd]); i++)
+            {
+                var dd = Wild.Herds[herd][i];
+                states.Append($"\n  #{i} {dd.State} thirst {dd.Thirst:F2} pos {dd.Pos.x:F1},{dd.Pos.y:F1} drink {dd.DrinkCell % Map.W},{dd.DrinkCell / Map.W}");
+            }
+            Debug.Log($"[Deer] trip took {frame * 0.3f:F0} s of game time, {Wild.DrinksTaken} drinks; herd now {states}");
+
+            // 3. Real-time close-up of a deer drinking.
+            Time.timeScale = 1f;
+            Time.captureFramerate = 15;
+            Wild.MakeThirsty(herd);
+            for (int i = 0; i < 1500; i++)
+            {
+                yield return null;
+                if (FirstDrinker(herd, out _)) break;
+            }
+            FirstDrinker(herd, out var drinker);
+            // Side-on to the drinking deer, from the land side.
+            var face = drinker.Face;
+            float side = math.degrees(math.atan2(face.x, face.y)) + 60f;
+            Cam.SetView(new Vector3(drinker.Pos.x, Map.HeightAt(drinker.Pos.x, drinker.Pos.y) + 0.2f, drinker.Pos.y), 5.5f, 24f, side);
+            for (int i = 0; i < 10; i++) yield return null;
+            for (int i = 0; i < 75; i++)
+            {
+                yield return null;
+                ScreenCapture.CaptureScreenshot(Path.Combine(outDir, "deer_close", $"f{i:000}.png"));
+            }
+            Time.captureFramerate = 0;
+            Debug.Log($"[Deer] done: {Wild.DrinksTaken} drinks in total");
+            yield return new WaitForSeconds(0.5f);
+            Application.Quit();
+        }
+
+        bool AllHome(int herd)
+        {
+            int n = Wildlife.ActiveCount(Map.Herds[herd], Wild.Herds[herd]);
+            for (int i = 0; i < n; i++)
+            {
+                var s = Wild.Herds[herd][i].State;
+                if (s == DeerState.ToWater || s == DeerState.Drink || s == DeerState.Return) return false;
+            }
+            return true;
+        }
+
+        bool FirstDrinker(int herd, out Deer deer)
+        {
+            foreach (var d in Wild.Herds[herd])
+                if (d.State == DeerState.Drink && d.Head > 0.9f) { deer = d; return true; }
+            deer = Wild.Herds[herd][0];
+            return false;
+        }
+
 
         int WetCells()
         {

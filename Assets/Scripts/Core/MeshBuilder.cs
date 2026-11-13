@@ -270,7 +270,7 @@ namespace Firstlight.Core
     /// <summary>Shared meshes for nature and placeholders. Sprite meshes are rebuilt when the texture density changes.</summary>
     public static class Shapes
     {
-        static Mesh _citizen, _carry, _conifer, _broadleaf, _rock, _animal, _box, _bush, _tuft, _flowers;
+        static Mesh _citizen, _carry, _conifer, _broadleaf, _rock, _box, _bush, _tuft, _flowers;
 
         static Shapes() { MaterialLibrary.DensityChanged += Reset; }
 
@@ -286,7 +286,6 @@ namespace Firstlight.Core
         public static Mesh Conifer => _conifer ??= BuildConifer();
         public static Mesh Broadleaf => _broadleaf ??= BuildBroadleaf();
         public static Mesh Rock => _rock ??= BuildRock();
-        public static Mesh Animal => _animal ??= BuildAnimal();
         public static Mesh UnitBox => _box ??= Build(b => b.Mat("rock").Box(Matrix4x4.identity, Tinted), "box");
         public static Mesh Bush => _bush ??= Sprite("bush");
         public static Mesh Tuft => _tuft ??= Sprite("tuft");
@@ -343,20 +342,6 @@ namespace Firstlight.Core
             b.Sphere(MeshBuilder.TRS(new Vector3(0, -0.15f, 0), 0, new Vector3(1.0f, 0.75f, 0.85f)), Tinted, 1);
             b.Sphere(MeshBuilder.TRS(new Vector3(0.3f, -0.1f, 0.25f), 30, new Vector3(0.55f, 0.5f, 0.5f)), Tinted, 1);
             return b.ToMesh("rock");
-        }
-
-        static Mesh BuildAnimal()
-        {
-            var b = new MeshBuilder().Mat("fur");
-            var dark = new Color(0.55f, 0.48f, 0.42f, 0);
-            b.Box(MeshBuilder.TRS(new Vector3(0, 0.3f, 0), 0, new Vector3(0.22f, 0.22f, 0.55f)), Tinted);
-            b.Box(MeshBuilder.TRS(new Vector3(0, 0.45f, 0.3f), 0, new Vector3(0.14f, 0.16f, 0.18f)), Tinted);
-            for (int i = 0; i < 4; i++)
-            {
-                float x = (i % 2 == 0) ? -0.07f : 0.07f, z = (i < 2) ? -0.2f : 0.2f;
-                b.Box(MeshBuilder.TRS(new Vector3(x, 0, z), 0, new Vector3(0.05f, 0.3f, 0.05f)), dark);
-            }
-            return b.ToMesh("animal");
         }
     }
 }

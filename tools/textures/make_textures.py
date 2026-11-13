@@ -29,7 +29,7 @@ BASES = {
     "grass": "#6c7a47", "dirt": "#7a6449", "bank": "#958866", "bed": "#5b5946", "litter": "#5b6340",
     "rockg": "#7d786b", "rock": "#88837a", "lichen": "#7b8263", "water": "#4f6a74", "shallow": "#6a8483",
     "barkc": "#5a4535", "barkb": "#6c6355", "needle": "#4a5d3f", "leaf": "#5f7341", "fur": "#86684b",
-    "berry": "#6e4652", "bloom": "#b9a676", "bloom2": "#8f7f9a", "snow": "#d3d8d8",
+    "berry": "#6e4652", "deer": "#7e6149", "deerpale": "#bfae90", "bloom": "#b9a676", "bloom2": "#8f7f9a", "snow": "#d3d8d8",
 }
 PAL = Palette.from_ramps({k: make_ramp(v, 5, step_L=0.075, hue_shift=10) for k, v in BASES.items()}, name="firstlight")
 pf.use_palette(PAL)
@@ -260,6 +260,24 @@ def fur(d, t, seed=14):
     return p.cv
 
 
+def deer(d, t, seed=16):
+    """Deer coat: an even warm brown with short hairs running along the body."""
+    p = Painter(d, (t, t), seed)
+    p.fill("deer2")
+    p.strokes("deer1", 40, 0.05, 0, 10)
+    p.strokes("deer3", 25, 0.04, 0, 10)
+    return p.cv
+
+
+def deer_pale(d, t, seed=17):
+    """Pale belly, rump and tail patches; also antlers (tinted darker on the mesh)."""
+    p = Painter(d, (t, t), seed)
+    p.fill("deerpale3")
+    p.strokes("deerpale2", 30, 0.04, 0, 10)
+    p.strokes("deerpale4", 20, 0.04, 0, 10)
+    return p.cv
+
+
 def snow(d, t, seed=15):
     p = Painter(d, (t, t), seed)
     p.bands("snow", [2, 3, 4], [0.3, 0.75], 1.0)
@@ -318,6 +336,7 @@ MATERIALS = [
     ("rock", rock), ("water", water), ("shallow", shallow),
     ("bark_conifer", lambda d, t: bark(d, t, "barkc", 10)), ("bark_broad", lambda d, t: bark(d, t, "barkb", 11)),
     ("needles", needles), ("leaves", leaves), ("fur", fur), ("snow", snow),
+    ("deer", deer), ("deer_pale", deer_pale),
 ]
 SPRITES = [("bush", sprite_bush), ("tuft", sprite_tuft), ("flowers", sprite_flowers)]
 

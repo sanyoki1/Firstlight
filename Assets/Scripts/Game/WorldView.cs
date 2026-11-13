@@ -16,10 +16,15 @@ namespace Firstlight.Game
         GameObject _terrainGo, _waterGo;
         Texture2D _matMap;
         byte[] _matBytes;
-        InstanceBatch _conifers, _broadleaves, _rocks, _animals, _bushes, _tufts, _flowers;
+        InstanceBatch _conifers, _broadleaves, _rocks, _bushes, _tufts, _flowers;
         readonly List<InstanceData> _bushData = new(), _tuftData = new(), _flowerData = new();
         readonly List<InstanceData> _tmp = new();
-        InstanceData[] _animalBuf = new InstanceData[256];
+        Wildlife _wild;
+        InstanceBatch[] _deer;                 // [pose * 2 + (stag ? 1 : 0)]
+        InstanceData[][] _deerBuf;
+        int[] _deerCount;
+        /// <summary>Extra deer drawn as-is (model line-ups for screenshots): pose, stag, instance.</summary>
+        public readonly List<(int pose, bool stag, InstanceData data)> ExtraDeer = new();
 
         public float[] RiverDist;
 
@@ -37,7 +42,13 @@ namespace Firstlight.Game
             _conifers = new InstanceBatch(Shapes.Conifer, 4096);
             _broadleaves = new InstanceBatch(Shapes.Broadleaf, 4096);
             _rocks = new InstanceBatch(Shapes.Rock, 1024);
-            _animals = new InstanceBatch(Shapes.Animal, 256);
+            int batches = DeerModel.PoseCount * 2;
+            _deer = new InstanceBatch[batches]; _deerBuf = new InstanceData[batches][]; _deerCount = new int[batches];
+            for (int k = 0; k < batches; k++)
+            {
+                _deer[k] = new InstanceBatch(DeerModel.Get(k / 2, (k & 1) == 1), 32);
+                _deerBuf[k] = new InstanceData[32];
+            }
             BuildDecor();
             RefreshTrees();
             RefreshRocks();
@@ -334,35 +345,49 @@ namespace Firstlight.Game
         {
             if (_map.TreesDirty) RefreshTrees();
             if (_map.RocksDirty) RefreshRocks();
-            UpdateAnimals(time);
+            UpdateDeer();
             if (_water != null) UpdateWaterMesh();
-            _conifers.Draw(); _broadleaves.Draw(); _rocks.Draw(); _animals.Draw();
+            _conifers.Draw(); _broadleaves.Draw(); _rocks.Draw();
+            foreach (var batch in _deer) batch.Draw();
             _bushes.Draw(); _tufts.Draw(); _flowers.Draw();
         }
 
-        void UpdateAnimals(float time)
+        public void AttachWildlife(Wildlife wild) => _wild = wild;
+
+        /// <summary>Sorts every visible deer into the batch for its pose (walk frame from stride, or head height).</summary>
+        void UpdateDeer()
         {
-            int n = 0;
-            for (int hi = 0; hi < _map.Herds.Count; hi++)
-            {
-                var herd = _map.Herds[hi];
-                int count = Mathf.Min(herd.Offsets.Length, Mathf.FloorToInt(herd.Pop));
-                for (int i = 0; i < count && n < _animalBuf.Length; i++)
+            System.Array.Clear(_deerCount, 0, _deerCount.Length);
+            if (_wild != null)
+                for (int h = 0; h < _wild.Herds.Length; h++)
                 {
-                    // Slow grazing drift around the herd's spot.
-                    float t = time * 0.05f + i * 1.7f + hi * 3.1f;
-                    float2 p = herd.Pos + herd.Offsets[i] + new float2(Mathf.Sin(t), Mathf.Cos(t * 0.8f)) * 0.8f;
-                    float yaw = herd.Yaw[i] + Mathf.Sin(t * 0.5f) * 0.6f;
-                    _animalBuf[n++] = new InstanceData(new float3(p.x, _map.HeightAt(p.x, p.y), p.y), yaw, new float3(1.5f), Pal.Pack(new Color(1f, 0.97f, 0.92f)));
+                    var deer = _wild.Herds[h];
+                    int n = Wildlife.ActiveCount(_map.Herds[h], deer);
+                    for (int i = 0; i < n; i++)
+                    {
+                        ref var d = ref deer[i];
+                        int pose = d.Moving
+                            ? (int)DeerModel.Pose.Walk0 + ((int)(d.Stride * DeerModel.WalkFrames) % DeerModel.WalkFrames)
+                            : d.Head < 0.33f ? (int)DeerModel.Pose.Stand : d.Head < 0.75f ? (int)DeerModel.Pose.HeadMid : (int)DeerModel.Pose.HeadDown;
+                        AddDeer(pose, d.Stag, new InstanceData(new float3(d.Pos.x, _map.HeightAt(d.Pos.x, d.Pos.y), d.Pos.y), d.Yaw, new float3(1f), d.Tint));
+                    }
                 }
-            }
-            _animals.Upload(_animalBuf, n);
+            foreach (var (pose, stag, data) in ExtraDeer) AddDeer(pose, stag, data);
+            for (int k = 0; k < _deer.Length; k++) _deer[k].Upload(_deerBuf[k], _deerCount[k]);
+        }
+
+        void AddDeer(int pose, bool stag, InstanceData data)
+        {
+            int k = pose * 2 + (stag ? 1 : 0);
+            if (_deerCount[k] == _deerBuf[k].Length) System.Array.Resize(ref _deerBuf[k], _deerBuf[k].Length * 2);
+            _deerBuf[k][_deerCount[k]++] = data;
         }
 
         public void Dispose()
         {
             MaterialLibrary.DensityChanged -= OnDensityChanged;
-            _conifers?.Dispose(); _broadleaves?.Dispose(); _rocks?.Dispose(); _animals?.Dispose();
+            _conifers?.Dispose(); _broadleaves?.Dispose(); _rocks?.Dispose();
+            if (_deer != null) foreach (var batch in _deer) batch.Dispose();
             _bushes?.Dispose(); _tufts?.Dispose(); _flowers?.Dispose();
         }
     }
