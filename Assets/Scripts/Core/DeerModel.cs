@@ -11,7 +11,7 @@ namespace Firstlight.Core
     public static class DeerModel
     {
         public const int WalkFrames = 8;
-        public enum Pose { Stand, HeadMid, HeadDown, Walk0 }   // Walk0 + k for walk frame k
+        public enum Pose { Stand, HeadMid, HeadDown, Dead, Hung, Walk0 }   // Walk0 + k for walk frame k
         public static int PoseCount => (int)Pose.Walk0 + WalkFrames;
 
         static readonly Mesh[] _doe = new Mesh[PoseCount], _stag = new Mesh[PoseCount];
@@ -41,6 +41,8 @@ namespace Firstlight.Core
                 case Pose.Stand: p.neck = 32; p.head = 112; break;
                 case Pose.HeadMid: p.neck = 88; p.head = 150; p.pitch = 3; p.swing[0] = p.swing[1] = -0.28f; break;
                 case Pose.HeadDown: p.neck = 138; p.head = 176; p.pitch = 7; p.swing[0] = p.swing[1] = -0.38f; break;
+                case Pose.Hung: p.neck = 95; p.head = 120; break;
+                case Pose.Dead: p.neck = 100; p.head = 140; p.swing[0] = p.swing[1] = -0.25f; p.swing[2] = p.swing[3] = 0.3f; break;
                 default:
                 {
                     p.neck = 50; p.head = 122;
@@ -100,6 +102,22 @@ namespace Firstlight.Core
 
             var b = new MeshBuilder();
             var world = Matrix4x4.Scale(Vector3.one * 0.5f) * Matrix4x4.Translate(new Vector3(0, -minY, 0));
+            if (pose == (int)Pose.Dead)
+            {
+                // Lying on its right side: turn the standing deer about its spine, body resting on the ground.
+                var spine = new Vector3(0, 0.82f - minY, 0);
+                world = Matrix4x4.Scale(Vector3.one * 0.5f) * Matrix4x4.Translate(new Vector3(0, 0.19f, 0))
+                      * Matrix4x4.Rotate(Quaternion.Euler(0, 0, 90)) * Matrix4x4.Translate(-spine)
+                      * Matrix4x4.Translate(new Vector3(0, -minY, 0));
+            }
+            else if (pose == (int)Pose.Hung)
+            {
+                // Feet up, tied to a carrying pole: hooves at the origin (the pole), body hanging below.
+                var spine = new Vector3(0, 0.82f - minY, 0);
+                world = Matrix4x4.Scale(Vector3.one * 0.5f) * Matrix4x4.Translate(new Vector3(0, -(0.82f - minY), 0))
+                      * Matrix4x4.Rotate(Quaternion.Euler(0, 0, 180)) * Matrix4x4.Translate(-spine)
+                      * Matrix4x4.Translate(new Vector3(0, -minY, 0));
+            }
 
             void Seg(string mat, Vector3 a, Vector3 c, float r0, float r1, Color col, float flat = 1f, int sides = 6)
             {

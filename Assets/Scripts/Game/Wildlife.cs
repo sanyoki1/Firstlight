@@ -4,7 +4,7 @@ using Unity.Mathematics;
 
 namespace Firstlight.Game
 {
-    public enum DeerState : byte { Graze, Look, Wander, ToWater, Drink, Return }
+    public enum DeerState : byte { Graze, Look, Wander, ToWater, Drink, Return, Flee, Alert }
 
     /// <summary>One deer. Pos is in cell units (x, map y); Yaw faces +z at 0, like every instance.</summary>
     public struct Deer
@@ -20,18 +20,33 @@ namespace Firstlight.Game
         public uint Tint;
     }
 
+    /// <summary>A killed deer: lies where it fell until a hunter carries it off (then it rides on the carrier).</summary>
+    public sealed class Carcass
+    {
+        public float2 Pos;
+        public float Yaw, Age;
+        public bool Stag, Carried;
+        public uint Tint;
+        public float3 CarryPos;        // world position while carried (set by the carrier)
+        public float CarryYaw;
+    }
+
     /// <summary>
     /// Deer herds. Each deer grazes and wanders near its herd's home spot and grows thirsty. Then it claims a
     /// free spot of its own on the near bank, walks the herd's shared flow field to the watering place, takes
     /// a short route of its own along the bank to its spot (the field's path traced back from the spot), drinks
     /// with its head down, and walks home the same way. Herd-mates that are fairly thirsty go along; when every
     /// spot is taken the rest wait. Spots use the simulated water depth, so floods and falling water move them.
-    /// Hunters thin herds by lowering Herd.Pop.
+    /// People are threats: a deer that notices one (walkers from far off, crouching hunters only up close) sets
+    /// the whole herd bolting away; the herd stays alert a while, then drifts home. Killed deer become carcasses
+    /// and the herd shrinks (Herd.Pop).
     /// </summary>
     public sealed class Wildlife
     {
         public const float WalkSpeed = 0.6f;        // cells per second (about 1.2 m/s)
         public const float StrideCells = 0.55f;     // distance per walk cycle
+        public const float RunSpeed = 1.9f;         // fleeing: about 3.8 m/s, a bounding run
+        const float RunStrideCells = 1.3f;
         const float ThirstMinSeconds = 100f, ThirstMaxSeconds = 160f;
         const float DrinkSeconds = 8f;
         const int WaterSearchRadius = 48;
@@ -46,6 +61,10 @@ namespace Firstlight.Game
         readonly HashSet<int> _taken = new();
         readonly List<int>[][] _route;          // per deer: cells from the watering place to its own spot
         public int DrinksTaken { get; private set; }
+
+        /// <summary>People near the deer this frame: position and how far off a deer notices them (cells).</summary>
+        public readonly List<(float2 pos, float notice)> Threats = new();
+        public readonly List<Carcass> Carcasses = new();
 
         public Wildlife(GameMap map, WaterSim water, int seed)
         {
@@ -109,6 +128,7 @@ namespace Firstlight.Game
         public void Update(float dt)
         {
             if (dt <= 0) return;
+            UpdateCarcasses(dt);
             for (int h = 0; h < Herds.Length; h++)
             {
                 var herd = _map.Herds[h];
@@ -142,8 +162,21 @@ namespace Firstlight.Game
             d.Timer -= dt;
             d.Moving = false;
 
+            if (d.State != DeerState.Flee && Threatened(d, out float2 from)) { Alarm(h, from); return; }
+
             switch (d.State)
             {
+                case DeerState.Flee:
+                    d.HeadTarget = 0f;
+                    if (MoveStraight(ref d, d.Goal, dt) || d.Timer <= 0) { d.State = DeerState.Alert; d.Timer = R(6f, 11f); }
+                    break;
+
+                case DeerState.Alert:
+                    // Head up, watching; then drifts back home.
+                    d.HeadTarget = 0f;
+                    if (d.Timer <= 0) { d.State = DeerState.Return; d.Near = false; d.Goal = herd.Pos + herd.Offsets[i]; }
+                    break;
+
                 case DeerState.Graze:
                 case DeerState.Look:
                     d.HeadTarget = d.State == DeerState.Graze ? 1f : 0f;
@@ -308,14 +341,14 @@ namespace Firstlight.Game
             }
             d.Pos += move;
             d.Pos = math.clamp(d.Pos, 0.5f, new float2(_map.W - 0.5f, _map.H - 0.5f));
-            d.Stride += step * along / StrideCells;
+            d.Stride += step * along / (d.State == DeerState.Flee ? RunStrideCells : StrideCells);
             d.Moving = true;
         }
 
         /// <summary>Deep water, rock or a building.</summary>
         bool Blocked(float2 p) => _map.Flow.Cost[_map.CellAt(p)] == 0;
 
-        float Speed(in Deer d) => _map.WaterClass[_map.CellAt(d.Pos)] == 1 ? WalkSpeed * 0.5f : WalkSpeed;
+        float Speed(in Deer d) => (d.State == DeerState.Flee ? RunSpeed : WalkSpeed) * (_map.WaterClass[_map.CellAt(d.Pos)] == 1 ? 0.5f : 1f);
 
         /// <summary>Keeps deer from standing inside each other (not while drinking: those have their own spots).</summary>
         static void Separate(Deer[] deer, int n, float dt)
@@ -332,6 +365,83 @@ namespace Firstlight.Game
                     if (dist >= minGap || dist < 1e-4f) continue;
                     deer[a].Pos += delta / dist * (minGap - dist) * math.min(1f, dt * 4f);
                 }
+            }
+        }
+
+        // ------------------------------------------------------------------ people: noticing, fleeing, kills
+
+        bool Threatened(in Deer d, out float2 from)
+        {
+            from = 0;
+            float scale = d.State == DeerState.Drink ? 0.75f : d.State == DeerState.Alert ? 1.3f : 1f;
+            float best = float.MaxValue;
+            foreach (var (pos, notice) in Threats)
+            {
+                float dist = math.distance(pos, d.Pos);
+                if (dist < notice * scale && dist < best) { best = dist; from = pos; }
+            }
+            return best < float.MaxValue;
+        }
+
+        /// <summary>The whole herd bolts away from a point, each deer on a slightly different line.</summary>
+        public void Alarm(int h, float2 from)
+        {
+            var deer = Herds[h];
+            int n = ActiveCount(_map.Herds[h], deer);
+            for (int i = 0; i < n; i++)
+            {
+                ref var d = ref deer[i];
+                if (d.State == DeerState.Flee) continue;
+                Release(ref d);
+                float2 away = d.Pos - from;
+                float baseAng = math.lengthsq(away) > 1e-4f ? math.atan2(away.x, away.y) : R(0, math.PI * 2);
+                float run = R(8f, 12f);
+                d.Goal = d.Pos;
+                for (int t = 0; t < 8; t++)
+                {
+                    // Prefer straight away; turn further aside if water or rock is in the way.
+                    float a = baseAng + R(-0.35f, 0.35f) + (t / 2) * 0.5f * (t % 2 == 0 ? 1 : -1);
+                    float2 g = math.clamp(d.Pos + new float2(math.sin(a), math.cos(a)) * run, 1f, new float2(_map.W - 1, _map.H - 1));
+                    if (Blocked(g) || Blocked(math.lerp(d.Pos, g, 0.5f))) continue;
+                    d.Goal = g;
+                    break;
+                }
+                d.State = DeerState.Flee;
+                d.Timer = 9f;
+            }
+        }
+
+        /// <summary>Kills deer i of herd h: it becomes a carcass where it stands and the herd shrinks by one.</summary>
+        public Carcass Kill(int h, int i)
+        {
+            var deer = Herds[h];
+            var herd = _map.Herds[h];
+            int n = ActiveCount(herd, deer);
+            ref var d = ref deer[i];
+            Release(ref d);
+            var c = new Carcass { Pos = d.Pos, Yaw = d.Yaw, Stag = d.Stag, Tint = d.Tint };
+            Carcasses.Add(c);
+            // Keep the living deer in the first Pop slots: move the last one into this slot.
+            int last = n - 1;
+            if (i != last)
+            {
+                (deer[i], deer[last]) = (deer[last], deer[i]);
+                (_route[h][i], _route[h][last]) = (_route[h][last], _route[h][i]);
+            }
+            deer[last].State = DeerState.Graze;
+            herd.Pop = math.max(0f, herd.Pop - 1f);
+            return c;
+        }
+
+        /// <summary>Carcasses at rest age; ones nobody carries off are gone after a while (scavengers).</summary>
+        public void UpdateCarcasses(float dt)
+        {
+            for (int k = Carcasses.Count - 1; k >= 0; k--)
+            {
+                var c = Carcasses[k];
+                if (c.Carried) continue;
+                c.Age += dt;
+                if (c.Age > 300f) Carcasses.RemoveAt(k);
             }
         }
 

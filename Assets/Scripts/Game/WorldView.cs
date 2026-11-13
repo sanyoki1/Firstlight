@@ -23,6 +23,13 @@ namespace Firstlight.Game
         InstanceBatch[] _deer;                 // [pose * 2 + (stag ? 1 : 0)]
         InstanceData[][] _deerBuf;
         int[] _deerCount;
+        Band _band;
+        InstanceBatch[] _people;               // [pose * 2 + (woman ? 1 : 0)]
+        InstanceData[][] _peopleBuf;
+        int[] _peopleCount;
+        InstanceBatch _spearUp, _spearLevel, _tent, _fire;
+        readonly List<InstanceData> _spearUpBuf = new(), _spearLevelBuf = new();
+
         /// <summary>Extra deer drawn as-is (model line-ups for screenshots): pose, stag, instance.</summary>
         public readonly List<(int pose, bool stag, InstanceData data)> ExtraDeer = new();
 
@@ -346,13 +353,83 @@ namespace Firstlight.Game
             if (_map.TreesDirty) RefreshTrees();
             if (_map.RocksDirty) RefreshRocks();
             UpdateDeer();
+            UpdatePeople();
             if (_water != null) UpdateWaterMesh();
             _conifers.Draw(); _broadleaves.Draw(); _rocks.Draw();
             foreach (var batch in _deer) batch.Draw();
+            if (_people != null)
+            {
+                foreach (var batch in _people) batch.Draw();
+                _spearUp.Draw(); _spearLevel.Draw(); _tent.Draw(); _fire.Draw();
+            }
             _bushes.Draw(); _tufts.Draw(); _flowers.Draw();
         }
 
         public void AttachWildlife(Wildlife wild) => _wild = wild;
+
+        /// <summary>Draws a band: its people (mesh per pose), spears, tent and hearth.</summary>
+        public void AttachBand(Band band)
+        {
+            _band = band;
+            if (_people == null)
+            {
+                int batches = PersonModel.PoseCount * 2;
+                _people = new InstanceBatch[batches]; _peopleBuf = new InstanceData[batches][]; _peopleCount = new int[batches];
+                for (int k = 0; k < batches; k++)
+                {
+                    _people[k] = new InstanceBatch(PersonModel.Get(k / 2, (k & 1) == 1), 8);
+                    _peopleBuf[k] = new InstanceData[8];
+                }
+                _spearUp = new InstanceBatch(PersonModel.Spear(false), 8);
+                _spearLevel = new InstanceBatch(PersonModel.Spear(true), 8);
+                _tent = new InstanceBatch(PersonModel.Tent, 1);
+                _fire = new InstanceBatch(PersonModel.Fire, 1);
+            }
+            var tp = band.TentPos; var fp = band.FirePos;
+            _tent.Upload(new[] { new InstanceData(new float3(tp.x, _map.HeightAt(tp.x, tp.y) - 0.03f, tp.y), 2.4f, new float3(1f), Pal.Pack(new Color(0.95f, 0.92f, 0.88f))) }, 1);
+            _fire.Upload(new[] { new InstanceData(new float3(fp.x, _map.HeightAt(fp.x, fp.y), fp.y), 0f, new float3(1f), Pal.Pack(Color.white)) }, 1);
+        }
+
+        void UpdatePeople()
+        {
+            if (_band == null) return;
+            System.Array.Clear(_peopleCount, 0, _peopleCount.Length);
+            _spearUpBuf.Clear(); _spearLevelBuf.Clear();
+            uint plain = Pal.Pack(Color.white);
+            foreach (var p in _band.People)
+            {
+                int pose = Band.PoseOf(p);
+                int k = pose * 2 + (p.Woman ? 1 : 0);
+                if (_peopleCount[k] == _peopleBuf[k].Length) System.Array.Resize(ref _peopleBuf[k], _peopleBuf[k].Length * 2);
+                var at = new float3(p.Pos.x, _map.HeightAt(p.Pos.x, p.Pos.y), p.Pos.y);
+                _peopleBuf[k][_peopleCount[k]++] = new InstanceData(at, p.Yaw, new float3(1f), p.Tint);
+                if (!p.HasSpear) continue;
+                switch (PersonModel.SpearHold(pose))
+                {
+                    case PersonModel.Hold.Upright: _spearUpBuf.Add(new InstanceData(_band.HandWorld(p, pose), p.Yaw, new float3(1f), plain)); break;
+                    case PersonModel.Hold.Level: _spearLevelBuf.Add(new InstanceData(_band.HandWorld(p, pose), p.Yaw, new float3(1f), plain)); break;
+                    case PersonModel.Hold.Back:
+                    {
+                        float s = math.sin(p.Yaw), c = math.cos(p.Yaw);
+                        var back = new float3(0.08f, 0.45f, -0.13f);
+                        _spearUpBuf.Add(new InstanceData(at + new float3(c * back.x + s * back.z, back.y, -s * back.x + c * back.z), p.Yaw, new float3(1f), plain));
+                        break;
+                    }
+                }
+            }
+            foreach (var sp in _band.Spears)
+                if (!sp.Gone) _spearLevelBuf.Add(new InstanceData(sp.Pos, sp.Yaw, new float3(1f), plain));
+            if (_band.Prey != null && _band.Prey.Carried)
+            {
+                // The carrying pole (a spear) over both carriers' shoulders; the deer hangs from its middle.
+                var c = _band.Prey;
+                var fwd = new float3(math.sin(c.CarryYaw), 0, math.cos(c.CarryYaw));
+                _spearLevelBuf.Add(new InstanceData(c.CarryPos - fwd * 0.095f, c.CarryYaw, new float3(1f), plain));
+            }
+            for (int k = 0; k < _people.Length; k++) _people[k].Upload(_peopleBuf[k], _peopleCount[k]);
+            _spearUp.Upload(_spearUpBuf.ToArray(), _spearUpBuf.Count);
+            _spearLevel.Upload(_spearLevelBuf.ToArray(), _spearLevelBuf.Count);
+        }
 
         /// <summary>Sorts every visible deer into the batch for its pose (walk frame from stride, or head height).</summary>
         void UpdateDeer()
@@ -373,6 +450,12 @@ namespace Firstlight.Game
                     }
                 }
             foreach (var (pose, stag, data) in ExtraDeer) AddDeer(pose, stag, data);
+            if (_wild != null)
+                foreach (var c in _wild.Carcasses)
+                {
+                    var at = c.Carried ? c.CarryPos : new float3(c.Pos.x, _map.HeightAt(c.Pos.x, c.Pos.y), c.Pos.y);
+                    AddDeer(c.Carried ? (int)DeerModel.Pose.Hung : (int)DeerModel.Pose.Dead, c.Stag, new InstanceData(at, c.Carried ? c.CarryYaw : c.Yaw, new float3(1f), c.Tint));
+                }
             for (int k = 0; k < _deer.Length; k++) _deer[k].Upload(_deerBuf[k], _deerCount[k]);
         }
 
@@ -388,6 +471,11 @@ namespace Firstlight.Game
             MaterialLibrary.DensityChanged -= OnDensityChanged;
             _conifers?.Dispose(); _broadleaves?.Dispose(); _rocks?.Dispose();
             if (_deer != null) foreach (var batch in _deer) batch.Dispose();
+            if (_people != null)
+            {
+                foreach (var batch in _people) batch.Dispose();
+                _spearUp.Dispose(); _spearLevel.Dispose(); _tent.Dispose(); _fire.Dispose();
+            }
             _bushes?.Dispose(); _tufts?.Dispose(); _flowers?.Dispose();
         }
     }

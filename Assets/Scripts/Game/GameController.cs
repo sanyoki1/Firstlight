@@ -20,6 +20,7 @@ namespace Firstlight.Game
         public OrbitCamera Cam { get; private set; }
         public WaterSim Water { get; private set; }
         public Wildlife Wild { get; private set; }
+        public Band Band { get; private set; }
         Light _sun;
         int _seed;
         float _waterAccum, _waterSyncTimer;
@@ -51,10 +52,16 @@ namespace Firstlight.Game
             var site = FindViewpoint();
             Cam.SetView(new Vector3(site.x, Map.HeightAt(site.x, site.y), site.y), 45f, 50f, 30f);
 
+            // A band camps on open ground near the starting view and hunts every few minutes (F7 sends them now).
+            var camp = OpenGroundNear(new Vector3(site.x, 0, site.y));
+            Band = new Band(Map, Wild, new float2(camp.x, camp.z), _seed);
+            View.AttachBand(Band);
+
             if (HasArg("-shots")) StartCoroutine(DensityShots());
             if (HasArg("-watershots")) StartCoroutine(WaterShots());
             if (HasArg("-deershots")) StartCoroutine(DeerShots());
             if (HasArg("-deerpair")) StartCoroutine(DeerPairShots());
+            if (HasArg("-huntshots")) StartCoroutine(HuntShots());
         }
 
         /// <summary>An interesting spot: open ground near forest, rocks and the river.</summary>
@@ -83,9 +90,11 @@ namespace Firstlight.Game
             {
                 if (kb.escapeKey.wasPressedThisFrame && !Application.isEditor) Application.Quit();
                 if (kb.f6Key.wasPressedThisFrame) StartFlood();
+                if (kb.f7Key.wasPressedThisFrame) Band.StartHunt();
             }
             UpdateWater(Time.deltaTime);
             Map.CommitCostChanges();
+            Band.Update(Time.deltaTime);      // first, so the deer see where people are this frame
             Wild.Update(Time.deltaTime);
             WorldLighting.UpdateForZoom(Cam.Distance);
             View.Draw(Time.time);
@@ -96,7 +105,7 @@ namespace Firstlight.Game
             if (_hideGui) return;
             var style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 14 };
             style.normal.textColor = new Color(0.92f, 0.9f, 0.85f);
-            GUI.Box(new Rect(10, 10, 380, 84), $"Firstlight  seed {_seed}  texture density {MaterialLibrary.Density} px/m\nF6 = flood surge   WASD, Q/E, wheel, right-drag\nwater sim {Water.LastStepMs:F2} ms/frame   river level +{Water.SourceBoost:F2}\ndeer drinks so far: {Wild.DrinksTaken}", style);
+            GUI.Box(new Rect(10, 10, 400, 102), $"Firstlight  seed {_seed}  texture density {MaterialLibrary.Density} px/m\nF6 = flood surge   F7 = send the hunters   WASD, Q/E, wheel, right-drag\nwater sim {Water.LastStepMs:F2} ms/frame   river level +{Water.SourceBoost:F2}\ndeer drinks so far: {Wild.DrinksTaken}\nhunts {Band.Hunts}   spears thrown {Band.Throws}   deer brought home {Band.Kills}", style);
         }
 
         bool _hideGui;
@@ -321,6 +330,148 @@ namespace Firstlight.Game
             yield return new WaitForSeconds(0.5f);
             Application.Quit();
         }
+
+        /// <summary>
+        /// Hunt clip in three fixed shots (frames to hunt/): the camp with the hunters setting off; the stalk, throw
+        /// and kill (slowed to real time around each throw); and the carrier bringing the deer home. One herd of
+        /// six is kept, the camp is placed on open ground 14-17 cells from it, and the time between shots is skipped.
+        /// </summary>
+        IEnumerator HuntShots()
+        {
+            _hideGui = true;
+            string outDir = Arg("-outdir") ?? Path.Combine(Application.dataPath, "..", "..", "runs");
+            string frames = Path.Combine(outDir, "hunt");
+            Directory.CreateDirectory(frames);
+            int frame = 0;
+            void Capture() => ScreenCapture.CaptureScreenshot(Path.Combine(frames, $"f{frame++:000}.png"));
+
+            // Herd and camp: open ground round the herd, and few trees on the walk between them.
+            int herd = -1; float2 camp = 0; float bestScore = float.MaxValue;
+            for (int h = 0; h < Map.Herds.Count; h++)
+            {
+                var hp = Map.Herds[h].Pos;
+                float around = Map.CountFeature("trees", hp, 6) * 2f;
+                for (int a = 0; a < 24; a++)
+                    for (float r = 14f; r <= 17f; r += 1.5f)
+                    {
+                        float ang = a * math.PI * 2f / 24f;
+                        var c = hp + new float2(math.sin(ang), math.cos(ang)) * r;
+                        int cx = (int)c.x, cy = (int)c.y;
+                        if (cx < 4 || cy < 4 || cx >= Map.W - 4 || cy >= Map.H - 4) continue;
+                        int cell = Map.Cell(cx, cy);
+                        if (Map.Flow.Cost[cell] != 1 || Map.CountFeature("trees", c, 3) > 0 || Map.CountFeature("rocks", c, 3) > 0 || Map.CountFeature("water", c, 4) > 0) continue;
+                        float score = around + TreesAlongPath(cell, Map.CellAt(hp)) * 3f;
+                        if (score < bestScore) { bestScore = score; herd = h; camp = new float2(cx + 0.5f, cy + 0.5f); }
+                    }
+            }
+            if (herd < 0) { Debug.LogError("[Hunt] no open herd/camp pair found"); Application.Quit(); yield break; }
+            for (int h = 0; h < Map.Herds.Count; h++) Map.Herds[h].Pop = h == herd ? 6.5f : 0f;
+            Band = new Band(Map, Wild, camp, _seed) { AutoHunt = false };
+            View.AttachBand(Band);
+            var home = Map.Herds[herd].Pos;
+            Debug.Log($"[Hunt] herd {herd} at {home}, camp at {camp}, {math.distance(home, camp):F1} cells apart, score {bestScore}");
+            float toHerd = math.degrees(math.atan2(home.x - camp.x, home.y - camp.y));
+            for (int i = 0; i < 30; i++) yield return null;
+
+            // 1. Camp: a moment of camp life, then the hunters set off.
+            Cam.SetView(new Vector3(camp.x, Map.HeightAt(camp.x, camp.y), camp.y), 7.5f, 38f, toHerd + 140f);
+            for (int i = 0; i < 10; i++) yield return null;
+            Time.captureFramerate = 12;
+            Time.timeScale = 1f;
+            for (int i = 0; i < 24; i++) { yield return null; Capture(); }
+            Band.StartHunt(herd);
+            for (int i = 0; i < 36; i++) { yield return null; Capture(); }
+            Debug.Log($"[Hunt] shot 1 ends at frame {frame}");
+
+            // Skip the walk out.
+            Time.captureFramerate = 0;
+            Time.timeScale = 4f;
+            float t0 = Time.time;
+            while (Time.time - t0 < 120f && !HuntersClose(7f)) yield return null;
+
+            // 2. The hunt: a fixed camera side-on to the line from the hunters to the herd.
+            float2 Hunters() { float2 s2 = 0; int n = 0; foreach (var p in Band.People) if (p.Hunter) { s2 += p.Pos; n++; } return s2 / math.max(1, n); }
+            float2 NearestDeerTo(float2 from)
+            {
+                float2 best = Map.Herds[herd].Pos; float bd = float.MaxValue;
+                int n = Wildlife.ActiveCount(Map.Herds[herd], Wild.Herds[herd]);
+                for (int i = 0; i < n; i++)
+                {
+                    float d = math.distance(Wild.Herds[herd][i].Pos, from);
+                    if (d < bd) { bd = d; best = Wild.Herds[herd][i].Pos; }
+                }
+                return best;
+            }
+            float2 focus = 0, focusTarget = 0; float camDist = 7.5f, hunterOff = 0, targetOff = 0;
+            void Frame()
+            {
+                var hu = Hunters(); var he = Band.Prey != null ? Band.Prey.Pos : NearestDeerTo(hu);
+                if (math.distance(hu, he) > 7f) he = hu + math.normalizesafe(he - hu) * 7f;   // keep the hunters in the picture
+                focus = math.lerp(hu, he, 0.65f);            // nearer the deer: the hunters close in on them
+                focusTarget = he;
+                hunterOff = math.distance(hu, focus); targetOff = math.distance(he, focus);
+                camDist = 5f + math.distance(hu, he) * 0.65f;
+                float side = math.degrees(math.atan2(he.x - hu.x, he.y - hu.y)) - 90f;
+                Cam.SetView(new Vector3(focus.x, Map.HeightAt(focus.x, focus.y), focus.y), camDist, 54f, side);
+            }
+            Frame();
+            Time.timeScale = 0f;                                   // let the camera settle onto the ground height
+            for (int i = 0; i < 12; i++) yield return null;
+            Time.captureFramerate = 12;
+            int carryFrames = 0, cuts = 0, shot2Start = frame;
+            while (frame - shot2Start < 520)
+            {
+                bool action = Band.Spears.Exists(sp => sp.Flying);
+                foreach (var p in Band.People) if (p.State is PersonState.Throw or PersonState.Recover or PersonState.Lift) action = true;
+                Time.timeScale = action ? 0.8f : 2f;               // slow down for throws and the lift
+                { yield return null; Capture(); }
+                bool carrying = Band.Carrier >= 0 && Band.People[Band.Carrier].State == PersonState.Carry;
+                if (carrying && ++carryFrames > 30) break;
+                // Re-frame (a cut) if the chase leaves the picture.
+                // Cut to a new framing only when the hunters or their quarry have moved well away from where they were framed.
+                var target = Band.Prey != null ? Band.Prey.Pos : NearestDeerTo(Hunters());
+                if ((math.distance(Hunters(), focus) > hunterOff + 2.5f || math.distance(target, focus) > targetOff + 3f) && cuts < 8) { Frame(); cuts++; }
+            }
+            Debug.Log($"[Hunt] shot 2 ends at frame {frame}: throws {Band.Throws}, deer killed {6 - Wildlife.ActiveCount(Map.Herds[herd], Wild.Herds[herd])}, cuts {cuts}");
+
+            // Skip the walk home.
+            Time.captureFramerate = 0;
+            Time.timeScale = 4f;
+            t0 = Time.time;
+            while (Time.time - t0 < 120f && Band.Carrier >= 0 && math.distance(Band.People[Band.Carrier].Pos, Band.Camp) > 5f) yield return null;
+
+            // 3. Home: the carrier lays the deer by the fire.
+            Cam.SetView(new Vector3(camp.x, Map.HeightAt(camp.x, camp.y), camp.y), 7.5f, 38f, toHerd + 140f);
+            Time.timeScale = 0f;
+            for (int i = 0; i < 12; i++) yield return null;
+            Time.captureFramerate = 12;
+            Time.timeScale = 1.5f;
+            int after = -1;
+            for (int i = 0; i < 200; i++)
+            {
+                { yield return null; Capture(); }
+                if (after < 0 && Band.Kills > 0) after = i;
+                if (after >= 0 && i - after > 40) break;
+            }
+            Time.captureFramerate = 0; Time.timeScale = 1f;
+            Debug.Log($"[Hunt] done: {frame} frames, throws {Band.Throws}, brought home {Band.Kills}");
+            yield return new WaitForSeconds(0.5f);
+            Application.Quit();
+        }
+
+        bool HuntersClose(float range)
+        {
+            if (Band.HuntHerd < 0) return true;
+            var deer = Wild.Herds[Band.HuntHerd];
+            int n = Wildlife.ActiveCount(Map.Herds[Band.HuntHerd], deer);
+            foreach (var p in Band.People)
+            {
+                if (!p.Hunter) continue;
+                for (int i = 0; i < n; i++) if (math.distance(p.Pos, deer[i].Pos) < range) return true;
+            }
+            return false;
+        }
+
 
         /// <summary>Trees on or beside the flow-field path from one cell to another (deer under canopy can't be seen).</summary>
         int TreesAlongPath(int from, int to)
