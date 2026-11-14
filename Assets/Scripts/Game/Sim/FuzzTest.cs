@@ -548,5 +548,38 @@ namespace Firstlight.Game
             Debug.Log($"[SaveCheck] {(ok ? "PASS" : "FAIL")}");
             return ok;
         }
+
+        /// <summary>
+        /// -autotest -sitecheck -seed N: on this seed's fresh map (campfire at the suggested site, everything unlocked),
+        /// how many places each building could go (any turn), and how many of them within 30 cells of the campfire.
+        /// A building with nowhere to go on a map is a dead end for that map.
+        /// </summary>
+        public static bool SiteCheck(GameData data, GameMap map, int seed)
+        {
+            var s = new Settlement(data, map, seed);
+            var tc = data.Buildings.First(b => b.townCenter);
+            s.Place(tc, s.SuggestCampfireSite(), out _);
+            s.DebugUnlockAll();
+            bool ok = true;
+            var sb = new StringBuilder();
+            foreach (var d in data.Buildings)
+            {
+                if (d.townCenter || d.path) continue;
+                int any = 0, near = 0;
+                for (int y = 0; y < map.H; y++)
+                    for (int x = 0; x < map.W; x++)
+                        for (int rot = 0; rot < 4; rot++)
+                        {
+                            if (!s.CanPlace(d, new int2(x, y), rot, out _)) continue;
+                            any++;
+                            if (math.distance(Settlement.FootprintCenter(d, new int2(x, y), rot), s.TownCenter.Center) <= 30) near++;
+                            break;
+                        }
+                if (any == 0) ok = false;
+                sb.Append($"{d.id} {any}/{near}{(any == 0 ? " <-- NOWHERE" : near == 0 ? " <-- none near" : "")}, ");
+            }
+            Debug.Log($"[SiteCheck] seed {seed}: {(ok ? "PASS" : "FAIL")}: {sb}");
+            return ok;
+        }
     }
 }

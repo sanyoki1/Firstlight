@@ -522,6 +522,15 @@ namespace Firstlight.Game
             Map.Flow.Prefetch(_doors);
         }
 
+        /// <summary>Tests only (-sitecheck): every topic known and the last age reached, so every building can be tried.</summary>
+        public void DebugUnlockAll()
+        {
+            foreach (var r in Data.Research) _researched.Add(r.id);
+            ResearchQueue.Clear();
+            RebuildEffects();
+            SetAge(Data.Ages[Data.Ages.Count - 1]);
+        }
+
         int NewId() => ++_nextId;
         float R(float a, float b) => a + (float)_rng.NextDouble() * (b - a);
     }
