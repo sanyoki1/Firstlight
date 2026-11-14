@@ -75,6 +75,10 @@ Things worth knowing:
 - **Traders** (after Barter) call in spring, summer and autumn with an offer: accept or decline, or tick
   *Always accept*. An offer stands until the end of the next day.
 - **Paths** (Agricultural Age) cost half a stone per tile: press, drag and release to lay a line.
+- **The end of the slice** is the Bronze Age: the key research (Writing, Bronze Working) and the milestones (80
+  people, a Mining Pit, a Smelter, a Granary and a Bronze Foundry). The settlement can be played on afterwards.
+- **If everyone dies or leaves**, the game stops and says so; load a save (the autosaves are not overwritten with
+  the empty settlement) or start again from the main menu.
 
 ## The auto-player and the tests
 
@@ -84,6 +88,9 @@ Things worth knowing:
   Reports go to `runs/autotest-<seed>/autotest-report.md`; PASS needs the Bronze Age and no errors.
 - Save/load check (save at a mid point, load it, both runs must write byte-identical reports):
   `Build/Firstlight.exe -batchmode -nographics -autotest -saveloadcheck -seed 2026 -years 30 -outdir runs/slc-2026`.
+- Fuzz test (a clumsy, hostile player with invariant checks after every game day; see `docs/quarter-qa-report.md`):
+  `tools/fuzztest.sh 15 1 2 3 4`. Other QA probes: `-autotest -savecheck`, `-autotest -sitecheck -seed N`,
+  `-autotest -soundcheck`, `-load SAVE -soak MINUTES [-crowd N]`, `-reloadtest`, `-autotest -difficulty 0|1|2`.
 - Screenshots: `-uishots` (phases 2-3, see the build log) and `-p4shots -load <save>` (phase 4: menus, guide, hints,
   traders, path dragging, night, canopy cut-away, floods, top bar at two sizes), both run windowed.
 - Smoke test of the default launch path: `Build/Firstlight.exe -smoketest` (menu, new game, campfire, a minute of

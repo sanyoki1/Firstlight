@@ -40,6 +40,7 @@ namespace Firstlight.Game
         // Stuck detection: per citizen id, the day its task/position was last seen to change.
         readonly Dictionary<int, (int task, float2 pos, float since)> _still = new();
         readonly Dictionary<int, (int res, float amt, float since)> _carry = new();
+        readonly Dictionary<int, List<string>> _trail = new();
 
         /// <summary>The map in use at the end (a load replaces it; the caller disposes this one).</summary>
         public GameMap Map => M;
@@ -450,8 +451,9 @@ namespace Firstlight.Game
                 // Holding goods all the time for days (no store will take them, so the person can do nothing else).
                 if (!c.Carrying) { _carry.Remove(c.Id); continue; }
                 // (The same good and amount at every sample: a hauler kept busy topping up a granary carries all day too.)
-                if (!_carry.TryGetValue(c.Id, out var held) || held.res != c.CarryRes || Math.Abs(held.amt - c.CarryAmt) > 1e-3f) _carry[c.Id] = (c.CarryRes, c.CarryAmt, now);
-                else if (now - held.since >= 3) { float since = held.since; Violation("stuck carrying", $"{c.Name}#{c.Id} has held goods since day {since:F2}, now {c.CarryAmt:F1} {D.Resources[c.CarryRes].id} ({c.Task}, {c.Activity}, at {c.Pos}, {WalkInfo(c)}, to {c.TaskB?.Def.id}#{c.TaskB?.Id} free {(c.TaskB != null && c.TaskB.Store != null ? S.Capacity(c.TaskB) - c.TaskB.Stored : -1):F1} door {(c.TaskB != null ? M.XY(c.TaskB.Door) : default)} flooded {c.TaskB?.Flooded} job {c.Job?.Def.id} builder {c.IsBuilder}); stores with room for it: {S.Buildings.Count(b => b.Active && b.Store != null && !b.Flooded && S.Capacity(b) - b.Stored >= 0.5f && S.Accepts(b, c.CarryRes))}"); _carry[c.Id] = (c.CarryRes, c.CarryAmt, now); }
+                if (!_carry.TryGetValue(c.Id, out var held) || held.res != c.CarryRes || Math.Abs(held.amt - c.CarryAmt) > 1e-3f) { _carry[c.Id] = (c.CarryRes, c.CarryAmt, now); _trail[c.Id] = new List<string>(); }
+                if (_trail.TryGetValue(c.Id, out var tr) && tr.Count < 80) tr.Add($"{now:F2}:{c.Task}@{(int)c.Pos.x},{(int)c.Pos.y}->{(c.Target >= 0 ? M.XY(c.Target).ToString() : "-")}");
+                else if (now - held.since >= 3) { float since = held.since; Violation("stuck carrying", $"{c.Name}#{c.Id} has held goods since day {since:F2}, now {c.CarryAmt:F1} {D.Resources[c.CarryRes].id} ({c.Task}, {c.Activity}, at {c.Pos}, {WalkInfo(c)}, to {c.TaskB?.Def.id}#{c.TaskB?.Id} free {(c.TaskB != null && c.TaskB.Store != null ? S.Capacity(c.TaskB) - c.TaskB.Stored : -1):F1} door {(c.TaskB != null ? M.XY(c.TaskB.Door) : default)} flooded {c.TaskB?.Flooded} job {c.Job?.Def.id} builder {c.IsBuilder}); stores with room for it: {S.Buildings.Count(b => b.Active && b.Store != null && !b.Flooded && S.Capacity(b) - b.Stored >= 0.5f && S.Accepts(b, c.CarryRes))}; trail {string.Join(" ", _trail.TryGetValue(c.Id, out var t2) ? t2.Where((x, i) => i % 6 == 0) : Enumerable.Empty<string>())}"); _carry[c.Id] = (c.CarryRes, c.CarryAmt, now); }
             }
         }
 
