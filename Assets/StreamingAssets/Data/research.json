@@ -41,8 +41,8 @@
     { "id": "prospecting", "name": "Prospecting", "age": "agricultural", "cost": 170, "prereqs": ["basic_mining"], "description": "Reading rock for green and grey stains. Reveals the copper and tin deposits on the map.",
       "effects": [ { "stat": "reveal.ore", "value": 1 } ] },
     { "id": "copper_working", "name": "Copper Working", "age": "agricultural", "cost": 320, "prereqs": ["prospecting", "pottery"], "description": "Kiln heat turned on ore. Unlocks the Copper Mine, Smelter and Coppersmith (copper tools: 15% faster work; workers swap up to them)." },
-    { "id": "writing", "name": "Writing", "age": "agricultural", "cost": 480, "key": true, "prereqs": ["shamanism", "tribal_law"], "description": "Marks that keep words. Knowledge is no longer lost between teachers: all knowledge +15%. Key research for the Bronze Age.",
+    { "id": "writing", "name": "Writing", "age": "agricultural", "cost": 600, "key": true, "prereqs": ["shamanism", "tribal_law"], "description": "Marks that keep words. Knowledge is no longer lost between teachers: all knowledge +15%. Key research for the Bronze Age.",
       "effects": [ { "stat": "yield.knowledge", "value": 1.15 } ] },
-    { "id": "bronze_working", "name": "Bronze Working", "age": "agricultural", "cost": 480, "key": true, "prereqs": ["copper_working", "barter"], "description": "Copper alloyed with tin. Unlocks the Tin Mine, Bronze Foundry and Bronze Smith (bronze tools: 30% faster work). Key research for the Bronze Age." }
+    { "id": "bronze_working", "name": "Bronze Working", "age": "agricultural", "cost": 600, "key": true, "prereqs": ["copper_working", "barter"], "description": "Copper alloyed with tin. Unlocks the Tin Mine, Bronze Foundry and Bronze Smith (bronze tools: 30% faster work). Key research for the Bronze Age." }
   ]
 }

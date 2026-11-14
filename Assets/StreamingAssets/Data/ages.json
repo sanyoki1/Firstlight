@@ -17,7 +17,8 @@
         { "type": "population", "value": 80, "label": "Reach 80 people" },
         { "type": "building", "target": "mining_pit", "value": 1, "label": "Dig a Mining Pit" },
         { "type": "building", "target": "smelter", "value": 1, "label": "Build a Smelter" },
-        { "type": "building", "target": "granary", "value": 1, "label": "Build a Granary" }
+        { "type": "building", "target": "granary", "value": 1, "label": "Build a Granary" },
+        { "type": "building", "target": "bronze_foundry", "value": 1, "label": "Build a Bronze Foundry" }
       ]
     },
     {
