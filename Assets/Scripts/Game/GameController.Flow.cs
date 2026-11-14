@@ -112,7 +112,7 @@ namespace Firstlight.Game
         /// <summary>At the start of each season, if autosaves are on: the oldest of three autosave slots.</summary>
         void Autosave()
         {
-            if (Sim.NeedsCampfire || HasArg("-uishots") || HasArg("-p4shots") || HasArg("-autoplay")) return;
+            if (Sim.NeedsCampfire || Sim.Population == 0 || HasArg("-uishots") || HasArg("-p4shots") || HasArg("-autoplay")) return;
             int season = Sim.Day / Data.Balance.daysPerSeason;
             if (_autosaveSeason < 0) { _autosaveSeason = season; return; }
             if (season == _autosaveSeason) return;

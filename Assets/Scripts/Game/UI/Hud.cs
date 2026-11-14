@@ -60,6 +60,7 @@ namespace Firstlight.Game.UI
         {
             if (d == null) return;
             if (PlaceDef != d) PlaceRot = 0;
+            _pathStart = null; _pathCells.Clear();      // a drag cut off by Esc or a right-click must not linger
             Mode = ToolMode.Place; PlaceDef = d;
             Select(null); SelectCitizen(null);
         }
@@ -70,6 +71,7 @@ namespace Firstlight.Game.UI
         {
             if (S.NeedsCampfire) return;          // the campfire has to be placed first
             Mode = ToolMode.None; PlaceDef = null;
+            _pathStart = null; _pathCells.Clear();
         }
 
         public void Select(Building b)
@@ -91,7 +93,8 @@ namespace Firstlight.Game.UI
         public void Back()
         {
             if (MenuOpen) { MenuBack(); return; }
-            if (EndOpen) EndOpen = false;
+            if (GoneOpen) GoneOpen = false;
+            else if (EndOpen) EndOpen = false;
             else if (ResearchOpen) ResearchOpen = false;
             else if (HelpOpen) HelpOpen = false;
             else if (Mode != ToolMode.None && !S.NeedsCampfire) CancelTool();
@@ -212,6 +215,7 @@ namespace Firstlight.Game.UI
                 if (S.TownCenter != null) JumpTo(S.TownCenter.Center, 34f);
             }
             CheckEnd();
+            CheckGone();
             UpdateGuide();
             UpdateHints();
             if (Selected != null && !Selected.Alive) Select(null);
@@ -411,6 +415,7 @@ namespace Firstlight.Game.UI
                 DrawTopBar();
                 if (ResearchOpen) DrawResearch();
                 if (EndOpen) DrawEndScreen();
+                if (GoneOpen) DrawGoneScreen();
             }
             if (HelpOpen) DrawHelp();
             DrawBanner();
@@ -538,8 +543,8 @@ namespace Firstlight.Game.UI
                     lines.Add(Col($"Warms homes within {d.warmthRadius}", Dim));
                 }
                 if (!string.IsNullOrEmpty(d.onDeposit)) lines.Add(Col($"On the {d.onDeposit} deposit: {S.DepositCells(d, PlaceOrigin(d, HoverCell, PlaceRot), PlaceRot)} cells (marked)", Good));
-                if (d.waterRadius > 0) { var c2 = Settlement.FootprintCenter(d, PlaceOrigin(d, HoverCell)); float wr = d.waterRadius * S.Effect("water.radius"); int dry = S.Buildings.Count(h => h.Active && h.Def.housing > 0 && h.Residents > 0 && !h.HasWater && math.distance(h.Center, c2) <= wr); lines.Add(dry > 0 ? Col($"Brings water to {dry} home{(dry == 1 ? "" : "s")} without it", Good) : Col("No homes without water in reach", Dim)); }
-                if (d.crop && d.irrigationRadius > 0) { var c2 = Settlement.FootprintCenter(d, PlaceOrigin(d, HoverCell)); lines.Add(M.CountFeature("water", c2, d.irrigationRadius) > 0 ? Col("Water in reach: can be irrigated", Good) : Col("No water in reach to irrigate", Dim)); }
+                if (d.waterRadius > 0) { var c2 = Settlement.FootprintCenter(d, PlaceOrigin(d, HoverCell, PlaceRot), PlaceRot); float wr = d.waterRadius * S.Effect("water.radius"); int dry = S.Buildings.Count(h => h.Active && h.Def.housing > 0 && h.Residents > 0 && !h.HasWater && math.distance(h.Center, c2) <= wr); lines.Add(dry > 0 ? Col($"Brings water to {dry} home{(dry == 1 ? "" : "s")} without it", Good) : Col("No homes without water in reach", Dim)); }
+                if (d.crop && d.irrigationRadius > 0) { var c2 = Settlement.FootprintCenter(d, PlaceOrigin(d, HoverCell, PlaceRot), PlaceRot); lines.Add(M.CountFeature("water", c2, d.irrigationRadius) > 0 ? Col("Water in reach: can be irrigated", Good) : Col("No water in reach to irrigate", Dim)); }
                 if (!d.townCenter && S.FloodRiskCells(d, PlaceOrigin(d, HoverCell, PlaceRot), PlaceRot) > 0)
                     lines.Add(d.crop ? Col("On the floodplain: a spring flood leaves silt (a better harvest that year)", Good) : Col("On the floodplain: spring floods may reach it", Warn));
                 if (d.cost.Length > 0) lines.Add("Cost: " + Cost(d));

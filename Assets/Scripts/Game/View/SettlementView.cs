@@ -361,7 +361,7 @@ namespace Firstlight.Game
         void DrawStore(Building b, float3 at)
         {
             if (b.Store == null || b.Def.townCenter) return;
-            float cap = math.max(1, b.Def.storageCapacity);
+            float cap = math.max(1, S.Capacity(b));
             int shown = 0;
             for (int r = 0; r < b.Store.Length && shown < 6; r++)
             {

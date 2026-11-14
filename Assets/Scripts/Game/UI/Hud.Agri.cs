@@ -284,6 +284,51 @@ namespace Firstlight.Game.UI
             EndShown = EndOpen = true;
         }
 
+        // ------------------------------------------------------------------ when everyone is gone
+
+        public bool GoneShown, GoneOpen;
+
+        /// <summary>Opens once when the last person has died or left (and the leavers have walked off): the game is over.</summary>
+        void CheckGone()
+        {
+            if (S.NeedsCampfire || S.Population > 0) { GoneShown = false; return; }
+            if (GoneShown || S.Departing.Count > 0) return;
+            GoneShown = GoneOpen = true;
+            EndOpen = false;
+            G.SetSpeed(0);
+        }
+
+        /// <summary>The settlement has no people left: what happened, and the ways on (a save, a new game, the menu).</summary>
+        void DrawGoneScreen()
+        {
+            var w = 700f; var h = 380f;
+            Fill(new Rect(0, 0, VW, VH), new Color(0, 0, 0, 0.35f));
+            var r = Box(new Rect(VW / 2 - w / 2, VH / 2 - h / 2 - 20, w, h));
+            Fill(new Rect(r.x + 1, r.y + 1, r.width - 2, r.height - 2), new Color(0.1f, 0.105f, 0.1f, 0.97f));
+            GUI.Label(new Rect(r.x, r.y + 22, w, 40), "The settlement is empty", new GUIStyle(Title) { fontSize = 30, alignment = TextAnchor.MiddleCenter });
+            float years = S.Day / (float)S.DaysPerYear;
+            GUI.Label(new Rect(r.x + 40, r.y + 70, w - 80, 26), Col($"The last of its people are gone after {years:0.#} years, in the {S.Age.name}.", Dim), new GUIStyle(Label) { alignment = TextAnchor.MiddleCenter });
+            float y = r.y + 112, cx = r.x + 70;
+            var lines = new (string, string)[]
+            {
+                ("Born / arrived", $"{S.Births} born, {S.Migrants} came to stay"),
+                ("Left / died", $"{S.Leavers} left, {S.TotalDeaths} died" + (S.Deaths.Count > 0 ? $" ({string.Join(", ", S.Deaths.OrderByDescending(kv => kv.Value).Take(3).Select(kv => $"{kv.Key} {kv.Value}"))})" : "")),
+                ("Winters", $"{S.WintersSurvived} survived"),
+                ("Research", $"{S.ResearchLog.Count} topics learned"),
+            };
+            foreach (var (k, v) in lines)
+            {
+                GUI.Label(new Rect(cx, y, 170, 24), Col(k, Dim), Label);
+                GUI.Label(new Rect(cx + 170, y, w - 140 - 170, 24), $"<b>{v}</b>", Label);
+                y += 28;
+            }
+            GUI.Label(new Rect(r.x + 50, y + 8, w - 100, 44), "Nobody new will come to an empty camp. Load a save to try again from an earlier point, or start a new settlement.", new GUIStyle(SmallWrap) { alignment = TextAnchor.UpperCenter, fontSize = 15 });
+            float by = r.yMax - 60, bw = 190;
+            if (GUI.Button(new Rect(r.x + w / 2 - bw * 1.5f - 12, by, bw, 38), "<b>Load a save</b>", ButtonOn)) { GoneOpen = false; OpenMenu(); ShowScreen(MenuScreen.Load); }
+            if (GUI.Button(new Rect(r.x + w / 2 - bw / 2, by, bw, 38), "Main menu", Button)) { GoneOpen = false; G.ToMainMenu(); }
+            if (GUI.Button(new Rect(r.x + w / 2 + bw / 2 + 12, by, bw, 38), "Look around", Button)) GoneOpen = false;
+        }
+
         // ------------------------------------------------------------------ needs in the top bar
 
         /// <summary>The needs that have arrived, as "Water 92%" (only once they apply), and unrest; row two of the top bar.</summary>

@@ -201,7 +201,7 @@ namespace Firstlight.Game.UI
         void DrawStore(Building b)
         {
             Gap(4);
-            float cap = math.max(1, b.Def.storageCapacity);
+            float cap = math.max(1, S.Capacity(b));
             BarRow("Stored", b.Stored / cap, b.Stored > cap * 0.9f ? Warn : Info, $"{b.Stored:0} / {cap:0}");
             var items = Enumerable.Range(0, S.ResCount).Where(i => b.Store[i] >= 0.5f).OrderByDescending(i => b.Store[i]).ToList();
             for (int k = 0; k < items.Count; k += 2)
