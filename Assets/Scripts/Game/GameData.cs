@@ -140,7 +140,20 @@ namespace Firstlight.Game
         public float rockStone = 30, herdRegrowPerDay = 0.04f;
 
         public float noToolWorkSpeed = 0.6f, toolWearDays = 40;
+        public bool buildersUseTools = true;
         public int copperDeposits = 3, tinDeposits = 1;
+
+        // Settlement simulation (Sim/Settlement*.cs).
+        public int startChildren = 2, startElders = 2;
+        public float migrantCheckDays = 4, migrantChance = 0.5f;
+        public float foodWarnDays = 3;
+        public float workHaulMin = 1f;                  // haulers pick up a workplace's goods once this much has piled up
+        public float demolishRefund = 0.5f;
+        public float focusShare = 0.8f;                 // a focused workplace makes this share of its combined outputs             // share of the cost returned when a finished building is pulled down
+        public float homelessShelter = 0.3f;            // happiness from shelter when sleeping in the open
+        public float happinessSmoothing = 0.35f;        // how fast happiness follows the needs each day
+        public string fuelResource = "firewood", clothingResource = "clothing", herbsResource = "herbs";
+        public string[] namesFemale = Array.Empty<string>(), namesMale = Array.Empty<string>();
     }
 
     [Serializable] class ResourceFile { public ResourceDef[] resources; }

@@ -21,6 +21,9 @@ namespace Firstlight.Game
         public WaterSim Water { get; private set; }
         public Wildlife Wild { get; private set; }
         public Band Band { get; private set; }
+        public Settlement Sim { get; private set; }
+        public AutoPlayer Auto { get; private set; }   // F9: let the auto-player run the settlement
+        float _autoClock;
         Light _sun;
         int _seed;
         float _waterAccum, _waterSyncTimer;
@@ -30,6 +33,7 @@ namespace Firstlight.Game
         void Start()
         {
             Data = GameData.Load();
+            if (HasArg("-autotest")) { RunAutoTest(); return; }
             MaterialLibrary.SetDensity(ArgInt("-texels", 64));
             Cam = WorldLighting.CreateCamera();
             _sun = WorldLighting.CreateSun();
@@ -56,6 +60,9 @@ namespace Firstlight.Game
             var camp = OpenGroundNear(new Vector3(site.x, 0, site.y));
             Band = new Band(Map, Wild, new float2(camp.x, camp.z), _seed);
             View.AttachBand(Band);
+
+            // The settlement waits for its campfire site (F8 = suggested site until the HUD exists).
+            Sim = new Settlement(Data, Map, _seed);
 
             if (HasArg("-shots")) StartCoroutine(DensityShots());
             if (HasArg("-watershots")) StartCoroutine(WaterShots());
@@ -85,15 +92,29 @@ namespace Firstlight.Game
 
         void Update()
         {
+            if (View == null) return;     // -autotest runs headless from Start
             var kb = Keyboard.current;
             if (kb != null)
             {
                 if (kb.escapeKey.wasPressedThisFrame && !Application.isEditor) Application.Quit();
                 if (kb.f6Key.wasPressedThisFrame) StartFlood();
                 if (kb.f7Key.wasPressedThisFrame) Band.StartHunt();
+                if (kb.f8Key.wasPressedThisFrame && Sim.NeedsCampfire) Sim.Place(Data.Buildings.Find(b => b.townCenter), Sim.SuggestCampfireSite());
+                if (kb.f9Key.wasPressedThisFrame) Auto = Auto == null ? new AutoPlayer(Sim) : null;
+                if (kb.spaceKey.wasPressedThisFrame) Sim.SetSpeed(Sim.Speed > 0 ? 0 : 1);
+                if (kb.digit1Key.wasPressedThisFrame) Sim.SetSpeed(1);
+                if (kb.digit2Key.wasPressedThisFrame) Sim.SetSpeed(2);
+                if (kb.digit3Key.wasPressedThisFrame) Sim.SetSpeed(4);
             }
             UpdateWater(Time.deltaTime);
             Map.CommitCostChanges();
+            if (Sim != null)
+            {
+                Sim.Update(Time.deltaTime);
+                // The auto-player thinks once per game hour, like in the auto-test.
+                _autoClock += Time.deltaTime * Sim.Speed;
+                if (Auto != null && (_autoClock >= Data.Balance.dayLengthSeconds / 24f || Sim.NeedsCampfire)) { _autoClock = 0; Auto.Think(); }
+            }
             Band.Update(Time.deltaTime);      // first, so the deer see where people are this frame
             Wild.Update(Time.deltaTime);
             WorldLighting.UpdateForZoom(Cam.Distance);
@@ -102,7 +123,7 @@ namespace Firstlight.Game
 
         void OnGUI()
         {
-            if (_hideGui) return;
+            if (_hideGui || View == null) return;
             var style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 14 };
             style.normal.textColor = new Color(0.92f, 0.9f, 0.85f);
             GUI.Box(new Rect(10, 10, 400, 102), $"Firstlight  seed {_seed}  texture density {MaterialLibrary.Density} px/m\nF6 = flood surge   F7 = send the hunters   WASD, Q/E, wheel, right-drag\nwater sim {Water.LastStepMs:F2} ms/frame   river level +{Water.SourceBoost:F2}\ndeer drinks so far: {Wild.DrinksTaken}\nhunts {Band.Hunts}   spears thrown {Band.Throws}   deer brought home {Band.Kills}", style);
@@ -567,6 +588,29 @@ namespace Firstlight.Game
                         return new Vector3(x + 0.5f, Map.HeightAt(x + 0.5f, y + 0.5f), y + 0.5f);
                     }
             return p;
+        }
+
+        /// <summary>
+        /// -autotest: generate the map (and settle the river) for -seed, let the auto-player run the settlement for
+        /// -years with nothing drawn, write the report to -outdir and quit with 0 (PASS) or 1 (FAIL).
+        /// </summary>
+        void RunAutoTest()
+        {
+            int code = 1;
+            try
+            {
+                _seed = ArgInt("-seed", 2026);
+                int years = ArgInt("-years", 12);
+                string outDir = Arg("-outdir") ?? Path.Combine(Application.dataPath, "..", "..", "runs", "autotest");
+                Map = new GameMap(Data.Balance.mapSize);
+                Map.Generate(_seed, Data.Balance);
+                Water = new WaterSim(Map);
+                Water.SyncWaterClasses();
+                Map.CommitCostChanges();
+                code = AutoTest.Run(Data, Map, _seed, years, outDir) ? 0 : 1;
+            }
+            catch (Exception e) { Debug.LogException(e); }
+            Application.Quit(code);
         }
 
         static bool HasArg(string name) => Array.IndexOf(Environment.GetCommandLineArgs(), name) >= 0;

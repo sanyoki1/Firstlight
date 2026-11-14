@@ -2,30 +2,32 @@
   "_comment": "Global tuning numbers. Rates are per game day unless noted. Seasons are ordered spring, summer, autumn, winter.",
 
   "mapSize": 128,
-  "dayLengthSeconds": 24,
+  "dayLengthSeconds": 40,
   "daysPerSeason": 8,
   "seasonNames": ["Spring", "Summer", "Autumn", "Winter"],
   "seasonTemperature": [0.55, 0.9, 0.4, 0.05],
   "ageYearsPerGameYear": 4,
   "workdayStart": 0.22,
   "workdayEnd": 0.8,
-  "walkSpeed": 2.0,
+  "walkSpeed": 2.2,
   "carryCapacity": 5,
-  "builderWorkPerDay": 1.0,
+  "builderWorkPerDay": 1.5,
   "defaultBuilders": 3,
 
-  "startPeople": 10,
+  "startPeople": 12,
+  "startChildren": 2,
+  "startElders": 2,
   "startResources": [
-    { "id": "wild_food", "amount": 30 },
-    { "id": "meat", "amount": 12 },
-    { "id": "wood", "amount": 55 },
-    { "id": "firewood", "amount": 12 },
-    { "id": "stone", "amount": 6 }
+    { "id": "wild_food", "amount": 60 },
+    { "id": "meat", "amount": 25 },
+    { "id": "wood", "amount": 60 },
+    { "id": "firewood", "amount": 15 },
+    { "id": "stone", "amount": 10 }
   ],
 
   "foodPerAdult": 1.0,
   "foodPerChild": 0.6,
-  "firewoodPerHome": [0.3, 0.0, 0.6, 1.2],
+  "firewoodPerHome": [0.2, 0.0, 0.4, 0.8],
 
   "warmthComfort": 0.6,
   "unheatedHomeFactor": 0.35,
@@ -55,13 +57,13 @@
   "fertileMin": 16,
   "fertileMax": 40,
   "birthChancePerDay": 0.02,
-  "birthMinFoodDays": 5,
+  "birthMinFoodDays": 3,
   "birthCooldownDays": 32,
   "oldAgeStart": 55,
   "oldAgeChancePerYearOver": 0.0006,
 
   "migrantMinFreeHousing": 2,
-  "migrantMinFoodDays": 8,
+  "migrantMinFoodDays": 5,
   "migrantMinHappiness": 0.5,
   "migrantsMin": 2,
   "migrantsMax": 4,
@@ -70,12 +72,27 @@
   "leaveAfterDays": 6,
   "workSpeedMin": 0.5,
 
-  "treeRegrowPerDay": 3,
+  "treeRegrowPerDay": 12,
   "rockStone": 30,
   "herdRegrowPerDay": 0.04,
 
   "noToolWorkSpeed": 0.6,
   "toolWearDays": 40,
+  "buildersUseTools": true,
   "copperDeposits": 3,
-  "tinDeposits": 1
+  "tinDeposits": 1,
+
+  "migrantCheckDays": 4,
+  "migrantChance": 0.5,
+  "foodWarnDays": 3,
+  "workHaulMin": 1.0,
+  "demolishRefund": 0.5,
+  "focusShare": 0.8,
+  "homelessShelter": 0.3,
+  "happinessSmoothing": 0.35,
+  "fuelResource": "firewood",
+  "clothingResource": "clothing",
+  "herbsResource": "herbs",
+  "namesFemale": ["Ama", "Bera", "Dalla", "Esi", "Ferra", "Gesa", "Hela", "Ilka", "Juna", "Kesa", "Lira", "Mara", "Nesa", "Orla", "Peri", "Runa", "Sela", "Tova", "Una", "Vela", "Wenna", "Yara", "Asta", "Brin", "Cela", "Dora", "Edda", "Fenna", "Gerd", "Ise"],
+  "namesMale": ["Aro", "Bren", "Cato", "Dag", "Eno", "Falk", "Garr", "Hask", "Ivo", "Jorn", "Kael", "Lond", "Moro", "Nil", "Odd", "Pell", "Rak", "Sten", "Tor", "Ulf", "Varn", "Wim", "Yan", "Zev", "Ansel", "Bodo", "Ceth", "Dunn", "Egil", "Finn"]
 }

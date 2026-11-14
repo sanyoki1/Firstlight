@@ -1,6 +1,6 @@
 {
   "resources": [
-    { "id": "wild_food", "name": "Wild food", "category": "food", "isFood": true, "spoilPerDay": 0.025, "color": "#8c6e7a", "note": "Berries, roots and nuts from gatherers" },
+    { "id": "wild_food", "name": "Wild food", "category": "food", "isFood": true, "spoilPerDay": 0.015, "color": "#8c6e7a", "note": "Berries, roots and nuts from gatherers" },
     { "id": "meat", "name": "Meat", "category": "food", "isFood": true, "spoilPerDay": 0.04, "color": "#9a5a4c" },
     { "id": "fish", "name": "Fish", "category": "food", "isFood": true, "spoilPerDay": 0.05, "color": "#8197a0" },
     { "id": "preserved", "name": "Preserved food", "category": "food", "isFood": true, "spoilPerDay": 0.004, "color": "#7d5d40", "note": "Dried meat and fish, keeps through winter" },

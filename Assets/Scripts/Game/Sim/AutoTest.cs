@@ -1,0 +1,224 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using UnityEngine;
+
+namespace Firstlight.Game
+{
+    /// <summary>
+    /// Headless auto-play test (-autotest -seed N -years Y -outdir DIR): the auto-player runs the settlement as
+    /// fast as it can and the result goes to autotest-report.md / .json. PASS needs: campfire placed, population
+    /// never 0, the next age reached, and no errors or exceptions logged.
+    /// </summary>
+    public static class AutoTest
+    {
+        [Serializable]
+        public class SeasonRow
+        {
+            public int year, season, day, population, children, births, migrants, leavers, deaths;
+            public string deathCauses = "";
+            public float foodDays, food, wood, firewood, stone, tools, hides, clothing, preserved, herbs, happiness, knowledge;
+            public int buildings, sites, housing, researched;
+            public string age = "", newResearch = "";
+            public string detail = "";      // per-building workers/goods/fullness and what people are doing
+        }
+
+        [Serializable]
+        public class Report
+        {
+            public int seed, years, finalDay, finalPopulation, minPopulation, maxPopulation;
+            public bool campfirePlaced, populationNeverZero, reachedNextAge, noErrors, pass;
+            public int ageUpDay = -1;
+            public string nextAge = "";
+            public List<SeasonRow> seasons = new();
+            public List<string> milestones = new(), research = new(), ages = new(), warnings = new(), errors = new(), actions = new();
+            public string deaths = "";
+            public int births, migrants, leavers;
+        }
+
+        static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+        public static bool Run(GameData data, GameMap map, int seed, int years, string outDir)
+        {
+            var errors = new List<string>();
+            void OnLog(string msg, string stack, LogType type)
+            {
+                if (type == LogType.Error || type == LogType.Exception || type == LogType.Assert)
+                    errors.Add($"{type}: {msg}" + (type == LogType.Exception ? "\n" + stack : ""));
+            }
+            Application.logMessageReceived += OnLog;
+            var rep = new Report { seed = seed, years = years, minPopulation = int.MaxValue };
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            Settlement s = null;
+            AutoPlayer ap = null;
+            try
+            {
+                s = new Settlement(data, map, seed);
+                ap = new AutoPlayer(s);
+                rep.nextAge = s.Age.next;
+                ap.Think();
+                rep.campfirePlaced = !s.NeedsCampfire;
+                float hour = data.Balance.dayLengthSeconds / 24f;
+                int totalDays = years * s.DaysPerYear, lastSeasonIdx = 0;
+                var prev = Snapshot(s);
+                while (rep.campfirePlaced && s.Day < totalDays)
+                {
+                    s.Tick(hour);
+                    ap.Think();
+                    int pop = s.Population;
+                    rep.minPopulation = Math.Min(rep.minPopulation, pop);
+                    rep.maxPopulation = Math.Max(rep.maxPopulation, pop);
+                    if (pop == 0) break;
+                    int seasonIdx = s.Day / data.Balance.daysPerSeason;
+                    if (seasonIdx != lastSeasonIdx)
+                    {
+                        rep.seasons.Add(Row(s, prev, lastSeasonIdx, data));
+                        prev = Snapshot(s);
+                        lastSeasonIdx = seasonIdx;
+                    }
+                }
+                if (rep.campfirePlaced) rep.seasons.Add(Row(s, prev, lastSeasonIdx, data));
+            }
+            catch (Exception e)
+            {
+                errors.Add("Exception: " + e);
+                Debug.LogException(e);
+            }
+            Application.logMessageReceived -= OnLog;
+
+            if (s != null)
+            {
+                rep.finalDay = s.Day;
+                rep.finalPopulation = s.Population;
+                rep.populationNeverZero = rep.campfirePlaced && rep.minPopulation > 0;
+                var up = s.AgeLog.FirstOrDefault(a => a.age == rep.nextAge);
+                rep.reachedNextAge = up.age == rep.nextAge && !string.IsNullOrEmpty(up.age);
+                rep.ageUpDay = rep.reachedNextAge ? up.day : -1;
+                foreach (var a in s.AgeLog) rep.ages.Add($"{data.Age(a.age)?.name} on {When(s, a.day)}");
+                foreach (var r in s.ResearchLog) rep.research.Add($"{data.ResearchById(r.id)?.name} on {When(s, r.day)}");
+                foreach (var e in s.Events)
+                {
+                    if (e.Text.StartsWith("Milestone reached")) rep.milestones.Add($"{e.Text.Substring(19).TrimEnd('.')} on {When(s, e.Day)}");
+                    if (e.Severity != Severity.Info) rep.warnings.Add($"{When(s, e.Day)}: {e.Text}");
+                }
+                rep.deaths = string.Join(", ", s.Deaths.Select(kv => $"{kv.Key} {kv.Value}"));
+                rep.births = s.Births; rep.migrants = s.Migrants; rep.leavers = s.Leavers;
+                rep.actions.AddRange(ap.Actions);
+            }
+            rep.errors.AddRange(errors);
+            rep.noErrors = errors.Count == 0;
+            rep.pass = rep.campfirePlaced && rep.populationNeverZero && rep.reachedNextAge && rep.noErrors;
+            if (rep.minPopulation == int.MaxValue) rep.minPopulation = 0;
+
+            Directory.CreateDirectory(outDir);
+            File.WriteAllText(Path.Combine(outDir, "autotest-report.md"), Markdown(rep, s, data));
+            File.WriteAllText(Path.Combine(outDir, "autotest-report.json"), JsonUtility.ToJson(rep, true));
+            Debug.Log($"[AutoTest] seed {seed}: {(rep.pass ? "PASS" : "FAIL")} in {sw.Elapsed.TotalSeconds:F1} s real time, day {rep.finalDay}, population {rep.finalPopulation}");
+            return rep.pass;
+        }
+
+        static string When(Settlement s, int day) =>
+            $"day {day} (year {day / s.DaysPerYear + 1}, {s.Data.Balance.seasonNames[(day / s.Data.Balance.daysPerSeason) % 4]})";
+
+        struct Snap { public int births, migrants, leavers, deaths, research; public Dictionary<string, int> causes; public float[] produced, consumed; public float workerSec, prodSec; }
+
+        static Snap Snapshot(Settlement s) => new Snap
+        {
+            births = s.Births, migrants = s.Migrants, leavers = s.Leavers, deaths = s.TotalDeaths,
+            research = s.ResearchLog.Count, causes = new Dictionary<string, int>(s.Deaths),
+            produced = (float[])s.Produced.Clone(), consumed = (float[])s.Consumed.Clone(),
+            workerSec = s.WorkerSeconds, prodSec = s.ProductiveSeconds,
+        };
+
+        static SeasonRow Row(Settlement s, Snap prev, int seasonIdx, GameData data)
+        {
+            var b = data.Balance;
+            var causes = s.Deaths.Where(kv => kv.Value - (prev.causes.TryGetValue(kv.Key, out int p) ? p : 0) > 0)
+                .Select(kv => $"{kv.Key} {kv.Value - (prev.causes.TryGetValue(kv.Key, out int p2) ? p2 : 0)}");
+            return new SeasonRow
+            {
+                year = seasonIdx / 4 + 1, season = seasonIdx % 4, day = s.Day,
+                population = s.Population, children = s.Children,
+                births = s.Births - prev.births, migrants = s.Migrants - prev.migrants, leavers = s.Leavers - prev.leavers,
+                deaths = s.TotalDeaths - prev.deaths, deathCauses = string.Join(", ", causes),
+                foodDays = s.FoodDays, food = s.FoodStock,
+                wood = s.Stock("wood"), firewood = s.Stock("firewood"), stone = s.Stock("stone"), tools = s.ToolStock,
+                hides = s.Stock("hides"), clothing = s.Stock("clothing"), preserved = s.Stock("preserved"), herbs = s.Stock("herbs"),
+                happiness = s.AverageHappiness, knowledge = s.KnowledgeTotal,
+                buildings = s.Buildings.Count(x => x.Active), sites = s.Buildings.Count(x => x.IsSite), housing = s.HousingCapacity,
+                researched = s.ResearchLog.Count, age = s.Age.name,
+                newResearch = string.Join(", ", s.ResearchLog.Skip(prev.research).Select(r => data.ResearchById(r.id)?.name)),
+                detail = Detail(s) + " | made " + string.Join(", ", Enumerable.Range(0, s.ResCount).Where(i => s.Produced[i] - prev.produced[i] > 0.05f)
+                    .Select(i => $"{s.Data.Resources[i].id} {s.Produced[i] - prev.produced[i]:F0}")) + " | used " + string.Join(", ", Enumerable.Range(0, s.ResCount).Where(i => s.Consumed[i] - prev.consumed[i] > 0.05f)
+                    .Select(i => $"{s.Data.Resources[i].id} {s.Consumed[i] - prev.consumed[i]:F0}")) + $" | at work {(s.ProductiveSeconds - prev.prodSec) / Math.Max(1f, s.WorkerSeconds - prev.workerSec):P0}",
+            };
+        }
+
+        static string Detail(Settlement s)
+        {
+            var parts = s.Buildings.Where(b => b.Alive && (b.Def.IsWorkplace || b.IsSite)).Select(b =>
+                b.IsSite ? $"{b.Def.id}[site {b.MaterialsFraction:F2}/{b.Work:F2}]"
+                         : $"{b.Def.id}[{b.Priority.ToString()[0]} {b.Workers}w out {b.OutTotal:F1} full {b.Fullness:F2}{(b.Status.Length > 0 ? " " + b.Status : "")}]");
+            var acts = s.Citizens.GroupBy(c => c.Activity).OrderBy(g => g.Key).Select(g => $"{g.Key} {g.Count()}");
+            int jobs = s.Citizens.Count(c => c.Job != null), builders = s.Citizens.Count(c => c.IsBuilder), sick = s.Citizens.Count(c => c.Sick);
+            float hp = s.Citizens.Count > 0 ? s.Citizens.Average(c => c.Health) : 0;
+            return $"{string.Join(" ", parts)} | jobs {jobs} builders {builders} sick {sick} health {hp:F2} tools held {s.Citizens.Count(c => c.Tool >= 0)} | {string.Join(", ", acts)}";
+        }
+
+        static string F(float v) => v.ToString(v >= 100 ? "F0" : "F1", Inv);
+
+        static string Markdown(Report r, Settlement s, GameData data)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine($"# Firstlight auto-test, seed {r.seed}");
+            sb.AppendLine();
+            sb.AppendLine($"Ran {r.years} game years ({r.finalDay} days). Final population {r.finalPopulation} (min {r.minPopulation}, max {r.maxPopulation}).");
+            sb.AppendLine($"Births {r.births}, migrants {r.migrants}, leavers {r.leavers}, deaths: {(r.deaths.Length > 0 ? r.deaths : "none")}.");
+            sb.AppendLine(r.reachedNextAge ? $"Reached the {data.Age(r.nextAge)?.name} on {When(s, r.ageUpDay)}." : $"Did not reach the {data.Age(r.nextAge)?.name}.");
+            sb.AppendLine();
+            sb.AppendLine("## Seasons");
+            sb.AppendLine();
+            sb.AppendLine("| Year | Season | Day | Pop (kids) | Births | Deaths | Migr. | Left | Food days | Food | Wood | Firewood | Stone | Tools | Hides | Cloth. | Herbs | Bldgs (sites) | Housing | Happy | Research done | Age |");
+            sb.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+            foreach (var x in r.seasons)
+            {
+                string deaths = x.deaths > 0 ? $"{x.deaths} ({x.deathCauses})" : "0";
+                string res = x.newResearch.Length > 0 ? $"{x.researched}: +{x.newResearch}" : x.researched.ToString();
+                sb.AppendLine($"| {x.year} | {data.Balance.seasonNames[x.season]} | {x.day} | {x.population} ({x.children}) | {x.births} | {deaths} | {x.migrants} | {x.leavers} | {F(x.foodDays)} | {F(x.food)} | {F(x.wood)} | {F(x.firewood)} | {F(x.stone)} | {F(x.tools)} | {F(x.hides)} | {F(x.clothing)} | {F(x.herbs)} | {x.buildings} ({x.sites}) | {x.housing} | {x.happiness.ToString("F2", Inv)} | {res} | {x.age} |");
+            }
+            sb.AppendLine();
+            sb.AppendLine("Each row is the state at the end of that season; births, deaths, migrants and leavers are counted over the season.");
+            sb.AppendLine();
+            sb.AppendLine("## Season detail (workplaces, people)");
+            sb.AppendLine();
+            foreach (var x in r.seasons) sb.AppendLine($"- Y{x.year} {data.Balance.seasonNames[x.season]}: {x.detail}");
+            sb.AppendLine();
+            void Section(string title, List<string> items)
+            {
+                sb.AppendLine($"## {title}");
+                sb.AppendLine();
+                if (items.Count == 0) sb.AppendLine("(none)");
+                foreach (var i in items) sb.AppendLine("- " + i.Replace("\n", "\n  "));
+                sb.AppendLine();
+            }
+            Section("Ages", r.ages);
+            Section("Milestones", r.milestones);
+            Section("Research", r.research);
+            Section("Warnings and bad events", r.warnings);
+            Section("Errors and exceptions", r.errors);
+            Section("Auto-player actions", r.actions);
+            sb.AppendLine("## Result");
+            sb.AppendLine();
+            sb.AppendLine($"- Campfire placed: {(r.campfirePlaced ? "yes" : "NO")}");
+            sb.AppendLine($"- Population never 0: {(r.populationNeverZero ? "yes" : "NO")}");
+            sb.AppendLine($"- Reached the {data.Age(r.nextAge)?.name}: {(r.reachedNextAge ? "yes" : "NO")}");
+            sb.AppendLine($"- No errors or exceptions: {(r.noErrors ? "yes" : "NO")}");
+            sb.AppendLine();
+            sb.AppendLine(r.pass ? "**PASS**" : "**FAIL**");
+            return sb.ToString();
+        }
+    }
+}
