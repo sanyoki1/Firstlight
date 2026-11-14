@@ -156,6 +156,7 @@ namespace Firstlight.Game
         public float Health = 1f, Happiness = 0.7f, Warmth = 1f;
         public bool Hungry, Cold;
         public float Ate = 1f;               // share of today's food eaten
+        public int HungryDays;
         public int SickDays;
         public bool Treated;                 // sick and in reach of a herbalist with herbs
         public int Tool = -1;                // resource index of the tool held (-1 = none)

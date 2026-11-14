@@ -105,7 +105,7 @@ namespace Firstlight.Game
             bool fuelShort = S.Stock("firewood") < math.max(10f, S.FuelNeedUntilSpring() * 0.8f);
             bool toolsShort = S.ToolStock < 3;
             // Sowing (spring) and harvest (autumn): a field's few days of work feed people for months, so they come first.
-            bool cropRush = S.Buildings.Any(b => b.Active && b.Def.crop && S.Season != 1 && CropWorkLeft(b));
+            bool cropRush = S.Buildings.Any(b => b.Active && b.Def.crop && S.Season != 1 && CropWorkLeft(b)) && (S.ToolStock > 0 || S.Citizens.Any(c => c.Tool >= 0 && c.Job != null && c.Job.Def.crop));
             var shortMat = new HashSet<string>();
             foreach (var site in S.Sites)
                 for (int i = 0; i < site.BuildDef.cost.Length; i++)
@@ -133,14 +133,17 @@ namespace Firstlight.Game
                     int fw = Array.FindIndex(b.Def.outputs, o => o.id == "firewood");
                     if (fw >= 0 && (S.Season == 1 || S.Season == 2) && S.Stock("firewood") < S.FuelNeedUntilSpring() * 1.2f
                         && S.Stock("wood") >= LowStock("wood") && !shortMat.Contains("wood")) focus = fw;
+                    // Short of firewood for the winter: that comes before any building.
+                    if (fw >= 0 && (S.Season >= 2) && S.Stock("firewood") < S.FuelNeedUntilSpring() * 0.9f) focus = fw;
                     if (b.Focus != focus) S.SetFocus(b, focus);
                 }
                 if (feedsOnFood) pause = fd < 6f || S.Season == 3;
                 // Don't eat into an input that a site is waiting for (the potter's clay while the smelter waits).
-                if (!food && b.Def.inputs.Any(i => i.ids.Any(shortMat.Contains)) && S.Sites.Any(x => x.BuildDef.cost.Any(c => b.Def.inputs.Any(i => i.ids.Contains(c.id))))) pause = true;
+                if (!food && b.Def.outputs.All(o => D.Resource(o.id)?.category == "goods" && S.Stock(o.id) >= Enough(o.id) * 0.4f)
+                    && b.Def.inputs.Any(i => i.ids.Any(shortMat.Contains))) pause = true;
                 if (b.Paused != pause) S.SetPaused(b, pause);
                 var p = Priority.Normal;
-                if (b.Def.crop) p = CropWorkLeft(b) && S.Season != 1 ? Priority.High : Priority.Normal;
+                if (b.Def.crop) p = b.Status == "Needs tools" && S.ToolStock < 1 ? Priority.Low : CropWorkLeft(b) && S.Season != 1 ? Priority.High : Priority.Normal;
                 else if (cropRush && (food || b.Def.knowledgePerWorker > 0) && !(food && fd < 1.5f)) p = Priority.Normal;   // sowing and harvest come first
                 else if (food && hungry && !feedsOnFood) p = Priority.High;
                 else if (b.Def.outputs.Any(o => shortMat.Contains(o.id))) p = Priority.High;
@@ -154,6 +157,57 @@ namespace Firstlight.Game
         }
 
         bool CropWorkLeft(Building b) => S.Season == 0 || S.Season == 1 ? b.Sown < 0.999f || S.Season == 1 : S.Season == 2 && b.Harvested < 0.999f && b.Growth > 0.01f;
+
+        /// <summary>Rough food made per day by the food workplaces (full crews, this season, about 60% of nominal after walking).</summary>
+        float FoodRate()
+        {
+            float f = 0;
+            foreach (var b in S.Buildings)
+                if (b.Alive && !b.Def.crop && b.Def.inputs.Length == 0)
+                    foreach (var o in b.Def.outputs)
+                        if (D.Resource(o.id)?.isFood == true)
+                            f += o.amount * b.Def.maxWorkers * (b.Def.SeasonYield(0) + b.Def.SeasonYield(1) + b.Def.SeasonYield(2) + b.Def.SeasonYield(3)) * 0.25f * (b.Active ? b.Fullness : 0.8f) * 0.6f;
+            return f;
+        }
+
+        /// <summary>
+        /// More homes (so more people) only while the food keeps up: fields to match, and the stores holding enough for
+        /// the lean months. The auto-player also stops growing the town at about 150 (its plan, not a game rule).
+        /// </summary>
+        bool GrowthOk()
+        {
+            if (Careless) return true;
+            if (S.Population >= 150) return false;
+            if (S.Age.order < 1) return true;
+            bool fields = Count("field") >= FieldsWanted(S.Population) - 1;
+            bool stores = S.FoodStock >= S.DailyFoodNeed * S.LeanDays() * 0.45f;
+            return fields && stores;
+        }
+
+        /// <summary>
+        /// A site waiting for a material nobody makes (no stone gatherer while the Elders' Fire wants stone) would
+        /// block building for good: place a maker of it, even over the site limit.
+        /// </summary>
+        bool UnblockSites()
+        {
+            foreach (var site in S.Sites)
+            {
+                var bd = site.BuildDef;
+                for (int i = 0; i < bd.cost.Length; i++)
+                {
+                    string id = bd.cost[i].id;
+                    if (site.Delivered[i] + site.InTransitOf(i) >= bd.cost[i].amount - 0.01f || S.Stock(id) >= 1f) continue;
+                    if (S.Buildings.Any(b => b.Alive && b.Def.outputs.Any(o => o.id == id))) continue;
+                    var maker = D.Buildings.Where(d => S.IsUnlocked(d) && d.outputs.Any(o => o.id == id) && !d.crop)
+                        .OrderBy(d => d.inputs.Length).ThenBy(d => d.cost.Sum(c => c.amount)).FirstOrDefault();
+                    if (maker == null) continue;
+                    var at = !string.IsNullOrEmpty(maker.onDeposit) ? FindDepositSite(maker) : FindSite(maker);
+                    if (at == null) continue;
+                    if (S.Place(maker, at.Value) != null) { Note($"placed {maker.id} at {at.Value.x},{at.Value.y}: {bd.id} needs {id} and nobody makes it"); return true; }
+                }
+            }
+            return false;
+        }
 
         float LowStock(string id) => id == "wood" ? 15f : id == "stone" ? 10f : 0f;
 
@@ -194,6 +248,7 @@ namespace Firstlight.Game
         void BuildSomething()
         {
             int sites = S.Sites.Count();
+            if (!Careless && UnblockSites()) return;
             if (sites >= MaxSites) return;
             int pop = S.Population;
             int housing = S.Buildings.Where(b => b.Alive).Sum(b => b.Def.housing);
@@ -203,10 +258,14 @@ namespace Firstlight.Game
 
             Want(Count("gatherers_camp") < 1, "gatherers_camp");
             Want(Count("woodcutter") < 1, "woodcutter");
+            // Somewhere to put things before the campfire's small store fills up.
+            Want(Count("storage_pile") < 1 && S.StorageUsed > S.StorageCapacity * 0.8f, "storage_pile");
+            // A first camp in thin woods can't feed the band: a second one before anything else.
+            Want(!Careless && Count("gatherers_camp") < 3 && Count("hunters_camp") == 0 && S.FoodDays < 10f && FoodRate() < S.DailyFoodNeed * 1.15f, "gatherers_camp");
             Want(Count("elders_fire") < 1, "elders_fire");
             bool agri = S.Age.order >= 1;
             string home = agri && Unlocked("thatched_hut") ? "thatched_hut" : hidesForTent ? "hide_tent" : "lean_to";
-            Want(housing < pop + 4, home);
+            Want(housing < pop + 4 && GrowthOk(), home);
             if (agri) Want(Count("granary") < 1, "granary");
             if (agri) Want(Count("field") < 2, "field");
             Want(Count("stone_gatherer") < 1, "stone_gatherer");

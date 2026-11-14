@@ -202,8 +202,8 @@
     {
       "id": "toolmaker", "name": "Toolmaker", "age": "stone", "category": "Crafts", "description": "Knaps stone heads and binds them to hafts. Makes the tools that woodcutters, hunters, miners, farmers and builders wear out.",
       "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 12}, {"id": "stone", "amount": 4}], "buildWork": 3,
-      "unlockedBy": "basic_tools", "maxWorkers": 1, "workerTitle": "Toolmaker", "inputs": [{"ids": ["wood"], "amount": 0.4}, {"ids": ["stone"], "amount": 0.4}],
-      "outputs": [{"id": "tools", "amount": 0.6}], "yieldTag": "toolmaking", "color": "#77736c", "workPose": "sit",
+      "unlockedBy": "basic_tools", "maxWorkers": 2, "workerTitle": "Toolmaker", "inputs": [{"ids": ["wood"], "amount": 0.4}, {"ids": ["stone"], "amount": 0.4}],
+      "outputs": [{"id": "tools", "amount": 0.7}], "yieldTag": "toolmaking", "color": "#77736c", "workPose": "sit",
       "parts": [
         {"prim": "wedge", "pos": [-0.3, 0, 0.35], "size": [1.2, 0.8, 1.0], "material": "branches"},
         {"prim": "cylinder", "pos": [0.5, 0, -0.45], "size": [0.5, 0.35, 0.5], "material": "bark_broad"},
@@ -419,7 +419,7 @@
       "id": "field", "name": "Field", "age": "agricultural", "category": "Food", "description": "Sown in spring, tended through summer, harvested in autumn; nothing grows in winter, and the farmers go to other work. Grows grain, or flax for weaving once Weaving is known. Untended crops grow less; needs tools.",
       "sizeX": 4, "sizeY": 4, "cost": [{"id": "wood", "amount": 8}, {"id": "tools", "amount": 1}], "buildWork": 4,
       "unlockedBy": "farming", "maxWorkers": 3, "workerTitle": "Farmer", "requiresTools": true, "fieldWork": true, "crop": true, "exclusiveOutputs": true,
-      "outputs": [{"id": "grain", "amount": 230}, {"id": "fibre", "amount": 90}], "sowWork": 3, "harvestWork": 5, "tendWork": 1.5, "irrigationRadius": 10,
+      "outputs": [{"id": "grain", "amount": 400}, {"id": "fibre", "amount": 120}], "sowWork": 3, "harvestWork": 4, "tendWork": 1.5, "irrigationRadius": 10,
       "yieldTag": "farming", "color": "#8a7a4a", "workPose": "bend",
       "cropStages": [
         {"name": "Bare soil", "material": "soil", "height": 0},

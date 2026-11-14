@@ -17,7 +17,25 @@ namespace Firstlight.Game
         float FieldYield()
         {
             var f = D.Building("field");
-            return f == null ? 1 : f.outputs[0].amount * 0.8f * S.Effect("yield.farming") * (S.IsResearched("irrigation") ? 1.15f : 1f);
+            float planned = f == null ? 1 : f.outputs[0].amount * 0.7f * S.Effect("yield.farming") * (S.IsResearched("irrigation") ? 1.15f : 1f);
+            // After a harvest, go by what the fields actually gave.
+            return _harvestPerField > 0 ? math.clamp(_harvestPerField * 0.95f, planned * 0.6f, planned) : planned;
+        }
+
+        float _harvestPerField = -1, _grainAtAutumn;
+
+        /// <summary>Measures the last harvest per grain field (from the public production counter).</summary>
+        void WatchHarvest()
+        {
+            int g = S.ResIndex("grain");
+            if (g < 0) return;
+            if (S.Season == 2 && S.DayOfSeason == 0) _grainAtAutumn = S.Produced[g];
+            if (S.Season == 3 && S.DayOfSeason == 0 && _grainAtAutumn >= 0)
+            {
+                int fields = S.Buildings.Count(b => b.Active && b.Def.crop && b.Focus <= 0);
+                if (fields > 0) _harvestPerField = math.max(40f, (S.Produced[g] - _grainAtAutumn) / fields);
+                _grainAtAutumn = -1;
+            }
         }
 
         /// <summary>Fields to feed most of the settlement (grain is the winter food); more after a hungry year.</summary>
@@ -25,6 +43,8 @@ namespace Firstlight.Game
         {
             float need = (pop + 6) * S.DaysPerYear * D.Balance.foodPerAdult * _grainShare;
             int grain = (int)math.ceil(need / FieldYield());
+            // No more fields than about two farmers each from 40% of the adults: the rest of the work needs hands too.
+            grain = math.min(grain, math.max(2, (int)(S.Adults * 0.4f / 2f)));
             return math.max(2, grain + FibreFields());
         }
 
@@ -38,7 +58,7 @@ namespace Firstlight.Game
             bool known(string id) => S.IsResearched(id);
             Want(Count("field") < FieldsWanted(pop), "field");
             Want(Count("granary") < 1 + pop / 50 || GranaryFull() && Count("granary") < 2 + pop / 30, "granary");
-            Want(housing < pop + 8 && pop >= 30, home);
+            Want(housing < pop + 8 && pop >= 30 && GrowthOk(), home);
             Want(S.NeedActive("water") && S.Buildings.Count(b => b.Active && b.Def.housing > 0 && b.Residents > 0 && !b.HasWater) >= 2
                  && !S.Sites.Any(b => b.Def.waterRadius > 0), "well");
             Want(Count("healers_hut") < 1, "healers_hut");
@@ -59,7 +79,7 @@ namespace Firstlight.Game
             Want(Count("weaver") < 1 && FibreFields() > 0, "weaver");
             Want(Count("hunters_camp") < 2 + pop / 50, "hunters_camp");
             Want(Count("fishing_spot") < 2 + pop / 60, "fishing_spot");
-            Want(Count("toolmaker") < 1 + pop / 70, "toolmaker");
+            Want(Count("toolmaker") < 1 + S.Citizens.Count(c => c.Job != null && c.Job.Def.usesTools) / 35, "toolmaker");
             Want(Count("herbalist") < 1, "herbalist");
             Want(Count("hide_worker") < 1 + pop / 80, "hide_worker");
             Want(Count("stone_gatherer") < 2 + pop / 70, "stone_gatherer");
@@ -77,8 +97,9 @@ namespace Firstlight.Game
         void Agricultural()
         {
             if (Careless) return;
+            WatchHarvest();
             // A year that ran short of food: grow more of it next year.
-            if (S.Season == 0 && S.FoodDays < 1.5f && _lastHungryYear != S.Year) { _lastHungryYear = S.Year; _grainShare = math.min(0.9f, _grainShare + 0.1f); Note($"food ran short: grain share now {_grainShare:F1}"); }
+            if (S.Season <= 1 && S.FoodDays < 1.5f && _lastHungryYear != S.Year) { _lastHungryYear = S.Year; _grainShare = math.min(0.9f, _grainShare + 0.1f); Note($"food ran short: grain share now {_grainShare:F1}"); }
             Laws();
             Crops();
             Upgrades();
@@ -119,6 +140,7 @@ namespace Firstlight.Game
         void Upgrades()
         {
             if (S.Buildings.Any(b => b.UpgradeTo != null) || S.Sites.Count() >= MaxSites) return;
+            if (!GrowthOk() && S.HousingCapacity >= S.Population) return;      // bigger homes mean more people
             foreach (var b in S.Buildings.Where(b => b.Active && b.Def.housing > 0).OrderBy(b => b.Def.homeWarmth).ThenBy(b => b.Id))
             {
                 var t = S.UpgradeOption(b);

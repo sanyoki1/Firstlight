@@ -23,6 +23,8 @@ namespace Firstlight.Game
             public float foodDays, food, wood, firewood, stone, tools, hides, clothing, preserved, herbs, happiness, knowledge;
             public float grain, pottery, clay, copperOre, copper, tinOre, bronze, unrest, water = -1, goods = -1, faith = -1;
             public int toolsStone, toolsCopper, toolsBronze, outbreaks, thefts, disputes, trades, fields, paths;
+            public float growth, harvest;
+            public string toolStock = "";
             public string laws = "";
             public int buildings, sites, housing, researched;
             public string age = "", newResearch = "";
@@ -198,7 +200,10 @@ namespace Firstlight.Game
                 toolsStone = s.Citizens.Count(c => c.Tool == s.ResIndex("tools")), toolsCopper = s.Citizens.Count(c => c.Tool == s.ResIndex("copper_tools")),
                 toolsBronze = s.Citizens.Count(c => c.Tool == s.ResIndex("bronze_tools")),
                 outbreaks = s.Outbreaks - prev.outbreaks, thefts = s.Thefts - prev.thefts, disputes = s.Disputes - prev.disputes, trades = s.Trades - prev.trades,
-                fields = s.Buildings.Count(x => x.Active && x.Def.crop), paths = s.PathCount, laws = string.Join(" ", s.ActiveLaws.OrderBy(x => x)),
+                fields = s.Buildings.Count(x => x.Active && x.Def.crop), paths = s.PathCount,
+                toolStock = $"{s.Stock("tools"):F0}/{s.Stock("copper_tools"):F0}/{s.Stock("bronze_tools"):F0}",
+                growth = s.Buildings.Where(x => x.Active && x.Def.crop).Select(x => x.Growth).DefaultIfEmpty(0).Average(),
+                harvest = s.ResIndex("grain") >= 0 ? s.Produced[s.ResIndex("grain")] - prev.produced[s.ResIndex("grain")] : 0, laws = string.Join(" ", s.ActiveLaws.OrderBy(x => x)),
                 newResearch = string.Join(", ", s.ResearchLog.Skip(prev.research).Select(r => data.ResearchById(r.id)?.name)),
                 detail = _noon + " | made " + string.Join(", ", Enumerable.Range(0, s.ResCount).Where(i => s.Produced[i] - prev.produced[i] > 0.05f)
                     .Select(i => $"{s.Data.Resources[i].id} {s.Produced[i] - prev.produced[i]:F0}")) + " | used " + string.Join(", ", Enumerable.Range(0, s.ResCount).Where(i => s.Consumed[i] - prev.consumed[i] > 0.05f)
@@ -247,11 +252,11 @@ namespace Firstlight.Game
             sb.AppendLine();
             sb.AppendLine("## Agricultural systems");
             sb.AppendLine();
-            sb.AppendLine("| Year | Season | Pop | Fields | Grain | Pottery | Clay | Cu ore | Copper | Tin ore | Bronze | Tools held s/c/b | Water | Goods | Faith | Unrest | Outbr. | Theft | Disp. | Trades | Paths | Laws |");
-            sb.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
+            sb.AppendLine("| Year | Season | Pop | Fields (growth) | Harvest | Grain | Pottery | Clay | Cu ore | Copper | Tin ore | Bronze | Tools held s/c/b (stock) | Water | Goods | Faith | Unrest | Outbr. | Theft | Disp. | Trades | Paths | Laws |");
+            sb.AppendLine("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|");
             string Pct(float v) => v < 0 ? "-" : v.ToString("P0", Inv);
             foreach (var x in r.seasons)
-                sb.AppendLine($"| {x.year} | {data.Balance.seasonNames[x.season]} | {x.population} | {x.fields} | {F(x.grain)} | {F(x.pottery)} | {F(x.clay)} | {F(x.copperOre)} | {F(x.copper)} | {F(x.tinOre)} | {F(x.bronze)} | {x.toolsStone}/{x.toolsCopper}/{x.toolsBronze} | {Pct(x.water)} | {Pct(x.goods)} | {Pct(x.faith)} | {x.unrest.ToString("F2", Inv)} | {x.outbreaks} | {x.thefts} | {x.disputes} | {x.trades} | {x.paths} | {x.laws} |");
+                sb.AppendLine($"| {x.year} | {data.Balance.seasonNames[x.season]} | {x.population} | {x.fields} ({x.growth.ToString("F2", Inv)}) | {F(x.harvest)} | {F(x.grain)} | {F(x.pottery)} | {F(x.clay)} | {F(x.copperOre)} | {F(x.copper)} | {F(x.tinOre)} | {F(x.bronze)} | {x.toolsStone}/{x.toolsCopper}/{x.toolsBronze} ({x.toolStock}) | {Pct(x.water)} | {Pct(x.goods)} | {Pct(x.faith)} | {x.unrest.ToString("F2", Inv)} | {x.outbreaks} | {x.thefts} | {x.disputes} | {x.trades} | {x.paths} | {x.laws} |");
             sb.AppendLine();
             sb.AppendLine("## Season detail (workplaces and people at noon on the last day; goods made and used over the season)");
             sb.AppendLine();

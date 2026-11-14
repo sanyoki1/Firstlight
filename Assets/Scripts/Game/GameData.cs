@@ -22,6 +22,7 @@ namespace Firstlight.Game
         public float toolSpeed;   // > 0 marks a tool; work speed multiplier for a worker holding one (best tier in stock is used)
         public float value = 1;   // worth in a swap with traders (Barter)
         public bool traded;       // traders can bring it
+        public float carry = 1;   // load size multiplier (grain goes in sacks: more per trip)
         public string unlockedBy; // a field crop that needs this research before it can be sown
     }
 
@@ -204,7 +205,7 @@ namespace Firstlight.Game
         public float goodsWearDays = 48;
         public int riverWaterRadius = 7;            // homes this close to the river have water without a well
         public float noWaterSick = 0.004f, noWaterWorkSpeed = 0.9f;
-        public float growthSpring = 0.05f, growthSummer = 0.075f, untendedGrowth = 0.4f;
+        public float growthSpring = 0.07f, growthSummer = 0.09f, untendedGrowth = 0.65f;
         public float migrantWinterShare = 0.8f;     // in autumn and winter, migrants want food for this share of the days to summer
         public float birthWinterShare = 0.5f;
         public string unrestAge = "agricultural";   // unrest counts from this age (a band of a dozen has no factions)
@@ -215,6 +216,8 @@ namespace Firstlight.Game
         public float traderRate = 0.75f;
         public int lawCooldownDays = 4;
         public float pathSpeed = 1.35f;             // walking speed on a path tile
+        public int famineLeaveDays = 3;             // hungry this many days in a row: may leave to find food elsewhere
+        public float famineLeaveChance = 0.2f;
         public string[] namesFemale = Array.Empty<string>(), namesMale = Array.Empty<string>();
     }
 

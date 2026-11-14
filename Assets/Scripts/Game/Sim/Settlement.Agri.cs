@@ -117,26 +117,12 @@ namespace Firstlight.Game
                     if (Accepts(to, r) && s.Store[r] > most) { most = s.Store[r]; from = s; res = r; }
             }
             if (from == null) return false;
-            float amt = math.min(B.carryCapacity, most);
+            float amt = math.min(math.min(CarryCap(res), most), room);
             to.HaulReserved += amt;
             c.Task = Task.MoveStock;
             c.TaskB = from; c.TaskB2 = to; c.TaskIdx = res; c.TaskAmt = amt;
             Walk(c, from.Door, Activity.Walking);
             return true;
-        }
-
-        // ------------------------------------------------------------------ tools
-
-        /// <summary>The best tool tier in stock that is better than what the worker holds (-1 if none).</summary>
-        int BetterToolInStock(Citizen c)
-        {
-            float have = c.Tool >= 0 ? Data.Resources[c.Tool].toolSpeed : 0f;
-            foreach (int r in _toolsBest)
-            {
-                if (Data.Resources[r].toolSpeed <= have) return -1;
-                if (StockTotals[r] >= 1f) return r;
-            }
-            return -1;
         }
 
         // ------------------------------------------------------------------ traders (Barter)
