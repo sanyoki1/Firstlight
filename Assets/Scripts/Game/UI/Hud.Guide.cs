@@ -153,7 +153,7 @@ namespace Firstlight.Game.UI
 
         void DrawHint()
         {
-            if (_hint == null || ResearchOpen || EndOpen) return;
+            if (_hint == null || ResearchOpen || EndOpen || GoneOpen || GoalsOpen || JobsOpen || StocksOpen || LawsOpen) return;   // the side panels sit where the card is
             float w = 520;
             var text = new GUIContent(_hint.Text);
             float th = SmallWrap.CalcHeight(text, w - 32);
