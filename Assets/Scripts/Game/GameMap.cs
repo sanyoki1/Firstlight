@@ -46,6 +46,12 @@ namespace Firstlight.Game
         public bool OreRevealed;
         public readonly int[] BuildingAt;        // building id or -1
         public readonly bool[] Reserved;          // door cells: walkable, nothing may be built on them
+        public readonly bool[] Open;              // building cells people may walk through (fields)
+        public readonly bool[] Path;              // path tiles: cheap and quick to walk
+        public bool PathsDirty = true;
+
+        // Walking prices (flow-field cost per cell; 0 = blocked). Paths are the cheapest, so routes bend onto them.
+        public const byte CostPath = 1, CostGround = 2, CostField = 3, CostTree = 4, CostShallow = 8;
         public readonly List<Herd> Herds = new();
         public readonly FlowFieldCache Flow;
 
@@ -65,6 +71,8 @@ namespace Firstlight.Game
             WaterClass = new byte[n];
             BuildingAt = new int[n];
             Reserved = new bool[n];
+            Open = new bool[n];
+            Path = new bool[n];
             for (int i = 0; i < n; i++) BuildingAt[i] = -1;
             Flow = new FlowFieldCache(W, H, 192);
         }
@@ -92,15 +100,31 @@ namespace Firstlight.Game
 
         public bool IsWater(int c) => WaterClass[c] > 0;
 
+        /// <summary>Whether a deposit of this kind can be seen (clay always; ore once Prospecting has revealed it).</summary>
+        public bool DepositVisible(Deposit d) => d == Deposit.Clay || d != Deposit.None && OreRevealed;
+
+        public static Deposit DepositOf(string id) => id switch { "clay" => Deposit.Clay, "copper" => Deposit.Copper, "tin" => Deposit.Tin, _ => Deposit.None };
+
+        public void SetPath(int c, bool on)
+        {
+            if (Path[c] == on) return;
+            Path[c] = on;
+            PathsDirty = true;
+            if (on) RemoveTree(c);
+            RefreshCost(c);
+        }
+
         /// <summary>Price of walking into a cell (0 = blocked).</summary>
         public byte CostOf(int c)
         {
             if (WaterClass[c] >= 2) return 0;
-            if (BuildingAt[c] >= 0) return 0;
+            if (BuildingAt[c] >= 0 && !Open[c]) return 0;
             if (Rock[c] > 0) return 0;
-            if (WaterClass[c] == 1) return 4;
-            if (Tree[c]) return 2;
-            return 1;
+            if (WaterClass[c] == 1) return CostShallow;
+            if (Path[c]) return CostPath;
+            if (BuildingAt[c] >= 0) return CostField;
+            if (Tree[c]) return CostTree;
+            return CostGround;
         }
 
         public void RefreshCost(int c)
@@ -145,6 +169,7 @@ namespace Firstlight.Game
                         case "clay": if (Deposits[c] == Deposit.Clay) count++; break;
                         case "copper": if (OreRevealed && Deposits[c] == Deposit.Copper) count++; break;
                         case "tin": if (OreRevealed && Deposits[c] == Deposit.Tin) count++; break;
+                        case "open": if (Ground[c] == Game.Ground.Grass && WaterClass[c] == 0 && !Tree[c] && Rock[c] <= 0 && BuildingAt[c] < 0 && !Path[c]) count++; break;
                     }
                 }
             return count;
@@ -420,7 +445,7 @@ namespace Firstlight.Game
                 {
                     int x = rng.Next(1, W - 1), y = rng.Next(1, H - 1);
                     int c = Cell(x, y);
-                    if (Tree[c] || Ground[c] != Game.Ground.Grass || Rock[c] > 0 || BuildingAt[c] >= 0 || Reserved[c]) continue;
+                    if (Tree[c] || Ground[c] != Game.Ground.Grass || Rock[c] > 0 || BuildingAt[c] >= 0 || Reserved[c] || Path[c]) continue;
                     int neighbours = 0;
                     for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) if (Tree[Cell(x + dx, y + dy)]) neighbours++;
                     if (neighbours < 3) continue;

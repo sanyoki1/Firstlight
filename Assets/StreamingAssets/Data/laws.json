@@ -1,0 +1,16 @@
+{
+  "laws": [
+    { "id": "food_sharing", "name": "Food Sharing", "research": "tribal_law",
+      "description": "When food runs short, every household gets the same share. In a short shortage nobody starves while others eat; in a famine everyone goes hungry together. Shared pots waste a little: everyone eats 8% more.",
+      "effects": [ { "stat": "law.foodsharing", "value": 2 }, { "stat": "food.eaten", "value": 1.08 } ] },
+    { "id": "elders_settle", "name": "Elders Settle Disputes", "research": "tribal_law",
+      "description": "Quarrels go before the elders instead of festering: unrest 40% lower. The elders' time goes into hearings: their knowledge -20%.",
+      "effects": [ { "stat": "unrest", "value": 0.6 }, { "stat": "knowledge.elders", "value": 0.8 } ] },
+    { "id": "shared_labour", "name": "Shared Labour", "research": "tribal_law",
+      "description": "Every household owes days of work on the common buildings: building 35% faster. People resent the call-ups: happiness -6%.",
+      "effects": [ { "stat": "build.speed", "value": 1.35 }, { "stat": "happiness", "value": 0.94 } ] },
+    { "id": "rationing", "name": "Rationing", "research": "tribal_law",
+      "description": "Portions are measured out: everyone eats 15% less. Thin meals wear people down: happiness -10% and sickness 25% more likely.",
+      "effects": [ { "stat": "food.eaten", "value": 0.85 }, { "stat": "happiness", "value": 0.9 }, { "stat": "sickness", "value": 1.25 } ] }
+  ]
+}

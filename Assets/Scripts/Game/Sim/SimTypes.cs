@@ -16,6 +16,7 @@ namespace Firstlight.Game
         None, GoHome, Rest, GoWork, Work, DeliverOutput, FetchInput, DeliverInput,
         FetchMaterial, DeliverMaterial, GoBuild, Build, HaulPickup, Idle, Leave, Arrive,
         GoField, FieldReturn,      // field workers: walk out to a tree / rock / herd, and carry the load back
+        MoveStock,                 // haulers: take food from an open pile to a granary with room
     }
 
     /// <summary>An entry in the settlement's event log.</summary>
@@ -73,24 +74,43 @@ namespace Firstlight.Game
         internal string YieldKey;
         public string Status = "";           // short status line for the HUD ("No workers", "Needs tools", ...)
 
+        /// <summary>Being rebuilt in place as this (Def.upgradesTo); it keeps working / housing as the old one meanwhile.</summary>
+        public BuildingDef UpgradeTo;
+
+        // Crop buildings (fields): this year's sowing, growth and harvest, each 0..1; the crop chosen at sowing.
+        public float Sown, Growth, Harvested;
+        public int CropOut;                  // output index sown this year
+        internal float TendedToday;
+        public bool Irrigated;               // water within the irrigation radius (counts once Irrigation is known)
+
+        // Homes: what the household has (refreshed hourly; goods worn down daily).
+        public float GoodsLife;              // days left on the household's pottery
+        public bool HasWater, HasFaith;
+
         public bool Alive => State != BuildState.Removed;
         public bool Active => State == BuildState.Active;
         public bool IsSite => State == BuildState.Site;
         public bool IsStorage => Def.storageCapacity > 0;
+        /// <summary>Needs builders: a site, or a building being upgraded.</summary>
+        public bool UnderWork => State == BuildState.Site || State == BuildState.Active && UpgradeTo != null;
+        /// <summary>What the builders are building here (the site's own def, or the upgrade), null if nothing.</summary>
+        public BuildingDef BuildDef => State == BuildState.Site ? Def : State == BuildState.Active ? UpgradeTo : null;
 
         /// <summary>Share of the cost materials delivered, 0..1 (1 when there is no cost).</summary>
         public float MaterialsFraction
         {
             get
             {
+                var d = BuildDef;
+                if (d == null) return 1f;
                 float need = 0, have = 0;
-                for (int i = 0; i < Def.cost.Length; i++) { need += Def.cost[i].amount; have += math.min(Delivered[i], Def.cost[i].amount); }
+                for (int i = 0; i < d.cost.Length; i++) { need += d.cost[i].amount; have += math.min(Delivered[i], d.cost[i].amount); }
                 return need <= 0 ? 1f : have / need;
             }
         }
 
         /// <summary>Overall construction progress 0..1 for drawing a site rising: materials count 30%, work 70%.</summary>
-        public float Progress => State == BuildState.Site ? MaterialsFraction * 0.3f + Work * 0.7f : 1f;
+        public float Progress => UnderWork ? MaterialsFraction * 0.3f + Work * 0.7f : 1f;
 
         /// <summary>Cost entry i on its way to this site in builders' hands.</summary>
         public float InTransitOf(int i) => InTransit[i];
@@ -99,9 +119,22 @@ namespace Firstlight.Game
         {
             get
             {
-                for (int i = 0; i < Def.cost.Length; i++) if (Delivered[i] < Def.cost[i].amount - Settlement.MaterialTolerance) return false;
+                var d = BuildDef;
+                if (d == null) return true;
+                for (int i = 0; i < d.cost.Length; i++) if (Delivered[i] < d.cost[i].amount - Settlement.MaterialTolerance) return false;
                 return true;
             }
+        }
+
+        /// <summary>Crop look for the view: 0 bare soil, 1 shoots, 2 growing, 3 ripe, 4 stubble.</summary>
+        public int CropStage(int season)
+        {
+            if (Harvested >= 0.5f) return 4;
+            if (season == 3) return Harvested > 0.01f ? 4 : 0;
+            if (Sown < 0.25f) return 0;
+            if (Growth < 0.3f) return 1;
+            if (Growth < 0.7f && season < 2) return 2;
+            return 3;
         }
     }
 
@@ -122,6 +155,7 @@ namespace Firstlight.Game
         public Activity Activity;
         public float Health = 1f, Happiness = 0.7f, Warmth = 1f;
         public bool Hungry, Cold;
+        public float Ate = 1f;               // share of today's food eaten
         public int SickDays;
         public bool Treated;                 // sick and in reach of a herbalist with herbs
         public int Tool = -1;                // resource index of the tool held (-1 = none)
@@ -138,6 +172,8 @@ namespace Firstlight.Game
         public int FieldFeature = -1;
         public bool AtField;                 // working out at the feature (not at the building's door)
         public int UnhappyDays;
+        public bool NoWater, NoGoods, NoFaith;   // needs not met today (only once they apply)
+        public int DisputeDays;              // caught up in a dispute: no work for these days
         public float BirthCooldown;
         public bool Gone;                    // dead or left; removed at the end of the step
         public string LastHarm = "";

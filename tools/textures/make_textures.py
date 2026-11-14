@@ -33,6 +33,11 @@ BASES = {
     "brush": "#5f5040", "dryleaf": "#7a6a48", "straw": "#a08c5c", "wicker": "#94795a", "ash": "#6f6a64",
     "char": "#3b3531", "ember": "#b4602e", "flame": "#d9893a", "clay": "#9a6f55", "meat": "#8c4c40",
     "soil": "#5f4b38", "crop": "#a6915a",
+    # Agricultural Age (phase 3): young and green crops, stubble, flax, worn paths, dressed stone, fired clay, linen,
+    # ore stains and worked metal. Same muted, natural range.
+    "shoot": "#6f8047", "cropg": "#7a8a4c", "stubble": "#a08a5c", "flax": "#7f8f6a", "flaxbloom": "#7d8aa6",
+    "path": "#806a50", "dressed": "#8d877c", "potter": "#a5694a", "linen": "#b3a98e", "verd": "#5f8a74",
+    "tin": "#7c7c84", "metal": "#b07a48",
 }
 PAL = Palette.from_ramps({k: make_ramp(v, 5, step_L=0.075, hue_shift=10) for k, v in BASES.items()}, name="firstlight")
 pf.use_palette(PAL)
@@ -419,6 +424,139 @@ def crop(d, t, seed=38):
     return p.cv
 
 
+def shoots(d, t, seed=40):
+    """Young crop in spring: rows of short green shoots on dark tilled soil."""
+    p = Painter(d, (t, t), seed)
+    p.bands("soil", [1, 2], [0.5], 0.5)
+    row = p.px(0.25)
+    for y in range(0, t, row):
+        for x in range(p.ri(0, 3), t, p.px(0.06, 2)):
+            h = p.ri(1, max(2, p.px(0.07)))
+            p.cv.line(x, y + row // 2, x + p.ri(-1, 2), y + row // 2 - h, ["shoot2", "shoot3", "shoot1"][p.ri(0, 3)])
+    return p.cv
+
+
+def crop_green(d, t, seed=41):
+    """Summer crop: dense green stalks, still unripe, a few paler heads forming."""
+    p = Painter(d, (t, t), seed)
+    p.fill("cropg1")
+    p.strokes("cropg2", 40, 0.18, 90, 8)
+    p.strokes("cropg3", 22, 0.14, 90, 8)
+    p.strokes("cropg0", 10, 0.16, 90, 8)
+    p.blobs("cropg4", 3, 0.035)
+    return p.cv
+
+
+def stubble(d, t, seed=42):
+    """Cut field: short pale straw stubble in rows over the soil, loose straw lying about."""
+    p = Painter(d, (t, t), seed)
+    p.bands("soil", [1, 2], [0.5], 0.5)
+    row = p.px(0.25)
+    for y in range(0, t, row):
+        p.cv.rect(0, y + row // 3, t, max(1, row // 3), "stubble1")
+        for x in range(p.ri(0, 3), t, p.px(0.05, 2)):
+            p.cv.line(x, y + row // 3, x, y + row // 3 - p.ri(0, 2), f"stubble{p.ri(2, 5)}")
+    p.strokes("stubble3", 4, 0.15, 20, 50)
+    return p.cv
+
+
+def flax(d, t, seed=43):
+    """Flax: fine grey-green stems, blue flowers in summer (also the fibre in weavers' baskets)."""
+    p = Painter(d, (t, t), seed)
+    p.fill("flax1")
+    p.strokes("flax2", 45, 0.16, 90, 6)
+    p.strokes("flax3", 25, 0.12, 90, 6)
+    p.blobs("flaxbloom3", 4, 0.035)
+    p.blobs("flaxbloom4", 1.2, 0.025)
+    return p.cv
+
+
+def path(d, t, seed=44):
+    """Trodden path: packed earth worn smooth, two faint ruts, grass creeping in at the edges, small stones."""
+    p = Painter(d, (t, t), seed)
+    p.bands("path", [1, 2, 3], [0.3, 0.72], 0.7)
+    p.cv.fill_mask(p.noise(0.25) > 0.8, "path3")
+    p.strokes("path0", 1.5, 0.3, 90, 6)
+    p.pebbles("rockg", 0.5, 0.06)
+    p.strokes("grass1", 0.6, 0.08, 90, 30)
+    return p.cv
+
+
+def stone_wall(d, t, seed=45):
+    """Dressed stone: squared blocks in courses with dark mortar joints and a lit top edge."""
+    p = Painter(d, (t, t), seed)
+    p.fill("dressed0")
+    course = p.px(0.22, 3)
+    for y in range(0, t, course):
+        x = -p.ri(0, p.px(0.3))
+        while x < t:
+            w = p.px(p.r(0.28, 0.5), 3)
+            p.cv.rect(x + 1, y + 1, w - 1, course - 1, f"dressed{p.ri(1, 4)}")
+            p.cv.line(x + 1, y + 1, x + w - 1, y + 1, "dressed4")
+            x += w
+    p.blobs("lichen2", 0.15, 0.08)
+    return p.cv
+
+
+def pottery(d, t, seed=46):
+    """Fired clay pots: warm terracotta with throwing rings and a darker fire-blush."""
+    p = Painter(d, (t, t), seed)
+    p.bands("potter", [2, 3], [0.6], 0.4)
+    ring = p.px(0.04, 2)
+    for y in range(0, t, ring * 2):
+        p.cv.rect(0, y, t, 1, "potter1")
+    p.blobs("potter0", 0.5, 0.12)
+    p.blobs("potter4", 1.0, 0.03)
+    return p.cv
+
+
+def cloth(d, t, seed=47):
+    """Woven linen: a fine plain weave of pale threads with a few slubs."""
+    p = Painter(d, (t, t), seed)
+    p.fill("linen2")
+    for y in range(0, t, 2):
+        p.cv.rect(0, y, t, 1, "linen3" if (y // 2) % 2 else "linen1")
+    for x in range(0, t, 4):
+        p.cv.rect(x, 0, 1, t, "linen1")
+    p.strokes("linen4", 3, 0.05, 0, 3)
+    return p.cv
+
+
+def ore_copper(d, t, seed=48):
+    """Copper ore: grey rock streaked and blotched with green and blue-green stains."""
+    p = rock_painter(d, t, seed)
+    p.cv.fill_mask(p.noise(0.3) > 0.62, "verd2")
+    p.blobs("verd3", 1.5, 0.08)
+    p.blobs("verd1", 1.0, 0.06)
+    p.strokes("verd4", 1.0, 0.15, 60, 30)
+    return p.cv
+
+
+def ore_tin(d, t, seed=49):
+    """Tin ore: dark grey stone with heavy black-brown grains and a dull sheen."""
+    p = rock_painter(d, t, seed)
+    p.cv.fill_mask(p.noise(0.25) > 0.6, "tin1")
+    p.blobs("tin0", 3, 0.05)
+    p.blobs("tin4", 0.8, 0.03)
+    return p.cv
+
+
+def rock_painter(d, t, seed):
+    p = Painter(d, (t, t), seed)
+    p.bands("rock", [1, 2, 3], [0.33, 0.66], 0.7, 0.45)
+    p.strokes("rock0", 1.5, 0.2, 80, 40)
+    return p
+
+
+def metal(d, t, seed=50):
+    """Worked copper and bronze: a warm metal with hammer facets and a bright edge."""
+    p = Painter(d, (t, t), seed)
+    p.bands("metal", [1, 2, 3], [0.3, 0.7], 0.12)
+    p.blobs("metal4", 3, 0.04)
+    p.blobs("metal0", 1, 0.05)
+    return p.cv
+
+
 # ---------------------------------------------------------------------------------------------- sprites
 # Drawn at native size (metres x density), not wrapped; placed top-left in their layer.
 
@@ -475,6 +613,9 @@ MATERIALS = [
     ("skin", skin), ("hide", hide), ("hair", hair), ("wood", wood),
     ("branches", branches), ("thatch", thatch), ("basket", basket), ("ash", ash), ("flame", flame),
     ("clay", clay), ("meat", meat), ("soil", soil), ("crop", crop),
+    ("shoots", shoots), ("crop_green", crop_green), ("stubble", stubble), ("flax", flax), ("path", path),
+    ("stone_wall", stone_wall), ("pottery", pottery), ("cloth", cloth), ("ore_copper", ore_copper), ("ore_tin", ore_tin),
+    ("metal", metal),
 ]
 SPRITES = [("bush", sprite_bush), ("tuft", sprite_tuft), ("flowers", sprite_flowers)]
 

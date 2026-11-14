@@ -66,7 +66,7 @@ namespace Firstlight.Game
         readonly Dictionary<string, int> _resIndex = new();
         readonly int[] _foodByPerish;        // food resources, most perishable first (eaten first)
         readonly int[] _toolsBest;           // tool resources, best first
-        readonly int _fuel, _clothing, _herbs;
+        readonly int _fuel, _clothing, _herbs, _goods;
         public readonly float[] StockTotals; // sum over all storage buildings, refreshed each step
         public readonly float[] Produced;    // made by workplaces since the start (per resource)
         public readonly float[] Consumed;    // eaten, burned or worn out since the start (per resource)
@@ -100,7 +100,7 @@ namespace Firstlight.Game
                 .OrderByDescending(i => data.Resources[i].spoilPerDay).ThenBy(i => i).ToArray();
             _toolsBest = Enumerable.Range(0, ResCount).Where(i => data.Resources[i].toolSpeed > 0)
                 .OrderByDescending(i => data.Resources[i].toolSpeed).ThenBy(i => i).ToArray();
-            _fuel = ResIndex(B.fuelResource); _clothing = ResIndex(B.clothingResource); _herbs = ResIndex(B.herbsResource);
+            _fuel = ResIndex(B.fuelResource); _clothing = ResIndex(B.clothingResource); _herbs = ResIndex(B.herbsResource); _goods = ResIndex(B.goodsResource);
             BuildersWanted = B.defaultBuilders;
 
             foreach (var r in data.Research) if (r.known) _researched.Add(r.id);
@@ -122,15 +122,16 @@ namespace Firstlight.Game
         public float AverageHappiness { get { if (Citizens.Count == 0) return 0; float h = 0; foreach (var c in Citizens) h += c.Happiness; return h / Citizens.Count; } }
         public int HousingCapacity { get { int n = 0; foreach (var b in Buildings) if (b.Active) n += b.Def.housing; return n; } }
         public int Homeless { get { int n = 0; foreach (var c in Citizens) if (c.Home == null) n++; return n; } }
-        public int StorageCapacity { get { int n = 0; foreach (var b in Buildings) if (b.Active) n += b.Def.storageCapacity; return n; } }
+        public int StorageCapacity { get { float n = 0; foreach (var b in Buildings) if (b.Active && b.IsStorage) n += Capacity(b); return (int)n; } }
         public float StorageUsed { get { float n = 0; foreach (var b in Buildings) if (b.Active && b.IsStorage) n += b.Stored; return n; } }
         public int CountBuildings(string id, bool includeSites = false)
         {
             int n = 0;
-            foreach (var b in Buildings) if (b.Def.id == id && (b.Active || includeSites && b.IsSite)) n++;
+            foreach (var b in Buildings) if (b.Def.id == id && (b.Active || includeSites && b.IsSite) || includeSites && b.UpgradeTo != null && b.UpgradeTo.id == id) n++;
             return n;
         }
-        public IEnumerable<Building> Sites => Buildings.Where(b => b.IsSite);
+        /// <summary>Everything builders are working on: sites and upgrades.</summary>
+        public IEnumerable<Building> Sites => Buildings.Where(b => b.UnderWork);
 
         /// <summary>Product of all researched effects on a stat ("yield.hunting", "spoil.food", ...); 1 if none.</summary>
         public float Effect(string stat) => _effects.TryGetValue(stat, out float v) ? v : 1f;
@@ -189,6 +190,8 @@ namespace Firstlight.Game
             AssignHomes();
             AssignJobs();
             RefreshStock();
+            RefreshHomes();
+            RefreshOutbreakRisk();
             EvaluateMilestones();
             RefreshWarnings();
         }
@@ -205,9 +208,14 @@ namespace Firstlight.Game
                 Log(Severity.Info, $"{SeasonName} of year {Year + 1} begins.");
             }
             RefreshStock();
+            DailyCrops();
+            DailyGoods();
             DailyNeeds();
             DailySpoilage();
             DailyPopulation();
+            DailyUnrest();
+            DailyOutbreak();
+            TraderVisit();
             Map.DailyRegrowth(_rng, B);
             RefreshStock();
             EvaluateMilestones();
@@ -230,7 +238,8 @@ namespace Firstlight.Game
         public void SetFocus(Building b, int outputIndex)
         {
             if (b == null || !b.Alive || b.Def.outputs.Length < 2) return;
-            b.Focus = outputIndex >= 0 && outputIndex < b.Def.outputs.Length ? outputIndex : -1;
+            if (outputIndex >= 0 && outputIndex < b.Def.outputs.Length && !ResourceUnlocked(b.Def.outputs[outputIndex].id)) return;
+            b.Focus = outputIndex >= 0 && outputIndex < b.Def.outputs.Length ? outputIndex : b.Def.exclusiveOutputs ? 0 : -1;
         }
 
         // Place / Demolish / CanPlace are in Settlement.Buildings.cs.
@@ -296,6 +305,9 @@ namespace Firstlight.Game
         // ------------------------------------------------------------------ research
 
         public bool IsResearched(string id) => _researched.Contains(id);
+
+        /// <summary>A resource with an unlockedBy (a field crop) can only be made once that research is known.</summary>
+        public bool ResourceUnlocked(string id) { var r = Data.Resource(id); return r == null || string.IsNullOrEmpty(r.unlockedBy) || _researched.Contains(r.unlockedBy); }
         public float ResearchProgress(string id) => _researched.Contains(id) ? 1f :
             _progress.TryGetValue(id, out float p) ? p / math.max(1f, Data.ResearchById(id)?.cost ?? 1f) : 0f;
         public string CurrentResearch => ResearchQueue.Count > 0 ? ResearchQueue[0] : null;
@@ -352,6 +364,12 @@ namespace Firstlight.Game
                 foreach (var e in r.effects)
                     _effects[e.stat] = (_effects.TryGetValue(e.stat, out float v) ? v : 1f) * e.value;
             }
+            // Laws in force add their effects (suspended while there is no council).
+            if (_laws.Count > 0 && LawsInForce)
+                foreach (var l in Data.Laws)
+                    if (_laws.Contains(l.id))
+                        foreach (var e in l.effects)
+                            _effects[e.stat] = (_effects.TryGetValue(e.stat, out float v) ? v : 1f) * e.value;
             // Structural effect: ore deposits show once anything reveals them.
             if (_effects.ContainsKey("reveal.ore")) Map.OreRevealed = true;
         }
@@ -420,6 +438,20 @@ namespace Firstlight.Game
             int unhappy = 0;
             foreach (var c in Citizens) if (c.UnhappyDays > 0) unhappy++;
             if (unhappy > 0 && unhappy >= Population / 4) Warnings.Add($"{unhappy} people are unhappy and may leave.");
+            // Heading into winter without the food to get through it (and the lean spring after).
+            if (Season == 3 || Season == 2 && DayOfSeason >= B.daysPerSeason / 2)
+            {
+                float need = DailyFoodNeed * DaysUntilSummer() * 0.7f;
+                if (FoodStock < need && fd >= B.foodWarnDays) Warnings.Add($"Food stores won't last until summer ({FoodStock:0} of about {need:0}).");
+            }
+            if (Unrest >= B.unrestWarn) Warnings.Add($"Unrest is {(Unrest >= B.theftAt ? "high" : "rising")} ({Unrest:P0}): disputes and theft are likely.");
+            if (OutbreakRisk >= B.outbreakWarn) Warnings.Add("Crowded homes and unclean water: sickness could spread.");
+            if (_needWater)
+            {
+                int dry = 0;
+                foreach (var c in Citizens) if (!c.Gone && c.NoWater) dry++;
+                if (dry > 0 && dry >= Population / 5) Warnings.Add($"{dry} people have no clean water nearby.");
+            }
 
             // Log a warning when it appears, but not again while it keeps flickering on and off within a few days
             // (keyed by its first words so changing numbers don't repeat it).
@@ -445,6 +477,23 @@ namespace Firstlight.Game
                 need += perDay * days;
             }
             return need;
+        }
+
+        /// <summary>Days from now until the first day of summer (the lean seasons run until then).</summary>
+        public int DaysUntilSummer() => DaysUntilSeason(1);
+
+        /// <summary>
+        /// Days the stores have to carry the settlement: until the next harvest season (autumn) begins. In autumn,
+        /// while the harvest comes in, this counts to next year's autumn.
+        /// </summary>
+        public int LeanDays() => DaysUntilSeason(2);
+
+        int DaysUntilSeason(int target)
+        {
+            int toNext = B.daysPerSeason - DayOfSeason;
+            int s = (Season + 1) % 4, days = toNext;
+            while (s != target) { days += B.daysPerSeason; s = (s + 1) % 4; }
+            return days;
         }
 
         int NewId() => ++_nextId;

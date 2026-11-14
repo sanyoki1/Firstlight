@@ -403,7 +403,7 @@ namespace Firstlight.Game
                         int cx = (int)c.x, cy = (int)c.y;
                         if (cx < 4 || cy < 4 || cx >= Map.W - 4 || cy >= Map.H - 4) continue;
                         int cell = Map.Cell(cx, cy);
-                        if (Map.Flow.Cost[cell] != 1 || Map.CountFeature("trees", c, 3) > 0 || Map.CountFeature("rocks", c, 3) > 0 || Map.CountFeature("water", c, 4) > 0) continue;
+                        if (Map.Flow.Cost[cell] != GameMap.CostGround || Map.CountFeature("trees", c, 3) > 0 || Map.CountFeature("rocks", c, 3) > 0 || Map.CountFeature("water", c, 4) > 0) continue;
                         float score = around + TreesAlongPath(cell, Map.CellAt(hp)) * 3f;
                         if (score < bestScore) { bestScore = score; herd = h; camp = new float2(cx + 0.5f, cy + 0.5f); }
                     }

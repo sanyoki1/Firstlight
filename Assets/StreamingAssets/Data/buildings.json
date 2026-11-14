@@ -24,7 +24,7 @@
     {
       "id": "lean_to", "name": "Lean-to", "age": "stone", "category": "Housing", "description": "Branches propped against a pole. Houses 4. Poor protection from the cold.",
       "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 10}], "buildWork": 2, "unlockedBy": "", "maxWorkers": 0,
-      "housing": 4, "homeWarmth": 0.35, "color": "#7a6247",
+      "housing": 4, "homeWarmth": 0.35, "upgradesTo": "thatched_hut", "color": "#7a6247",
       "parts": [
         {"prim": "wedge", "pos": [0, 0, -0.1], "size": [1.75, 1.15, 1.45], "material": "branches", "yaw": 180},
         {"prim": "box", "pos": [0, 0, 0.58], "size": [1.5, 1.0, 0.05], "material": "branches", "color": "#8a8070"},
@@ -38,7 +38,7 @@
     {
       "id": "hide_tent", "name": "Hide Tent", "age": "stone", "category": "Housing", "description": "Poles covered in stitched hides. Houses 6 and keeps the cold out well.",
       "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 10}, {"id": "hides", "amount": 8}], "buildWork": 3,
-      "unlockedBy": "hide_working", "maxWorkers": 0, "housing": 6, "homeWarmth": 0.7, "color": "#9b8164",
+      "unlockedBy": "hide_working", "maxWorkers": 0, "housing": 6, "homeWarmth": 0.7, "upgradesTo": "thatched_hut", "color": "#9b8164",
       "parts": [
         {"prim": "cone", "pos": [0, 0, 0], "size": [1.85, 1.75, 1.85], "material": "hide"},
         {"prim": "cylinder", "pos": [0.08, 1.45, 0], "size": [0.06, 0.5, 0.06], "material": "wood"},
@@ -171,7 +171,7 @@
       ]
     },
     {
-      "id": "hide_worker", "name": "Hide Worker", "age": "stone", "category": "Materials", "description": "Scrapes and stitches hides into clothing. Clothed people stay warm in autumn and winter.",
+      "id": "hide_worker", "name": "Hide Worker", "age": "stone", "category": "Crafts", "description": "Scrapes and stitches hides into clothing. Clothed people stay warm in autumn and winter.",
       "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 12}], "buildWork": 3, "unlockedBy": "hide_working", "maxWorkers": 2,
       "workerTitle": "Hide worker", "usesTools": true, "inputs": [{"ids": ["hides"], "amount": 1.0}], "outputs": [{"id": "clothing", "amount": 0.5}],
       "yieldTag": "hideworking", "color": "#8a6a4f", "workPose": "sit",
@@ -200,7 +200,7 @@
       ]
     },
     {
-      "id": "toolmaker", "name": "Toolmaker", "age": "stone", "category": "Materials", "description": "Knaps stone heads and binds them to hafts. Makes the tools that woodcutters, hunters, miners, farmers and builders wear out.",
+      "id": "toolmaker", "name": "Toolmaker", "age": "stone", "category": "Crafts", "description": "Knaps stone heads and binds them to hafts. Makes the tools that woodcutters, hunters, miners, farmers and builders wear out.",
       "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 12}, {"id": "stone", "amount": 4}], "buildWork": 3,
       "unlockedBy": "basic_tools", "maxWorkers": 1, "workerTitle": "Toolmaker", "inputs": [{"ids": ["wood"], "amount": 0.4}, {"ids": ["stone"], "amount": 0.4}],
       "outputs": [{"id": "tools", "amount": 0.6}], "yieldTag": "toolmaking", "color": "#77736c", "workPose": "sit",
@@ -230,23 +230,217 @@
       ]
     },
     {
-      "id": "field", "name": "Field", "age": "agricultural", "category": "Food", "description": "Sown in spring, tended in summer, harvested in autumn. Nothing grows in winter. Needs tools.",
-      "sizeX": 4, "sizeY": 4, "cost": [{"id": "wood", "amount": 6}, {"id": "tools", "amount": 1}], "buildWork": 4,
-      "unlockedBy": "farming", "maxWorkers": 3, "workerTitle": "Farmer", "requiresTools": true, "outputs": [{"id": "grain", "amount": 2.4}],
-      "yieldTag": "farming", "seasonYield": [0.3, 0.6, 3.1, 0], "color": "#8a7a4a", "workPose": "bend",
+      "id": "granary", "name": "Granary", "age": "agricultural", "category": "Storage", "description": "A daubed bin raised on posts, out of reach of damp and mice. Holds food only, and food kept here spoils at a third of the open rate. Haulers move grain and meat into it.",
+      "sizeX": 3, "sizeY": 3, "cost": [{"id": "wood", "amount": 25}, {"id": "stone", "amount": 12}], "buildWork": 6, "unlockedBy": "farming", "maxWorkers": 0,
+      "storageCapacity": 300, "spoilMultiplier": 0.3, "accepts": ["food"], "color": "#8a7a5a",
       "parts": [
-        {"prim": "box", "pos": [0, 0, 0], "size": [3.7, 0.05, 3.7], "material": "soil"},
-        {"prim": "box", "pos": [0, 0.05, -1.2], "size": [3.4, 0.24, 0.4], "material": "crop"},
-        {"prim": "box", "pos": [0, 0.05, -0.4], "size": [3.4, 0.24, 0.4], "material": "crop"},
-        {"prim": "box", "pos": [0, 0.05, 0.4], "size": [3.4, 0.24, 0.4], "material": "crop"},
-        {"prim": "box", "pos": [0, 0.05, 1.2], "size": [3.4, 0.24, 0.4], "material": "crop"}
+        {"prim": "cylinder", "pos": [-0.75, 0, -0.75], "size": [0.16, 0.62, 0.16], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [0.75, 0, -0.75], "size": [0.16, 0.62, 0.16], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [-0.75, 0, 0.75], "size": [0.16, 0.62, 0.16], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [0.75, 0, 0.75], "size": [0.16, 0.62, 0.16], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [0, 0.56, 0], "size": [2.15, 0.12, 2.15], "material": "wood"},
+        {"prim": "cylinder", "pos": [0, 0.68, 0], "size": [1.85, 1.05, 1.85], "material": "clay", "color": "#d8c8b0"},
+        {"prim": "cone", "pos": [0, 1.66, 0], "size": [2.55, 1.15, 2.55], "material": "thatch"},
+        {"prim": "box", "pos": [0, 0.75, -0.93], "size": [0.42, 0.55, 0.05], "material": "wood", "color": "#8a7a68"},
+        {"prim": "box", "pos": [0, 0, -1.2], "size": [0.38, 0.72, 0.05], "material": "wood"},
+        {"prim": "cylinder", "pos": [0.95, 0, -1.15], "size": [0.4, 0.34, 0.4], "material": "basket"},
+        {"prim": "sphere", "pos": [0.95, 0.26, -1.15], "size": [0.32, 0.14, 0.32], "material": "crop"},
+        {"prim": "cylinder", "pos": [-1.0, 0, -1.15], "size": [0.34, 0.3, 0.34], "material": "basket"}
+      ]
+    },
+    {
+      "id": "thatched_hut", "name": "Thatched Hut", "age": "agricultural", "category": "Housing", "description": "A round hut of wattle and daub under a thick thatch. Houses 8 and keeps the cold out well. Lean-tos and hide tents can be rebuilt as one where they stand.",
+      "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 22}], "buildWork": 4, "unlockedBy": "farming", "maxWorkers": 0,
+      "housing": 8, "homeWarmth": 0.85, "upgradesTo": "stone_hut", "color": "#9a8458",
+      "parts": [
+        {"prim": "cylinder", "pos": [0, 0, 0.08], "size": [1.62, 0.92, 1.62], "material": "clay", "color": "#d0bca0"},
+        {"prim": "cone", "pos": [0, 0.84, 0.08], "size": [2.0, 1.15, 2.0], "material": "thatch"},
+        {"prim": "cylinder", "pos": [0, 1.86, 0.08], "size": [0.22, 0.12, 0.22], "material": "thatch", "color": "#8a7a5a"},
+        {"prim": "box", "pos": [0, 0, -0.74], "size": [0.46, 0.68, 0.06], "material": "hide", "color": "#5a4c40"},
+        {"prim": "logs", "pos": [0.68, 0, -0.78], "size": [0.4, 0.22, 0.3], "material": "wood", "yaw": 90},
+        {"prim": "cylinder", "pos": [-0.68, 0, -0.74], "size": [0.26, 0.26, 0.26], "material": "pottery"}
+      ]
+    },
+    {
+      "id": "stone_hut", "name": "Stone-footed Hut", "age": "agricultural", "category": "Housing", "description": "A hut raised on a dressed-stone footing that keeps out damp and draughts. Houses 10, the warmest home of the age. Thatched huts can be rebuilt as one.",
+      "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 14}, {"id": "stone", "amount": 24}], "buildWork": 6, "unlockedBy": "masonry", "maxWorkers": 0,
+      "housing": 10, "homeWarmth": 1.0, "color": "#8a8478",
+      "parts": [
+        {"prim": "cylinder", "pos": [0, 0, 0.08], "size": [1.78, 0.42, 1.78], "material": "stone_wall"},
+        {"prim": "cylinder", "pos": [0, 0.42, 0.08], "size": [1.64, 0.62, 1.64], "material": "clay", "color": "#d6c4a8"},
+        {"prim": "cone", "pos": [0, 0.98, 0.08], "size": [2.08, 1.2, 2.08], "material": "thatch"},
+        {"prim": "cylinder", "pos": [0, 2.04, 0.08], "size": [0.22, 0.12, 0.22], "material": "thatch", "color": "#8a7a5a"},
+        {"prim": "box", "pos": [0, 0, -0.8], "size": [0.5, 0.82, 0.06], "material": "wood", "color": "#7a6450"},
+        {"prim": "box", "pos": [0, 0.82, -0.81], "size": [0.62, 0.1, 0.08], "material": "stone_wall"},
+        {"prim": "cylinder", "pos": [-0.7, 0, -0.78], "size": [0.26, 0.28, 0.26], "material": "pottery"},
+        {"prim": "cylinder", "pos": [-0.46, 0, -0.84], "size": [0.2, 0.22, 0.2], "material": "pottery", "color": "#c8b0a0"}
+      ]
+    },
+    {
+      "id": "animal_pen", "name": "Animal Pen", "age": "agricultural", "category": "Food", "description": "Goats and sheep kept in a fenced pen and grazed on open grass nearby: meat and hides without hunting. Needs open pasture around it.",
+      "sizeX": 3, "sizeY": 3, "cost": [{"id": "wood", "amount": 26}], "buildWork": 4, "unlockedBy": "animal_husbandry", "maxWorkers": 2,
+      "workerTitle": "Herder", "outputs": [{"id": "meat", "amount": 2.4}, {"id": "hides", "amount": 0.45}], "yieldTag": "herding",
+      "seasonYield": [1, 1, 1.1, 0.7], "nearby": {"feature": "open", "radius": 6, "min": 25, "full": 60}, "color": "#7d6650", "workPose": "stand",
+      "parts": [
+        {"prim": "cylinder", "pos": [-1.35, 0, -1.35], "size": [0.1, 0.8, 0.1], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [1.35, 0, -1.35], "size": [0.1, 0.8, 0.1], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [-1.35, 0, 1.35], "size": [0.1, 0.8, 0.1], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [1.35, 0, 1.35], "size": [0.1, 0.8, 0.1], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [-1.35, 0, 0], "size": [0.1, 0.8, 0.1], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [1.35, 0, 0], "size": [0.1, 0.8, 0.1], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [0, 0, 1.35], "size": [0.1, 0.8, 0.1], "material": "bark_broad"},
+        {"prim": "log", "pos": [0, 0.62, 1.35], "size": [2.8, 0.07, 0.07], "material": "wood"},
+        {"prim": "log", "pos": [0, 0.32, 1.35], "size": [2.8, 0.07, 0.07], "material": "wood"},
+        {"prim": "log", "pos": [-1.35, 0.62, 0], "size": [2.8, 0.07, 0.07], "material": "wood", "yaw": 90},
+        {"prim": "log", "pos": [-1.35, 0.32, 0], "size": [2.8, 0.07, 0.07], "material": "wood", "yaw": 90},
+        {"prim": "log", "pos": [1.35, 0.62, 0], "size": [2.8, 0.07, 0.07], "material": "wood", "yaw": 90},
+        {"prim": "log", "pos": [1.35, 0.32, 0], "size": [2.8, 0.07, 0.07], "material": "wood", "yaw": 90},
+        {"prim": "log", "pos": [-0.85, 0.62, -1.35], "size": [1.0, 0.07, 0.07], "material": "wood"},
+        {"prim": "log", "pos": [0.85, 0.62, -1.35], "size": [1.0, 0.07, 0.07], "material": "wood"},
+        {"prim": "log", "pos": [-0.85, 0.32, -1.35], "size": [1.0, 0.07, 0.07], "material": "wood"},
+        {"prim": "log", "pos": [0.85, 0.32, -1.35], "size": [1.0, 0.07, 0.07], "material": "wood"},
+        {"prim": "wedge", "pos": [0.55, 0, 0.75], "size": [1.4, 0.95, 1.0], "material": "thatch", "yaw": 180},
+        {"prim": "sphere", "pos": [-0.55, 0.18, -0.2], "size": [0.55, 0.36, 0.32], "material": "fur", "yaw": 30},
+        {"prim": "sphere", "pos": [-0.85, 0.3, -0.05], "size": [0.2, 0.2, 0.18], "material": "fur", "yaw": 30},
+        {"prim": "sphere", "pos": [0.25, 0.18, -0.55], "size": [0.52, 0.34, 0.3], "material": "deer_pale", "yaw": -40},
+        {"prim": "sphere", "pos": [0.48, 0.3, -0.75], "size": [0.19, 0.19, 0.17], "material": "deer_pale", "yaw": -40},
+        {"prim": "sphere", "pos": [-0.35, 0.18, 0.55], "size": [0.5, 0.34, 0.3], "material": "fur", "yaw": 100, "color": "#c0b0a0"},
+        {"prim": "sphere", "pos": [0.95, 0, -0.5], "size": [0.6, 0.3, 0.5], "material": "stubble"}
+      ]
+    },
+    {
+      "id": "well", "name": "Well", "age": "agricultural", "category": "Services", "description": "A shaft dug down to clean ground water. Homes within reach have water without the walk to the river, and fall sick less often.",
+      "sizeX": 1, "sizeY": 1, "cost": [{"id": "stone", "amount": 12}, {"id": "wood", "amount": 4}], "buildWork": 3, "unlockedBy": "", "maxWorkers": 0,
+      "waterRadius": 10, "color": "#7a7468",
+      "parts": [
+        {"prim": "cylinder", "pos": [0, 0, 0], "size": [0.86, 0.42, 0.86], "material": "stone_wall"},
+        {"prim": "cylinder", "pos": [0, 0.41, 0], "size": [0.6, 0.02, 0.6], "material": "water", "color": "#40505a"},
+        {"prim": "cylinder", "pos": [-0.38, 0, 0], "size": [0.07, 1.05, 0.07], "material": "wood"},
+        {"prim": "cylinder", "pos": [0.38, 0, 0], "size": [0.07, 1.05, 0.07], "material": "wood"},
+        {"prim": "log", "pos": [0, 0.98, 0], "size": [0.9, 0.06, 0.06], "material": "wood"},
+        {"prim": "cylinder", "pos": [0, 0.62, 0], "size": [0.16, 0.16, 0.16], "material": "wood", "color": "#a08060"}
+      ]
+    },
+    {
+      "id": "healers_hut", "name": "Healer's Hut", "age": "agricultural", "category": "Services", "description": "Healers gather herbs and treat the sick in a wide circle around them. Better than a herbalist: fewer fall sick, the sick suffer less, and outbreaks are held back.",
+      "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 18}, {"id": "stone", "amount": 6}], "buildWork": 4, "unlockedBy": "healing",
+      "maxWorkers": 2, "workerTitle": "Healer", "outputs": [{"id": "herbs", "amount": 0.7}], "yieldTag": "herbs",
+      "nearby": {"feature": "trees", "radius": 10, "min": 2, "full": 10}, "healthRadius": 24, "healChance": 0.35, "healDamage": 0.25, "color": "#6d7d52",
+      "workPose": "bend",
+      "parts": [
+        {"prim": "cylinder", "pos": [-0.15, 0, 0.2], "size": [1.4, 0.8, 1.4], "material": "clay", "color": "#c8b8a0"},
+        {"prim": "cone", "pos": [-0.15, 0.74, 0.2], "size": [1.75, 0.95, 1.75], "material": "thatch"},
+        {"prim": "box", "pos": [-0.15, 0, -0.52], "size": [0.4, 0.6, 0.05], "material": "hide", "color": "#5a4c40"},
+        {"prim": "cylinder", "pos": [0.55, 0, -0.62], "size": [0.06, 0.95, 0.06], "material": "wood"},
+        {"prim": "cylinder", "pos": [0.95, 0, -0.2], "size": [0.06, 0.95, 0.06], "material": "wood"},
+        {"prim": "log", "pos": [0.75, 0.9, -0.41], "size": [0.62, 0.04, 0.04], "material": "wood", "yaw": -45},
+        {"prim": "sphere", "pos": [0.67, 0.68, -0.5], "size": [0.14, 0.22, 0.14], "material": "leaves"},
+        {"prim": "sphere", "pos": [0.83, 0.68, -0.33], "size": [0.14, 0.22, 0.14], "material": "leaves", "color": "#a0a070"},
+        {"prim": "cylinder", "pos": [0.75, 0, 0.6], "size": [0.3, 0.26, 0.3], "material": "pottery"},
+        {"prim": "sphere", "pos": [0.75, 0.22, 0.6], "size": [0.24, 0.12, 0.24], "material": "leaves"}
+      ]
+    },
+    {
+      "id": "shamans_hut", "name": "Shaman's Hut", "age": "agricultural", "category": "Knowledge", "description": "The shaman keeps the old lore and the rites. Produces more knowledge than an Elders' Fire, and homes within reach have their faith need met.",
+      "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 20}, {"id": "hides", "amount": 6}, {"id": "stone", "amount": 6}], "buildWork": 5, "unlockedBy": "shamanism",
+      "maxWorkers": 2, "workerTitle": "Shaman", "knowledgePerWorker": 2.4, "yieldTag": "knowledge", "faithRadius": 22, "color": "#6a5a50",
+      "workPose": "sit",
+      "parts": [
+        {"prim": "cone", "pos": [0.1, 0, 0.25], "size": [1.55, 1.9, 1.55], "material": "hide", "color": "#a08a70"},
+        {"prim": "cylinder", "pos": [0.18, 1.6, 0.25], "size": [0.06, 0.55, 0.06], "material": "wood"},
+        {"prim": "cylinder", "pos": [0.02, 1.6, 0.3], "size": [0.06, 0.5, 0.06], "material": "wood"},
+        {"prim": "cylinder", "pos": [-0.55, 0, -0.6], "size": [0.12, 1.9, 0.12], "material": "wood", "color": "#8a7a68"},
+        {"prim": "sphere", "pos": [-0.55, 1.75, -0.6], "size": [0.24, 0.24, 0.3], "material": "deer_pale"},
+        {"prim": "box", "pos": [-0.55, 1.45, -0.6], "size": [0.5, 0.06, 0.06], "material": "deer_pale"},
+        {"prim": "cylinder", "pos": [0.5, 0, -0.55], "size": [0.55, 0.04, 0.55], "material": "ash"},
+        {"prim": "stonering", "pos": [0.5, 0, -0.55], "size": [0.6, 0.1, 0.6], "material": "rock"},
+        {"prim": "cone", "pos": [0.5, 0.04, -0.55], "size": [0.26, 0.38, 0.26], "material": "flame"}
+      ]
+    },
+    {
+      "id": "tribal_council", "name": "Tribal Council", "age": "agricultural", "category": "Services", "description": "An open hall where councillors hear quarrels and decide the tribe's laws. Halves unrest while staffed, and lets you pass laws (L).",
+      "sizeX": 3, "sizeY": 3, "cost": [{"id": "wood", "amount": 30}, {"id": "stone", "amount": 16}], "buildWork": 8, "unlockedBy": "tribal_law", "unique": true,
+      "maxWorkers": 2, "workerTitle": "Councillor", "orderPower": 0.5, "enablesLaws": true, "color": "#7a6247", "workPose": "sit",
+      "parts": [
+        {"prim": "cylinder", "pos": [-1.15, 0, -1.0], "size": [0.16, 1.25, 0.16], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [1.15, 0, -1.0], "size": [0.16, 1.25, 0.16], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [-1.15, 0, 1.0], "size": [0.16, 1.25, 0.16], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [1.15, 0, 1.0], "size": [0.16, 1.25, 0.16], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [-1.15, 0, 0], "size": [0.16, 1.25, 0.16], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [1.15, 0, 0], "size": [0.16, 1.25, 0.16], "material": "bark_broad"},
+        {"prim": "prism", "pos": [0, 1.2, 0], "size": [2.9, 1.0, 2.7], "material": "thatch"},
+        {"prim": "box", "pos": [0, 0, 1.1], "size": [2.3, 0.75, 0.08], "material": "basket"},
+        {"prim": "cylinder", "pos": [0, 0, 0], "size": [0.75, 0.04, 0.75], "material": "ash"},
+        {"prim": "stonering", "pos": [0, 0, 0], "size": [0.85, 0.12, 0.85], "material": "stone_wall"},
+        {"prim": "cone", "pos": [0, 0.05, 0], "size": [0.32, 0.45, 0.32], "material": "flame"},
+        {"prim": "log", "pos": [0, 0, 0.68], "size": [1.4, 0.2, 0.2], "material": "bark_broad"},
+        {"prim": "log", "pos": [-0.7, 0, -0.1], "size": [1.2, 0.2, 0.2], "material": "bark_broad", "yaw": 90},
+        {"prim": "log", "pos": [0.7, 0, -0.1], "size": [1.2, 0.2, 0.2], "material": "bark_broad", "yaw": 90}
+      ]
+    },
+    {
+      "id": "potter", "name": "Potter", "age": "agricultural", "category": "Crafts", "description": "Shapes clay into jars and bowls and fires them in a kiln. Every household wants pottery: it is the first goods need.",
+      "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 14}, {"id": "stone", "amount": 8}, {"id": "clay", "amount": 6}], "buildWork": 4, "unlockedBy": "pottery",
+      "maxWorkers": 2, "workerTitle": "Potter", "inputs": [{"ids": ["clay"], "amount": 1.0}, {"ids": ["firewood"], "amount": 0.4}],
+      "outputs": [{"id": "pottery", "amount": 0.9}], "yieldTag": "pottery", "color": "#a87250", "workPose": "sit",
+      "parts": [
+        {"prim": "wedge", "pos": [-0.35, 0, 0.35], "size": [1.2, 0.95, 1.1], "material": "thatch"},
+        {"prim": "sphere", "pos": [0.5, 0, 0.45], "size": [0.85, 0.75, 0.85], "material": "clay", "color": "#b89880"},
+        {"prim": "box", "pos": [0.5, 0, 0.05], "size": [0.26, 0.24, 0.05], "material": "flame"},
+        {"prim": "cylinder", "pos": [-0.35, 0, -0.55], "size": [0.36, 0.3, 0.36], "material": "wood"},
+        {"prim": "cylinder", "pos": [-0.35, 0.3, -0.55], "size": [0.2, 0.16, 0.2], "material": "clay"},
+        {"prim": "cylinder", "pos": [0.35, 0, -0.62], "size": [0.24, 0.3, 0.24], "material": "pottery"},
+        {"prim": "cylinder", "pos": [0.6, 0, -0.55], "size": [0.2, 0.22, 0.2], "material": "pottery", "color": "#d0b8a8"},
+        {"prim": "sphere", "pos": [0.85, 0, -0.7], "size": [0.24, 0.24, 0.24], "material": "pottery"}
+      ]
+    },
+    {
+      "id": "weaver", "name": "Weaver", "age": "agricultural", "category": "Crafts", "description": "Spins flax fibre and weaves it into cloth clothing on an upright loom. Grow flax by choosing it as a field's crop.",
+      "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 16}], "buildWork": 3, "unlockedBy": "weaving",
+      "maxWorkers": 2, "workerTitle": "Weaver", "inputs": [{"ids": ["fibre"], "amount": 1.0}], "outputs": [{"id": "clothing", "amount": 0.6}],
+      "yieldTag": "weaving", "color": "#9a9070", "workPose": "sit",
+      "parts": [
+        {"prim": "prism", "pos": [-0.25, 0, 0.4], "size": [1.3, 0.9, 1.0], "material": "thatch"},
+        {"prim": "cylinder", "pos": [0.25, 0, -0.55], "size": [0.07, 1.15, 0.07], "material": "wood"},
+        {"prim": "cylinder", "pos": [0.95, 0, -0.55], "size": [0.07, 1.15, 0.07], "material": "wood"},
+        {"prim": "log", "pos": [0.6, 1.08, -0.55], "size": [0.85, 0.06, 0.06], "material": "wood"},
+        {"prim": "log", "pos": [0.6, 0.18, -0.55], "size": [0.8, 0.05, 0.05], "material": "wood"},
+        {"prim": "box", "pos": [0.6, 0.2, -0.55], "size": [0.62, 0.86, 0.03], "material": "cloth"},
+        {"prim": "cylinder", "pos": [-0.6, 0, -0.55], "size": [0.38, 0.3, 0.38], "material": "basket"},
+        {"prim": "sphere", "pos": [-0.6, 0.24, -0.55], "size": [0.32, 0.16, 0.32], "material": "flax", "color": "#c8c0a0"}
+      ]
+    },
+    {
+      "id": "dirt_path", "name": "Dirt Path", "age": "agricultural", "category": "Paths", "description": "Trodden earth. People walk faster on paths and their routes bend onto them. Drag to lay a line of tiles; free and immediate.",
+      "sizeX": 1, "sizeY": 1, "cost": [], "buildWork": 0, "unlockedBy": "", "maxWorkers": 0, "path": true, "color": "#7a6449",
+      "parts": []
+    },
+    {
+      "id": "field", "name": "Field", "age": "agricultural", "category": "Food", "description": "Sown in spring, tended through summer, harvested in autumn; nothing grows in winter, and the farmers go to other work. Grows grain, or flax for weaving once Weaving is known. Untended crops grow less; needs tools.",
+      "sizeX": 4, "sizeY": 4, "cost": [{"id": "wood", "amount": 8}, {"id": "tools", "amount": 1}], "buildWork": 4,
+      "unlockedBy": "farming", "maxWorkers": 3, "workerTitle": "Farmer", "requiresTools": true, "fieldWork": true, "crop": true, "exclusiveOutputs": true,
+      "outputs": [{"id": "grain", "amount": 230}, {"id": "fibre", "amount": 90}], "sowWork": 3, "harvestWork": 5, "tendWork": 1.5, "irrigationRadius": 10,
+      "yieldTag": "farming", "color": "#8a7a4a", "workPose": "bend",
+      "cropStages": [
+        {"name": "Bare soil", "material": "soil", "height": 0},
+        {"name": "Shoots", "material": "shoots", "height": 0.12},
+        {"name": "Growing", "material": "crop_green", "height": 0.38},
+        {"name": "Ripe", "material": "crop", "height": 0.62},
+        {"name": "Stubble", "material": "stubble", "height": 0.1}
+      ],
+      "parts": [
+        {"prim": "box", "pos": [0, 0, 0], "size": [3.86, 0.05, 3.86], "material": "soil"},
+        {"prim": "sphere", "pos": [-1.9, 0, -1.9], "size": [0.3, 0.2, 0.26], "material": "rock"},
+        {"prim": "sphere", "pos": [1.9, 0, -1.92], "size": [0.26, 0.18, 0.24], "material": "rock"},
+        {"prim": "sphere", "pos": [1.92, 0, 1.9], "size": [0.3, 0.2, 0.28], "material": "rock"},
+        {"prim": "sphere", "pos": [-1.9, 0, 1.92], "size": [0.24, 0.18, 0.24], "material": "rock"}
       ]
     },
     {
       "id": "clay_pit", "name": "Clay Pit", "age": "agricultural", "category": "Materials", "description": "Digs clay from the river bank for potters and kilns. Must be built on a clay bed. Needs tools.",
       "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 10}], "buildWork": 3, "unlockedBy": "pottery", "maxWorkers": 2,
-      "workerTitle": "Clay digger", "requiresTools": true, "outputs": [{"id": "clay", "amount": 1.5}], "yieldTag": "clay",
-      "seasonYield": [1, 1, 1, 0.5], "nearby": {"feature": "clay", "radius": 4, "min": 3, "full": 10}, "color": "#9a6f55",
+      "workerTitle": "Clay digger", "requiresTools": true, "outputs": [{"id": "clay", "amount": 1.6}], "yieldTag": "clay",
+      "seasonYield": [1, 1, 1, 0.5], "onDeposit": "clay", "depositMin": 1, "nearby": {"feature": "clay", "radius": 4, "min": 1, "full": 10}, "color": "#9a6f55",
       "workPose": "dig",
       "parts": [
         {"prim": "cylinder", "pos": [0, 0, 0.1], "size": [1.4, 0.05, 1.4], "material": "clay", "color": "#806050"},
@@ -256,10 +450,10 @@
       ]
     },
     {
-      "id": "copper_mine", "name": "Copper Mine", "age": "agricultural", "category": "Materials", "description": "A shaft sunk into a copper deposit. Must be built on copper found by Prospecting. Needs tools.",
+      "id": "copper_mine", "name": "Copper Mine", "age": "agricultural", "category": "Metal", "description": "A shaft sunk into a copper deposit: green-stained rock in the hills, found by Prospecting. Must be built on the deposit. Needs tools.",
       "sizeX": 3, "sizeY": 3, "cost": [{"id": "wood", "amount": 30}, {"id": "stone", "amount": 15}, {"id": "tools", "amount": 3}],
       "buildWork": 10, "unlockedBy": "copper_working", "maxWorkers": 4, "workerTitle": "Miner", "requiresTools": true,
-      "outputs": [{"id": "copper_ore", "amount": 1.0}], "yieldTag": "mining", "nearby": {"feature": "copper", "radius": 4, "min": 4, "full": 14},
+      "outputs": [{"id": "copper_ore", "amount": 1.2}], "yieldTag": "mining", "onDeposit": "copper", "depositMin": 2, "nearby": {"feature": "copper", "radius": 4, "min": 2, "full": 12},
       "color": "#5f8a78", "workPose": "dig",
       "parts": [
         {"prim": "wedge", "pos": [0, 0, 0.4], "size": [2.4, 1.4, 1.8], "material": "rock"},
@@ -267,11 +461,11 @@
         {"prim": "cylinder", "pos": [-0.5, 0, -0.6], "size": [0.12, 1.0, 0.12], "material": "bark_broad"},
         {"prim": "cylinder", "pos": [0.5, 0, -0.6], "size": [0.12, 1.0, 0.12], "material": "bark_broad"},
         {"prim": "log", "pos": [0, 0.95, -0.6], "size": [1.2, 0.12, 0.12], "material": "bark_broad"},
-        {"prim": "sphere", "pos": [1.0, 0, -1.0], "size": [0.6, 0.35, 0.6], "material": "rock", "color": "#7fa898"}
+        {"prim": "sphere", "pos": [1.0, 0, -1.0], "size": [0.6, 0.35, 0.6], "material": "ore_copper"}
       ]
     },
     {
-      "id": "smelter", "name": "Smelter", "age": "agricultural", "category": "Materials", "description": "A clay furnace that roasts copper ore into metal. Burns a lot of firewood.",
+      "id": "smelter", "name": "Smelter", "age": "agricultural", "category": "Metal", "description": "A clay furnace that roasts copper ore into metal. Burns a lot of firewood.",
       "sizeX": 2, "sizeY": 2, "cost": [{"id": "stone", "amount": 20}, {"id": "clay", "amount": 15}, {"id": "wood", "amount": 10}],
       "buildWork": 8, "unlockedBy": "copper_working", "maxWorkers": 2, "workerTitle": "Smelter", "inputs": [{"ids": ["copper_ore"], "amount": 2.0}, {"ids": ["firewood"], "amount": 1.5}],
       "outputs": [{"id": "copper", "amount": 1.0}], "yieldTag": "smelting", "color": "#9a6f55", "workPose": "stand",
@@ -283,21 +477,21 @@
       ]
     },
     {
-      "id": "coppersmith", "name": "Coppersmith", "age": "agricultural", "category": "Materials", "description": "Casts and hammers copper into axe heads, picks and sickles. Copper tools make every tool-using job 15% faster.",
+      "id": "coppersmith", "name": "Coppersmith", "age": "agricultural", "category": "Metal", "description": "Casts and hammers copper into axe heads, picks and sickles. Copper tools make every tool-using job 15% faster.",
       "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 20}, {"id": "stone", "amount": 10}], "buildWork": 6,
       "unlockedBy": "copper_working", "maxWorkers": 1, "workerTitle": "Coppersmith", "inputs": [{"ids": ["copper"], "amount": 0.5}, {"ids": ["wood"], "amount": 0.4}],
       "outputs": [{"id": "copper_tools", "amount": 0.8}], "yieldTag": "toolmaking", "color": "#b0713f", "workPose": "chop",
       "parts": [
         {"prim": "prism", "pos": [-0.2, 0, 0.3], "size": [1.3, 0.9, 1.2], "material": "thatch"},
         {"prim": "box", "pos": [0.6, 0, -0.55], "size": [0.45, 0.4, 0.45], "material": "rock"},
-        {"prim": "box", "pos": [0.6, 0.4, -0.55], "size": [0.3, 0.08, 0.2], "material": "rock", "color": "#d09060"}
+        {"prim": "box", "pos": [0.6, 0.4, -0.55], "size": [0.3, 0.08, 0.2], "material": "metal"}
       ]
     },
     {
-      "id": "tin_mine", "name": "Tin Mine", "age": "bronze", "category": "Materials", "description": "Works the map's one small tin deposit. Must be built on tin found by Prospecting. Needs tools.",
+      "id": "tin_mine", "name": "Tin Mine", "age": "agricultural", "category": "Metal", "description": "Works the map's one small tin deposit, usually far out in the hills. Must be built on it. Needs tools; traders sometimes bring tin too.",
       "sizeX": 3, "sizeY": 3, "cost": [{"id": "wood", "amount": 30}, {"id": "stone", "amount": 15}, {"id": "copper_tools", "amount": 3}],
       "buildWork": 10, "unlockedBy": "bronze_working", "maxWorkers": 3, "workerTitle": "Miner", "requiresTools": true,
-      "outputs": [{"id": "tin_ore", "amount": 0.5}], "yieldTag": "mining", "nearby": {"feature": "tin", "radius": 3, "min": 2, "full": 8},
+      "outputs": [{"id": "tin_ore", "amount": 0.6}], "yieldTag": "mining", "onDeposit": "tin", "depositMin": 2, "nearby": {"feature": "tin", "radius": 3, "min": 2, "full": 8},
       "color": "#6b6a70", "workPose": "dig",
       "parts": [
         {"prim": "wedge", "pos": [0, 0, 0.4], "size": [2.4, 1.4, 1.8], "material": "rock"},
@@ -305,11 +499,11 @@
         {"prim": "cylinder", "pos": [-0.5, 0, -0.6], "size": [0.12, 1.0, 0.12], "material": "bark_broad"},
         {"prim": "cylinder", "pos": [0.5, 0, -0.6], "size": [0.12, 1.0, 0.12], "material": "bark_broad"},
         {"prim": "log", "pos": [0, 0.95, -0.6], "size": [1.2, 0.12, 0.12], "material": "bark_broad"},
-        {"prim": "sphere", "pos": [1.0, 0, -1.0], "size": [0.6, 0.35, 0.6], "material": "rock", "color": "#9a9aa4"}
+        {"prim": "sphere", "pos": [1.0, 0, -1.0], "size": [0.6, 0.35, 0.6], "material": "ore_tin"}
       ]
     },
     {
-      "id": "bronze_foundry", "name": "Bronze Foundry", "age": "bronze", "category": "Materials", "description": "Melts copper with a little tin into bronze.",
+      "id": "bronze_foundry", "name": "Bronze Foundry", "age": "agricultural", "category": "Metal", "description": "Melts copper with a little tin into bronze. Burns a lot of firewood.",
       "sizeX": 3, "sizeY": 3, "cost": [{"id": "stone", "amount": 40}, {"id": "clay", "amount": 20}, {"id": "wood", "amount": 20}],
       "buildWork": 12, "unlockedBy": "bronze_working", "maxWorkers": 2, "workerTitle": "Founder", "inputs": [{"ids": ["copper"], "amount": 1.0}, {"ids": ["tin_ore"], "amount": 0.25}, {"ids": ["firewood"], "amount": 1.5}],
       "outputs": [{"id": "bronze", "amount": 1.0}], "yieldTag": "smelting", "color": "#a8853f", "workPose": "stand",
@@ -321,7 +515,7 @@
       ]
     },
     {
-      "id": "bronze_smith", "name": "Bronze Smith", "age": "bronze", "category": "Materials", "description": "Casts bronze tools. Bronze tools make every tool-using job 30% faster.",
+      "id": "bronze_smith", "name": "Bronze Smith", "age": "agricultural", "category": "Metal", "description": "Casts bronze tools. Bronze tools make every tool-using job 30% faster.",
       "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 20}, {"id": "stone", "amount": 20}], "buildWork": 8,
       "unlockedBy": "bronze_working", "maxWorkers": 2, "workerTitle": "Bronze smith", "inputs": [{"ids": ["bronze"], "amount": 0.5}, {"ids": ["wood"], "amount": 0.4}],
       "outputs": [{"id": "bronze_tools", "amount": 0.8}], "yieldTag": "toolmaking", "color": "#a8853f", "workPose": "chop",
@@ -329,7 +523,7 @@
         {"prim": "box", "pos": [-0.2, 0, 0.3], "size": [1.3, 0.9, 1.2], "material": "rock"},
         {"prim": "prism", "pos": [-0.2, 0.9, 0.3], "size": [1.4, 0.5, 1.3], "material": "thatch"},
         {"prim": "box", "pos": [0.65, 0, -0.55], "size": [0.45, 0.4, 0.45], "material": "rock"},
-        {"prim": "box", "pos": [0.65, 0.4, -0.55], "size": [0.3, 0.08, 0.2], "material": "rock", "color": "#c8a050"}
+        {"prim": "box", "pos": [0.65, 0.4, -0.55], "size": [0.3, 0.08, 0.2], "material": "metal", "color": "#e8d090"}
       ]
     }
   ]

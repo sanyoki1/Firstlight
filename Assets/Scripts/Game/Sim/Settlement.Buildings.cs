@@ -32,6 +32,7 @@ namespace Firstlight.Game
                 return false;
             }
             if (d.unique && CountBuildings(d.id, true) > 0) { reason = "Only one can be built"; return false; }
+            if (d.path) return CanPlacePath(origin, out reason);
             for (int y = origin.y; y < origin.y + d.sizeY; y++)
                 for (int x = origin.x; x < origin.x + d.sizeX; x++)
                 {
@@ -46,13 +47,74 @@ namespace Firstlight.Game
             if (!Map.InBounds(door.x, door.y)) { reason = "No room for an entrance"; return false; }
             int dc = Map.Cell(door.x, door.y);
             if (Map.WaterClass[dc] >= 2 || Map.BuildingAt[dc] >= 0 || Map.Rock[dc] > 0) { reason = "The entrance is blocked"; return false; }
+            if (!string.IsNullOrEmpty(d.onDeposit))
+            {
+                var kind = GameMap.DepositOf(d.onDeposit);
+                if (!Map.DepositVisible(kind)) { reason = $"{Cap(d.onDeposit)} deposits are hidden until Prospecting"; return false; }
+                int on = DepositCells(d, origin);
+                if (on < d.depositMin) { reason = on == 0 ? $"Must be built on a {d.onDeposit} deposit" : $"Must stand more on the {d.onDeposit} deposit ({on} of {d.depositMin} cells)"; return false; }
+            }
             if (d.HasNearby && d.nearby.min > 0)
             {
                 int n = Map.CountFeature(d.nearby.feature, FootprintCenter(d, origin), d.nearby.radius);
-                if (n < d.nearby.min) { reason = $"Needs {d.nearby.feature} nearby ({n} of {d.nearby.min})"; return false; }
+                if (n < d.nearby.min) { reason = $"Needs {(d.nearby.feature == "open" ? "open grass" : d.nearby.feature)} nearby ({n} of {d.nearby.min})"; return false; }
             }
             return true;
         }
+
+        /// <summary>Footprint cells over a building's deposit kind.</summary>
+        public int DepositCells(BuildingDef d, int2 origin)
+        {
+            var kind = GameMap.DepositOf(d.onDeposit);
+            int on = 0;
+            for (int y = origin.y; y < origin.y + d.sizeY; y++)
+                for (int x = origin.x; x < origin.x + d.sizeX; x++)
+                    if (Map.InBounds(x, y) && Map.Deposits[Map.Cell(x, y)] == kind) on++;
+            return on;
+        }
+
+        static string Cap(string s) => string.IsNullOrEmpty(s) ? s : char.ToUpper(s[0]) + s.Substring(1);
+
+        // ------------------------------------------------------------------ paths
+
+        /// <summary>A path tile can go on any dry, free ground cell, including entrances.</summary>
+        public bool CanPlacePath(int2 cell, out string reason)
+        {
+            reason = "";
+            if (cell.x < 1 || cell.y < 1 || cell.x >= Map.W - 1 || cell.y >= Map.H - 1) { reason = "Too close to the map edge"; return false; }
+            int c = Map.Cell(cell.x, cell.y);
+            if (Map.Ground[c] != Ground.Grass || Map.WaterClass[c] > 0) { reason = "Can't build in water"; return false; }
+            if (Map.BuildingAt[c] >= 0) { reason = "Something is already there"; return false; }
+            if (Map.Rock[c] > 0) { reason = "Rock in the way"; return false; }
+            if (Map.Path[c]) { reason = "Already a path"; return false; }
+            return true;
+        }
+
+        /// <summary>Lays one path tile (free and immediate: people tread it in). Paths are not buildings.</summary>
+        public bool PlacePath(int2 cell, out string reason)
+        {
+            var d = Data.Buildings.Find(b => b.path);
+            if (d == null) { reason = "No paths in this build"; return false; }
+            if (NeedsCampfire) { reason = "Place the campfire first"; return false; }
+            if (!IsUnlocked(d)) { reason = $"Needs the {Data.Age(d.age)?.name ?? d.age}"; return false; }
+            if (!CanPlacePath(cell, out reason)) return false;
+            Map.SetPath(Map.Cell(cell.x, cell.y), true);
+            PathCount++;
+            Map.CommitCostChanges();
+            return true;
+        }
+        public bool PlacePath(int2 cell) => PlacePath(cell, out _);
+
+        public bool RemovePath(int2 cell)
+        {
+            if (!Map.InBounds(cell.x, cell.y) || !Map.Path[Map.Cell(cell.x, cell.y)]) return false;
+            Map.SetPath(Map.Cell(cell.x, cell.y), false);
+            PathCount--;
+            Map.CommitCostChanges();
+            return true;
+        }
+
+        public int PathCount { get; private set; }
         public bool CanPlace(BuildingDef d, int2 origin) => CanPlace(d, origin, out _);
 
         /// <summary>Places a construction site (or, for the campfire, the finished town center and the starting band).</summary>
@@ -60,6 +122,7 @@ namespace Firstlight.Game
 
         public Building Place(BuildingDef d, int2 origin, out string reason)
         {
+            if (d != null && d.path) { PlacePath(origin, out reason); return null; }
             if (!CanPlace(d, origin, out reason)) return null;
             var b = new Building
             {
@@ -81,7 +144,9 @@ namespace Firstlight.Game
                 {
                     int c = Map.Cell(x, y);
                     Map.RemoveTree(c);
+                    if (Map.Path[c]) { Map.SetPath(c, false); PathCount--; }
                     Map.BuildingAt[c] = b.Id;
+                    Map.Open[c] = d.crop;           // people walk through fields
                     Map.RefreshCost(c);
                 }
             Map.Reserved[b.Door] = true;
@@ -112,7 +177,9 @@ namespace Firstlight.Game
             if (b == TownCenter) { reason = "The campfire can't be removed"; return false; }
             var refund = new float[ResCount];
             for (int i = 0; i < b.Def.cost.Length; i++)
-                refund[b.CostRes[i]] += b.IsSite ? b.Delivered[i] : b.Def.cost[i].amount * B.demolishRefund;
+                refund[ResIndex(b.Def.cost[i].id)] += b.IsSite ? b.Delivered[i] : b.Def.cost[i].amount * B.demolishRefund;
+            if (b.UpgradeTo != null)
+                for (int i = 0; i < b.UpgradeTo.cost.Length; i++) refund[b.CostRes[i]] += b.Delivered[i];
             for (int r = 0; r < ResCount; r++) refund[r] += b.Out[r] + b.In[r];
             if (b.Store != null) for (int r = 0; r < ResCount; r++) refund[r] += b.Store[r];
             b.State = BuildState.Removed;
@@ -127,6 +194,7 @@ namespace Firstlight.Game
                 {
                     int c = Map.Cell(x, y);
                     Map.BuildingAt[c] = -1;
+                    Map.Open[c] = false;
                     Map.RefreshCost(c);
                 }
             bool doorShared = false;
@@ -134,6 +202,7 @@ namespace Firstlight.Game
             if (!doorShared) Map.Reserved[b.Door] = false;
             Map.CommitCostChanges();
             Log(Severity.Info, $"{b.Def.name} removed.", b.Center);
+            if (b.Def.enablesLaws) RebuildEffects();
             _jobsDirty = true;
             RefreshStock();
             return true;
@@ -183,6 +252,84 @@ namespace Firstlight.Game
             return id >= 0 ? Buildings[id] : null;
         }
 
+        // ------------------------------------------------------------------ upgrades
+
+        /// <summary>The building this one can be rebuilt as (null if none).</summary>
+        public BuildingDef UpgradeOption(Building b)
+        {
+            if (b == null || !b.Active || string.IsNullOrEmpty(b.Def.upgradesTo)) return null;
+            return Data.Building(b.Def.upgradesTo);
+        }
+
+        public bool CanUpgrade(Building b, out string reason)
+        {
+            reason = "";
+            var t = UpgradeOption(b);
+            if (t == null) { reason = "Can't be upgraded"; return false; }
+            if (b.UpgradeTo != null) { reason = "Already being upgraded"; return false; }
+            if (!IsUnlocked(t)) { reason = !string.IsNullOrEmpty(t.unlockedBy) && !IsResearched(t.unlockedBy) ? $"Needs research: {Data.ResearchById(t.unlockedBy)?.name}" : $"Needs the {Data.Age(t.age)?.name}"; return false; }
+            return true;
+        }
+        public bool CanUpgrade(Building b) => CanUpgrade(b, out _);
+
+        /// <summary>
+        /// Rebuilds a building in place as its upgrade: builders bring the new building's materials and build it while
+        /// the old one keeps working (residents stay). Cancel with <see cref="CancelUpgrade"/>.
+        /// </summary>
+        public bool Upgrade(Building b, out string reason)
+        {
+            if (!CanUpgrade(b, out reason)) return false;
+            var t = UpgradeOption(b);
+            b.UpgradeTo = t;
+            b.Delivered = new float[t.cost.Length];
+            b.InTransit = new float[t.cost.Length];
+            b.CostRes = Array.ConvertAll(t.cost, a => ResIndex(a.id));
+            b.Work = 0;
+            if (t.cost.Length == 0 && t.buildWork <= 0) CompleteUpgrade(b);
+            _jobsDirty = true;
+            return true;
+        }
+        public bool Upgrade(Building b) => Upgrade(b, out _);
+
+        /// <summary>Stops an upgrade: delivered materials go back to storage.</summary>
+        public void CancelUpgrade(Building b)
+        {
+            if (b == null || b.UpgradeTo == null) return;
+            var refund = new float[ResCount];
+            for (int i = 0; i < b.UpgradeTo.cost.Length; i++) refund[b.CostRes[i]] += b.Delivered[i];
+            foreach (var c in Citizens) if (c.TaskB2 == b && (c.Task == Task.FetchMaterial || c.Task == Task.DeliverMaterial || c.Task == Task.GoBuild || c.Task == Task.Build)) CancelTask(c);
+            b.UpgradeTo = null;
+            b.Delivered = new float[b.Def.cost.Length];
+            b.InTransit = new float[b.Def.cost.Length];
+            b.CostRes = Array.ConvertAll(b.Def.cost, a => ResIndex(a.id));
+            b.Work = 1f;
+            for (int r = 0; r < ResCount; r++) if (refund[r] > 0.01f) Deposit(r, refund[r], b.Center);
+            _jobsDirty = true;
+        }
+
+        void CompleteUpgrade(Building b)
+        {
+            var from = b.Def;
+            var d = b.UpgradeTo;
+            b.Def = d;
+            b.UpgradeTo = null;
+            b.Work = 1f;
+            b.Delivered = new float[d.cost.Length];
+            b.InTransit = new float[d.cost.Length];
+            for (int i = 0; i < d.cost.Length; i++) b.Delivered[i] = d.cost[i].amount;
+            b.CostRes = Array.ConvertAll(d.cost, a => ResIndex(a.id));
+            b.OutRes = Array.ConvertAll(d.outputs, a => ResIndex(a.id));
+            b.InRes = Array.ConvertAll(d.inputs, i => Array.ConvertAll(i.ids, ResIndex));
+            b.YieldKey = "yield." + d.yieldTag;
+            if (b.IsStorage && b.Store == null) b.Store = new float[ResCount];
+            RefreshFullness(b);
+            Upgrades++;
+            Log(Severity.Info, $"{from.name} rebuilt as a {d.name}.", b.Center);
+            _jobsDirty = true;
+        }
+
+        public int Upgrades { get; private set; }
+
         void Complete(Building b)
         {
             b.State = BuildState.Active;
@@ -190,6 +337,7 @@ namespace Firstlight.Game
             if (b.IsStorage && b.Store == null) b.Store = new float[ResCount];
             RefreshFullness(b);
             if (!b.Def.townCenter) Log(Severity.Info, $"{b.Def.name} finished.", b.Center);
+            if (b.Def.enablesLaws) RebuildEffects();
             _jobsDirty = true;
         }
 
@@ -234,7 +382,13 @@ namespace Firstlight.Game
             }
         }
 
-        float Free(Building s) => s.Def.storageCapacity - s.Stored;
+        /// <summary>A store's capacity with research (Pottery's jars) applied.</summary>
+        public float Capacity(Building s) => s.Def.storageCapacity * Effect("storage");
+
+        float Free(Building s) => Capacity(s) - s.Stored;
+
+        /// <summary>A store with an accepts list (the granary) only takes those categories.</summary>
+        public bool Accepts(Building s, int r) => r < 0 || s.Def.accepts.Length == 0 || Array.IndexOf(s.Def.accepts, Data.Resources[r].category) >= 0;
 
         float PutInto(Building s, int r, float amt)
         {
@@ -272,20 +426,26 @@ namespace Firstlight.Game
             float left = amt;
             for (int k = 0; k < 8 && left > 0.001f; k++)
             {
-                var s = NearestStorageWithSpace(near, 0.01f);
+                var s = NearestStorageFor(near, r, 0.01f);
                 if (s == null) break;
                 left -= PutInto(s, r, left);
             }
             return amt - left;
         }
 
-        Building NearestStorageWithSpace(float2 from, float min)
+        /// <summary>
+        /// The store to take a good to: the nearest with room that accepts it; goods that spoil prefer stores that keep
+        /// them (a granary up to about twice as far away wins over an open pile). r = -1: any good.
+        /// </summary>
+        Building NearestStorageFor(float2 from, int r, float min)
         {
             Building best = null; float bd = float.MaxValue;
+            bool spoils = r >= 0 && Data.Resources[r].spoilPerDay > 0;
             foreach (var s in Buildings)
             {
-                if (!s.Active || s.Store == null || Free(s) < min) continue;
-                float d = math.distancesq(s.DoorPos, from);
+                if (!s.Active || s.Store == null || Free(s) < min || !Accepts(s, r)) continue;
+                float d = math.distance(s.DoorPos, from) + 4f;
+                if (spoils) d *= 0.4f + s.Def.spoilMultiplier;
                 if (d < bd) { bd = d; best = s; }
             }
             return best;
@@ -332,11 +492,12 @@ namespace Firstlight.Game
 
         void RefreshFullness()
         {
-            foreach (var b in Buildings) if (b.Active && b.Def.HasNearby) RefreshFullness(b);
+            foreach (var b in Buildings) if (b.Active && (b.Def.HasNearby || b.Def.crop)) RefreshFullness(b);
         }
 
         void RefreshFullness(Building b)
         {
+            if (b.Def.crop && b.Def.irrigationRadius > 0) b.Irrigated = Map.CountFeature("water", b.Center, b.Def.irrigationRadius) > 0;
             if (!b.Def.HasNearby) { b.Fullness = 1f; return; }
             var n = b.Def.nearby;
             int count = Map.CountFeature(n.feature, b.Center, n.radius);
@@ -356,11 +517,12 @@ namespace Firstlight.Game
             bool did = false;
             if (d.knowledgePerWorker > 0)
             {
-                float mult = c.Age >= B.elderAge ? B.elderKnowledgeMult : 1f;
+                float mult = c.Age >= B.elderAge ? B.elderKnowledgeMult * Effect("knowledge.elders") : 1f;
                 AddKnowledge(d.knowledgePerWorker * frac * mult * Effect(b.YieldKey));
                 did = true;
             }
             if (d.outputs.Length == 0) return did;
+            if (d.crop) return CropWork(c, b, frac, field);
             if (!field && b.OutTotal >= OutCap(b)) { b.Status = "Waiting for goods to be carried off"; return did; }
             float yield = d.SeasonYield(Season) * b.Fullness * (string.IsNullOrEmpty(d.yieldTag) ? 1f : Effect(b.YieldKey));
             if (yield <= 0)
@@ -394,7 +556,8 @@ namespace Firstlight.Game
             if (b.Focus >= 0) foreach (var o in d.outputs) total += o.amount;
             for (int i = 0; i < d.outputs.Length; i++)
             {
-                float per = b.Focus < 0 ? d.outputs[i].amount : i == b.Focus ? total * B.focusShare : 0f;
+                float per = d.exclusiveOutputs ? (i == math.max(0, b.Focus) ? d.outputs[i].amount : 0f)
+                          : b.Focus < 0 ? d.outputs[i].amount : i == b.Focus ? total * B.focusShare : 0f;
                 float amt = per * work * scale;
                 if (amt <= 0) continue;
                 if (field)

@@ -20,12 +20,34 @@ namespace Firstlight.Game
         public bool isFood;
         public float spoilPerDay;
         public float toolSpeed;   // > 0 marks a tool; work speed multiplier for a worker holding one (best tier in stock is used)
+        public float value = 1;   // worth in a swap with traders (Barter)
+        public bool traded;       // traders can bring it
+        public string unlockedBy; // a field crop that needs this research before it can be sown
+    }
+
+    /// <summary>One growth stage of a crop building's look: the crop rows' material and height (view only).</summary>
+    [Serializable] public class CropStageDef { public string name, material; public float height; }
+
+    /// <summary>A law the council can pass (laws.json): its effects join the research effects while it is in force.</summary>
+    [Serializable]
+    public class LawDef
+    {
+        public string id, name, description, research;
+        public Effect[] effects = Array.Empty<Effect>();
+    }
+
+    /// <summary>A need that starts counting at an age or with a research topic (balance.json "needs").</summary>
+    [Serializable]
+    public class NeedDef
+    {
+        public string id, name, age, research;
+        public float unmet = 0.6f;   // happiness from this need while it is not met (1 = met)
     }
 
     [Serializable]
     public class NearbyDef
     {
-        public string feature;   // trees | rocks | water | wildlife | clay | copper | tin
+        public string feature;   // trees | rocks | water | wildlife | clay | copper | tin | open (free grass, for pasture)
         public int radius;
         public int min;          // need at least this many to build
         public int full;         // this many gives full yield
@@ -69,6 +91,23 @@ namespace Firstlight.Game
         public bool fieldWork;       // workers walk out to the nearby trees / rocks / herd and carry their load back
         public string workPose;      // how workers look while working (view): bend, chop, dig, stalk, sit, stand
         public PartDef[] parts = Array.Empty<PartDef>();
+
+        // Agricultural Age mechanics (all optional).
+        public string upgradesTo;        // can be rebuilt in place as this building (same footprint); residents stay meanwhile
+        public string[] accepts;         // stores: only these resource categories (empty = everything)
+        public string onDeposit;         // must stand on this deposit (clay / copper / tin): at least depositMin footprint cells
+        public int depositMin = 1;
+        public bool path;                // a 1-cell path tile: placed by dragging, walked on, faster to walk
+        public bool crop;                // a field: sown in spring, grows through summer, harvested in autumn
+        public bool exclusiveOutputs;    // outputs are alternatives (a crop choice), never a mix
+        public float sowWork = 4, harvestWork = 6, tendWork = 1;   // worker-days per field; tending per day in summer
+        public int irrigationRadius;     // with Irrigation known, water within this radius raises the harvest
+        public CropStageDef[] cropStages;
+        public int waterRadius;          // a well: homes within it have clean water
+        public int faithRadius;          // homes within it have their faith need met (while staffed)
+        public float healChance = 0.5f, healDamage = 0.4f;   // healers: sickness chance and harm multipliers in reach
+        public float orderPower;         // a council: unrest x (1 - orderPower) while staffed
+        public bool enablesLaws;
 
         public bool HasNearby => nearby != null && !string.IsNullOrEmpty(nearby.feature);
         public bool IsWorkplace => maxWorkers > 0;
@@ -158,6 +197,24 @@ namespace Firstlight.Game
         public float happinessSmoothing = 0.35f;        // how fast happiness follows the needs each day
         public float happinessWorstWeight = 0.6f;       // share of happiness set by the worst-met need (the rest by the average)
         public string fuelResource = "firewood", clothingResource = "clothing", herbsResource = "herbs";
+
+        // Agricultural Age.
+        public NeedDef[] needs = Array.Empty<NeedDef>();
+        public string goodsResource = "pottery";
+        public float goodsWearDays = 48;
+        public int riverWaterRadius = 7;            // homes this close to the river have water without a well
+        public float noWaterSick = 0.004f, noWaterWorkSpeed = 0.9f;
+        public float growthSpring = 0.05f, growthSummer = 0.075f, untendedGrowth = 0.4f;
+        public float migrantWinterShare = 0.8f;     // in autumn and winter, migrants want food for this share of the days to summer
+        public float birthWinterShare = 0.5f;
+        public string unrestAge = "agricultural";   // unrest counts from this age (a band of a dozen has no factions)
+        public float unrestPopScale = 400, unrestUnhappy = 0.8f, unrestCrowding = 0.5f, unrestFaithless = 0.15f, unrestSmoothing = 0.15f;
+        public float unrestWarn = 0.2f, disputeAt = 0.25f, theftAt = 0.3f, disputeChance = 2f, theftChance = 1.5f;
+        public float outbreakBase = 0.003f, outbreakMinPop = 30, outbreakWarn = 0.015f, outbreakRadius = 6, outbreakCatch = 0.55f;
+        public int traderValue = 40;
+        public float traderRate = 0.75f;
+        public int lawCooldownDays = 4;
+        public float pathSpeed = 1.35f;             // walking speed on a path tile
         public string[] namesFemale = Array.Empty<string>(), namesMale = Array.Empty<string>();
     }
 
@@ -165,6 +222,7 @@ namespace Firstlight.Game
     [Serializable] class BuildingFile { public BuildingDef[] buildings; }
     [Serializable] class ResearchFile { public ResearchDef[] research; }
     [Serializable] class AgeFile { public AgeDef[] ages; }
+    [Serializable] class LawFile { public LawDef[] laws; }
 
     /// <summary>All content definitions, loaded once from StreamingAssets/Data.</summary>
     public sealed class GameData
@@ -173,6 +231,7 @@ namespace Firstlight.Game
         public readonly List<BuildingDef> Buildings = new();
         public readonly List<ResearchDef> Research = new();
         public readonly List<AgeDef> Ages = new();
+        public readonly List<LawDef> Laws = new();
         public Balance Balance = new();
 
         readonly Dictionary<string, ResourceDef> _res = new();
@@ -194,6 +253,7 @@ namespace Firstlight.Game
             d.Research.AddRange(Read<ResearchFile>(dir, "research.json").research);
             d.Ages.AddRange(Read<AgeFile>(dir, "ages.json").ages);
             d.Balance = Read<Balance>(dir, "balance.json");
+            if (File.Exists(Path.Combine(dir, "laws.json"))) d.Laws.AddRange(Read<LawFile>(dir, "laws.json").laws ?? Array.Empty<LawDef>());
             foreach (var r in d.Resources) d._res[r.id] = r;
             foreach (var b in d.Buildings) d._bld[b.id] = b;
             foreach (var r in d.Research) d._rsc[r.id] = r;
@@ -222,7 +282,10 @@ namespace Firstlight.Game
                 if (b.sizeY <= 0) b.sizeY = 2;
                 if (b.spoilMultiplier <= 0) b.spoilMultiplier = 1f;
                 if (b.requiresTools) b.usesTools = true;
+                b.accepts ??= Array.Empty<string>();
             }
+            foreach (var l in Laws) l.effects ??= Array.Empty<Effect>();
+            Balance.needs ??= Array.Empty<NeedDef>();
             foreach (var r in Research) { r.prereqs ??= Array.Empty<string>(); r.effects ??= Array.Empty<Effect>(); }
             foreach (var a in Ages) { a.keyResearch ??= Array.Empty<string>(); a.milestones ??= Array.Empty<MilestoneDef>(); }
             foreach (var b in Buildings)
@@ -231,7 +294,14 @@ namespace Firstlight.Game
                 foreach (var o in b.outputs) if (Resource(o.id) == null) Debug.LogError($"[Data] {b.id}: unknown output {o.id}");
                 foreach (var i in b.inputs) foreach (var id in i.ids) if (Resource(id) == null) Debug.LogError($"[Data] {b.id}: unknown input {id}");
                 if (!string.IsNullOrEmpty(b.unlockedBy) && ResearchById(b.unlockedBy) == null) Debug.LogError($"[Data] {b.id}: unknown research {b.unlockedBy}");
+                if (!string.IsNullOrEmpty(b.upgradesTo))
+                {
+                    var t = Building(b.upgradesTo);
+                    if (t == null) Debug.LogError($"[Data] {b.id}: unknown upgrade {b.upgradesTo}");
+                    else if (t.sizeX != b.sizeX || t.sizeY != b.sizeY) Debug.LogError($"[Data] {b.id}: upgrade {b.upgradesTo} must have the same footprint");
+                }
             }
+            foreach (var l in Laws) if (!string.IsNullOrEmpty(l.research) && ResearchById(l.research) == null) Debug.LogError($"[Data] law {l.id}: unknown research {l.research}");
             foreach (var r in Research)
                 foreach (var p in r.prereqs) if (ResearchById(p) == null) Debug.LogError($"[Data] research {r.id}: unknown prereq {p}");
             foreach (var a in Ages)

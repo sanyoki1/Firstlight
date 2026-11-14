@@ -80,7 +80,7 @@ namespace Firstlight.Game
         {
             int cur = Map.CellAt(c.Pos);
             var tpos = new float2(c.Target % Map.W + 0.5f, c.Target / Map.W + 0.5f);
-            float speed = B.walkSpeed * Step * (Map.WaterClass[cur] == 1 ? 0.5f : 1f) * (c.Sick ? 0.6f : 1f) * (c.Carrying ? 0.85f : 1f);
+            float speed = B.walkSpeed * Step * (Map.WaterClass[cur] == 1 ? 0.5f : Map.Path[cur] ? B.pathSpeed : 1f) * (c.Sick ? 0.6f : 1f) * (c.Carrying ? 0.85f : 1f);
             float2 goal;
             if (cur == c.Target) goal = tpos;
             else
@@ -123,6 +123,7 @@ namespace Firstlight.Game
                     break;
                 case Task.GoField:
                     c.Task = Task.Work;
+                    c.TaskAmt = 0;
                     c.AtField = true;
                     c.Facing = FacingToFeature(c);
                     break;
@@ -133,7 +134,7 @@ namespace Firstlight.Game
                     for (int r = 0; r < ResCount && c.Load != null; r++)
                     {
                         if (c.Load[r] <= 0) continue;
-                        if (s != null && s.Active && s.Store != null) c.Load[r] -= PutInto(s, r, c.Load[r]);
+                        if (s != null && s.Active && s.Store != null) { if (Accepts(s, r)) c.Load[r] -= PutInto(s, r, c.Load[r]); }
                         else if (s == null && c.TaskB2 != null && c.TaskB2.Active) { c.TaskB2.Out[r] += c.Load[r]; c.TaskB2.OutTotal += c.Load[r]; c.Load[r] = 0; }
                     }
                     RecountLoad(c);
@@ -144,10 +145,24 @@ namespace Firstlight.Game
                 case Task.GoBuild:
                     c.Task = Task.Build;
                     break;
+                case Task.MoveStock:
+                {
+                    // At the open store: take the food and carry it on to the granary.
+                    var to = c.TaskB2;
+                    to.HaulReserved = math.max(0, to.HaulReserved - c.TaskAmt);
+                    float got = c.TaskB.Active ? TakeFrom(c.TaskB, c.TaskIdx, c.TaskAmt) : 0;
+                    c.Task = Task.None;
+                    if (got > 0)
+                    {
+                        c.CarryRes = c.TaskIdx; c.CarryAmt = got;
+                        if (to.Active) { c.Task = Task.DeliverOutput; c.TaskB = to; c.TaskB2 = null; Walk(c, to.Door, Activity.Carrying); }
+                    }
+                    break;
+                }
                 case Task.DeliverOutput:
                 {
                     var s = c.TaskB;
-                    if (s != null && s.Active && s.Store != null) c.CarryAmt -= PutInto(s, c.CarryRes, c.CarryAmt);
+                    if (s != null && s.Active && s.Store != null && Accepts(s, c.CarryRes)) c.CarryAmt -= PutInto(s, c.CarryRes, c.CarryAmt);
                     if (!c.Carrying) c.CarryRes = -1;
                     c.Task = Task.None;     // anything left over: Decide finds another store
                     c.TaskB = null;
@@ -176,9 +191,10 @@ namespace Firstlight.Game
                 case Task.FetchMaterial:
                 {
                     var site = c.TaskB2;
+                    if (!site.UnderWork || c.TaskIdx >= site.InTransit.Length) { c.Task = Task.None; break; }
                     site.InTransit[c.TaskIdx] -= c.TaskAmt;
-                    float still = site.Def.cost[c.TaskIdx].amount - site.Delivered[c.TaskIdx] - site.InTransit[c.TaskIdx];
-                    float got = c.TaskB.Active && site.IsSite ? TakeFrom(c.TaskB, site.CostRes[c.TaskIdx], math.min(c.TaskAmt, still)) : 0;
+                    float still = site.BuildDef.cost[c.TaskIdx].amount - site.Delivered[c.TaskIdx] - site.InTransit[c.TaskIdx];
+                    float got = c.TaskB.Active ? TakeFrom(c.TaskB, site.CostRes[c.TaskIdx], math.min(c.TaskAmt, still)) : 0;
                     c.Task = Task.None;
                     if (got > 0)
                     {
@@ -192,15 +208,16 @@ namespace Firstlight.Game
                 case Task.DeliverMaterial:
                 {
                     var site = c.TaskB2;
-                    site.InTransit[c.TaskIdx] -= c.CarryAmt;
-                    if (site.IsSite)
+                    if (site.UnderWork && c.TaskIdx < site.Delivered.Length && site.CostRes[c.TaskIdx] == c.CarryRes)
                     {
+                        site.InTransit[c.TaskIdx] -= c.CarryAmt;
+                        var bd = site.BuildDef;
                         site.Delivered[c.TaskIdx] += c.CarryAmt;
                         // Snap away float dust so a site is never left a hair short of its materials.
-                        if (site.Def.cost[c.TaskIdx].amount - site.Delivered[c.TaskIdx] < MaterialTolerance) site.Delivered[c.TaskIdx] = site.Def.cost[c.TaskIdx].amount;
+                        if (bd.cost[c.TaskIdx].amount - site.Delivered[c.TaskIdx] < MaterialTolerance) site.Delivered[c.TaskIdx] = bd.cost[c.TaskIdx].amount;
                         if (math.abs(site.InTransit[c.TaskIdx]) < 1e-3f) site.InTransit[c.TaskIdx] = 0;
                         c.CarryAmt = 0; c.CarryRes = -1;
-                        if (site.MaterialsComplete && site.Def.buildWork <= 0) Complete(site);
+                        if (site.MaterialsComplete && bd.buildWork <= 0) { if (site.IsSite) Complete(site); else CompleteUpgrade(site); }
                     }
                     c.Task = Task.None;
                     break;
@@ -235,9 +252,10 @@ namespace Firstlight.Game
         {
             switch (c.Task)
             {
-                case Task.FetchMaterial: if (c.TaskB2 != null) c.TaskB2.InTransit[c.TaskIdx] -= c.TaskAmt; break;
-                case Task.DeliverMaterial: if (c.TaskB2 != null) c.TaskB2.InTransit[c.TaskIdx] -= c.CarryAmt; break;
+                case Task.FetchMaterial: if (c.TaskB2 != null && c.TaskIdx < c.TaskB2.InTransit.Length) c.TaskB2.InTransit[c.TaskIdx] -= c.TaskAmt; break;
+                case Task.DeliverMaterial: if (c.TaskB2 != null && c.TaskIdx < c.TaskB2.InTransit.Length) c.TaskB2.InTransit[c.TaskIdx] -= c.CarryAmt; break;
                 case Task.HaulPickup: if (c.TaskB != null) c.TaskB.HaulReserved = math.max(0, c.TaskB.HaulReserved - c.TaskAmt); break;
+                case Task.MoveStock: if (c.TaskB2 != null) c.TaskB2.HaulReserved = math.max(0, c.TaskB2.HaulReserved - c.TaskAmt); break;
             }
             if (c.Task == Task.Leave || c.Task == Task.Arrive) return;
             c.AtField = false;
@@ -282,11 +300,11 @@ namespace Firstlight.Game
                 if (ReturnLoad(c)) return;
             }
             bool adult = IsAdult(c);
-            if (c.Sick || !work) { GoHome(c); return; }
+            if (c.Sick || !work || c.DisputeDays > 0) { GoHome(c); return; }
             if (!adult) { GoIdle(c, Activity.Playing); return; }
             if (c.Job != null) { WorkerDecide(c); return; }
-            if (c.IsBuilder) { if (BuilderDecide(c) || HaulDecide(c)) return; }
-            else if (HaulDecide(c) || BuilderDecide(c)) return;
+            if (c.IsBuilder) { if (BuilderDecide(c) || HaulDecide(c) || MoveStockDecide(c)) return; }
+            else if (HaulDecide(c) || BuilderDecide(c) || MoveStockDecide(c)) return;
             GoIdle(c, Activity.Idle);
         }
 
@@ -312,14 +330,14 @@ namespace Firstlight.Game
 
         void GoDeliver(Citizen c)
         {
-            var s = NearestStorageWithSpace(c.Pos, 0.5f);
+            var s = NearestStorageFor(c.Pos, c.CarryRes, 0.5f);
             if (s == null) { c.Task = Task.Idle; c.TaskAmt = 0; c.Activity = Activity.Idle; return; }   // hold it until there is room
             c.Task = Task.DeliverOutput;
             c.TaskB = s;
             Walk(c, s.Door, Activity.Carrying);
         }
 
-        bool HasStorageRoom() => NearestStorageWithSpace(TownCenter.Center, 1f) != null;
+        bool HasStorageRoom() => NearestStorageFor(TownCenter.Center, -1, 1f) != null;
 
         void TakeOutput(Citizen c, Building b)
         {
@@ -336,6 +354,7 @@ namespace Firstlight.Game
         {
             var b = c.Job;
             EnsureTool(c, b.Def.usesTools);
+            if (!WantsWorkers(b)) { c.Task = Task.GoWork; c.TaskB = b; Walk(c, b.Door, Activity.Walking); return; }
             int r = InputToFetch(b, out float amt);
             if (r >= 0)
             {
@@ -379,6 +398,7 @@ namespace Firstlight.Game
         {
             feature = -1;
             var n = b.Def.nearby;
+            if (b.Def.crop) return CropSpot(b, out feature);
             if (n == null) return -1;
             if (n.feature == "wildlife")
             {
@@ -481,7 +501,7 @@ namespace Firstlight.Game
         /// </summary>
         bool ReturnLoad(Citizen c)
         {
-            var s = NearestStorageWithSpace(c.Pos, 0.5f);
+            var s = NearestStorageFor(c.Pos, c.LoadRes, 0.5f);
             var job = c.Job != null && c.Job.Active ? c.Job : null;
             if (s == null && job == null) return false;
             if (s != null && job != null && math.distancesq(job.DoorPos, c.Pos) < math.distancesq(s.DoorPos, c.Pos)) s = null;
@@ -518,6 +538,8 @@ namespace Firstlight.Game
             if (!IsWorkTime) { c.Activity = Activity.Idle; return; }      // came early: wait for the shift to start
             bool field = c.AtField && b.Def.fieldWork;
             if (field && FieldGone(c)) { Decide(c, work); return; }   // on to another tree / rock / herd
+            // Farmers move along the rows now and then.
+            if (field && b.Def.crop && (c.TaskAmt += Step) > 6f) { c.TaskAmt = 0; Decide(c, work); return; }
             if (!field && b.OutTotal >= B.carryCapacity && HasStorageRoom()) { TakeOutput(c, b); return; }
             ProductiveSeconds += Step;
             if (b.Def.usesTools && c.Tool < 0) EnsureTool(c, true);   // tools may have come in since the shift began
@@ -533,25 +555,34 @@ namespace Firstlight.Game
         float WorkSpeed(Citizen c, bool usesTools, bool requiresTools)
         {
             float s = math.lerp(B.workSpeedMin, 1f, math.saturate(c.Happiness / 0.6f));
+            if (c.NoWater) s *= B.noWaterWorkSpeed;          // time lost fetching water from afar
             if (!usesTools) return s;
             if (c.Tool >= 0) return s * Data.Resources[c.Tool].toolSpeed;
             return requiresTools ? 0f : s * B.noToolWorkSpeed;
         }
 
-        /// <summary>A tool-using worker without a tool takes the best one in stock.</summary>
+        /// <summary>
+        /// A tool-using worker without a tool takes the best one in stock; one holding a worse tier swaps up when a
+        /// better tier is in stock (the old tool goes back to store if it has more than half its life left).
+        /// </summary>
         void EnsureTool(Citizen c, bool uses)
         {
-            if (!uses || c.Tool >= 0) return;
-            foreach (int r in _toolsBest)
+            if (!uses) return;
+            int better = BetterToolInStock(c);
+            if (better < 0) return;
+            var s = NearestStorageWith(c.Pos, better, 1f);
+            if (s == null || TakeFrom(s, better, 1f) < 1f) return;
+            if (c.Tool >= 0)
             {
-                if (StockTotals[r] < 1f) continue;
-                var s = NearestStorageWith(c.Pos, r, 1f);
-                if (s == null || TakeFrom(s, r, 1f) < 1f) continue;
-                c.Tool = r;
-                c.ToolLife = B.toolWearDays;
-                return;
+                if (c.ToolLife > B.toolWearDays * 0.5f) Deposit(c.Tool, 1f, c.Pos);
+                else Consumed[c.Tool] += 1f;
+                ToolSwaps++;
             }
+            c.Tool = better;
+            c.ToolLife = B.toolWearDays;
         }
+
+        public int ToolSwaps { get; private set; }
 
         void WearTool(Citizen c)
         {
@@ -573,6 +604,7 @@ namespace Firstlight.Game
                 if (c.Task == Task.FetchMaterial && c.TaskB2 != null) c.TaskB2.InTransit[c.TaskIdx] += c.TaskAmt;
                 else if (c.Task == Task.DeliverMaterial && c.TaskB2 != null) c.TaskB2.InTransit[c.TaskIdx] += c.CarryAmt;
                 else if (c.Task == Task.HaulPickup && c.TaskB != null) c.TaskB.HaulReserved += c.TaskAmt;
+                else if (c.Task == Task.MoveStock && c.TaskB2 != null) c.TaskB2.HaulReserved += c.TaskAmt;
             }
         }
 
@@ -581,12 +613,13 @@ namespace Firstlight.Game
         {
             foreach (var site in Buildings)
             {
-                if (!site.IsSite) continue;
+                if (!site.UnderWork) continue;
+                var bd = site.BuildDef;
                 if (!site.MaterialsComplete)
                 {
-                    for (int i = 0; i < site.Def.cost.Length; i++)
+                    for (int i = 0; i < bd.cost.Length; i++)
                     {
-                        float remaining = site.Def.cost[i].amount - site.Delivered[i] - site.InTransit[i];
+                        float remaining = bd.cost[i].amount - site.Delivered[i] - site.InTransit[i];
                         if (remaining < MaterialTolerance) continue;
                         var s = NearestStorageWith(site.DoorPos, site.CostRes[i]);
                         if (s == null) continue;
@@ -611,12 +644,12 @@ namespace Firstlight.Game
         void BuildAct(Citizen c, bool work)
         {
             var site = c.TaskB2;
-            if (!work || site == null || !site.IsSite) { Decide(c, work); return; }
+            if (!work || site == null || !site.UnderWork) { Decide(c, work); return; }
             float speed = WorkSpeed(c, B.buildersUseTools, false);
-            site.Work += B.builderWorkPerDay * Step / WorkdaySeconds * speed * Effect("build.speed") / math.max(0.05f, site.Def.buildWork);
+            site.Work += B.builderWorkPerDay * Step / WorkdaySeconds * speed * Effect("build.speed") / math.max(0.05f, site.BuildDef.buildWork);
             c.Activity = Activity.Building;
             if (B.buildersUseTools) WearTool(c);
-            if (site.Work >= 1f) { Complete(site); Decide(c, work); }
+            if (site.Work >= 1f) { if (site.IsSite) Complete(site); else CompleteUpgrade(site); Decide(c, work); }
         }
 
         /// <summary>Unassigned people carry finished goods from workplaces to storage.</summary>
@@ -679,14 +712,14 @@ namespace Firstlight.Game
             if (TownCenter == null) return;
             foreach (var b in Buildings) { b.Workers = 0; b.Builders = 0; }
             bool sites = false;
-            foreach (var b in Buildings) if (b.IsSite) { sites = true; break; }
+            foreach (var b in Buildings) if (b.UnderWork) { sites = true; break; }
             int wantBuilders = sites ? BuildersWanted : 0, builders = 0;
             _free.Clear();
             foreach (var c in Citizens)
             {
-                bool able = !c.Gone && IsAdult(c) && !c.Sick && c.Task != Task.Arrive;
+                bool able = !c.Gone && IsAdult(c) && !c.Sick && c.DisputeDays == 0 && c.Task != Task.Arrive;
                 if (!able) { if (c.Job != null || c.IsBuilder) Unassign(c); continue; }
-                if (c.Job != null && (!c.Job.Active || c.Job.Paused || !c.Job.Def.IsWorkplace || c.Job.Workers >= c.Job.Def.maxWorkers)) Unassign(c);
+                if (c.Job != null && (!c.Job.Active || c.Job.Paused || !c.Job.Def.IsWorkplace || c.Job.Workers >= c.Job.Def.maxWorkers || !WantsWorkers(c.Job))) Unassign(c);
                 if (c.IsBuilder && builders >= wantBuilders) Unassign(c);
                 if (c.Job != null) c.Job.Workers++;
                 else if (c.IsBuilder) builders++;
@@ -696,7 +729,7 @@ namespace Firstlight.Game
             for (int p = (int)Priority.High; p >= 0; p--)
             {
                 foreach (var b in Buildings)
-                    if (b.Active && !b.Paused && b.Def.IsWorkplace && (int)b.Priority == p) _demand.Add(b);
+                    if (b.Active && !b.Paused && b.Def.IsWorkplace && (int)b.Priority == p && WantsWorkers(b)) _demand.Add(b);
                 if (p == (int)Priority.High) _demand.Add(null);
             }
             for (int k = 0; k < _demand.Count; k++)
@@ -711,7 +744,7 @@ namespace Firstlight.Game
                 }
             }
             foreach (var b in Buildings)
-                if (b.Active && b.Def.IsWorkplace) b.Status = b.Paused ? "Paused" : b.Workers == 0 ? "No workers" : b.Status == "No workers" || b.Status == "Paused" ? "" : b.Status;
+                if (b.Active && b.Def.IsWorkplace) b.Status = b.Paused ? "Paused" : !WantsWorkers(b) ? (Season == 3 ? "Nothing to do this season" : "The harvest is in") : b.Workers == 0 ? "No workers" : b.Status == "No workers" || b.Status == "Paused" ? "" : b.Status;
         }
 
         // Builders share the top tier with high-priority jobs: filled after them, but never taken by them.
@@ -785,11 +818,20 @@ namespace Firstlight.Game
             int firstAdult = _order.Count;
             foreach (var c in Citizens) if (IsAdult(c)) _order.Add(c);
             for (int i = _order.Count - 1; i > firstAdult; i--) { int j = firstAdult + _rng.Next(i - firstAdult + 1); (_order[i], _order[j]) = (_order[j], _order[i]); }
+            // Food Sharing: when there is not enough, everyone gets the same share instead of some going without.
+            float eaten = Effect("food.eaten"), share = 1f;
+            if (Effect("law.foodsharing") > 1f)
+            {
+                float total = 0;
+                foreach (var c in _order) total += (IsAdult(c) ? B.foodPerAdult : B.foodPerChild) * eaten;
+                share = total <= 0 ? 1f : math.min(1f, FoodStock / total);
+            }
             foreach (var c in _order)
             {
-                float want = IsAdult(c) ? B.foodPerAdult : B.foodPerChild, got = 0;
-                foreach (int r in _foodByPerish) { if (got >= want) break; got += Withdraw(r, want - got); }
+                float want = (IsAdult(c) ? B.foodPerAdult : B.foodPerChild) * eaten, got = 0, take = want * share;
+                foreach (int r in _foodByPerish) { if (got >= take) break; got += Withdraw(r, take - got); }
                 c.Hungry = got < want * 0.5f;
+                c.Ate = want > 0 ? got / want : 1f;
             }
 
             bool cold = temp < comfort;
@@ -803,28 +845,31 @@ namespace Firstlight.Game
                     if (c.ClothingLife > 0) c.ClothingLife -= 1f;
                 }
                 var home = c.Home;
+                var at = home != null ? home.Center : TownCenter.Center;
                 float w = temp;
                 if (home != null) w += home.Def.homeWarmth * (home.Heated ? 1f : B.unheatedHomeFactor);
                 if (cold && c.ClothingLife > 0) w += B.clothingWarmth;
-                if (NearFire(home != null ? home.Center : TownCenter.Center)) w += B.campfireWarmth;
+                if (NearFire(at)) w += B.campfireWarmth;
                 c.Warmth = w;
                 c.Cold = w < comfort;
 
-                // Sickness: crowding, cold and hunger raise the chance; a herbalist in reach (with herbs) lowers chance and harm.
-                bool covered = Covered(home != null ? home.Center : TownCenter.Center);
+                // Sickness: crowding, cold, hunger and bad water raise the chance; a healer in reach (with herbs) lowers
+                // chance and harm, a healer's hut more than a herbalist.
+                bool covered = HealthCover(at, out float healChance, out float healDamage);
                 float sickDmg = 0;
                 if (c.SickDays > 0)
                 {
                     c.Treated = covered && _herbs >= 0 && Withdraw(_herbs, B.herbsPerSickDay) > 0;
-                    sickDmg = B.sickDamage * (c.Treated ? B.herbalistDamageMult : 1f);
+                    sickDmg = B.sickDamage * (c.Treated ? healDamage : 1f);
                     c.SickDays--;
                     if (c.SickDays == 0) _jobsDirty = true;
                 }
                 else
                 {
-                    int crowd = home != null ? math.max(0, home.Residents - B.crowdingFreeOccupants) : 0;
-                    float chance = B.sickBase + B.sickPerCrowding * crowd + (c.Cold ? B.sickCold : 0) + (c.Hungry ? B.sickStarving : 0);
-                    if (covered && _herbs >= 0 && StockTotals[_herbs] > 0) chance *= B.herbalistChanceMult;
+                    float crowd = home != null ? math.max(0, home.Residents - CrowdFree(home)) : 0;
+                    float chance = B.sickBase + B.sickPerCrowding * crowd + (c.Cold ? B.sickCold : 0) + (c.Hungry ? B.sickStarving : 0) + (c.NoWater ? B.noWaterSick : 0);
+                    chance *= Effect("sickness");
+                    if (covered && _herbs >= 0 && StockTotals[_herbs] > 0) chance *= healChance;
                     if (_rng.NextDouble() < chance)
                     {
                         c.SickDays = _rng.Next(B.sickDaysMin, B.sickDaysMax + 1);
@@ -832,7 +877,8 @@ namespace Firstlight.Game
                     }
                 }
 
-                float starve = c.Hungry ? B.starveDamage : 0;
+                // Hunger harms in proportion to how little was eaten (shared short rations harm less than none).
+                float starve = c.Hungry ? B.starveDamage * math.saturate((1f - c.Ate) * 1.6f) : 0;
                 float coldDmg = c.Cold ? B.coldDamage * (comfort - w) / comfort : 0;
                 float total = starve + coldDmg + sickDmg;
                 if (total > 0)
@@ -848,8 +894,10 @@ namespace Firstlight.Game
                 float warm = math.saturate(w / comfort);
                 float shelter = home != null ? 1f : B.homelessShelter;
                 float health = c.Health * (c.Sick ? 0.6f : 1f);
-                float avg = (food + warm + shelter + health) * 0.25f;
+                float sum = food + warm + shelter + health; int count = 4;
                 float min = math.min(math.min(food, warm), math.min(shelter, health));
+                ExtraNeeds(c, ref sum, ref count, ref min);     // water, goods, faith once they apply
+                float avg = sum / count;
                 float target = math.saturate((avg * (1f - B.happinessWorstWeight) + min * B.happinessWorstWeight) * Effect("happiness"));
                 c.Happiness = math.lerp(c.Happiness, target, B.happinessSmoothing);
                 c.UnhappyDays = c.Happiness < B.leaveHappiness ? c.UnhappyDays + 1 : 0;
@@ -863,12 +911,6 @@ namespace Firstlight.Game
             return false;
         }
 
-        bool Covered(float2 p)
-        {
-            foreach (var b in Buildings)
-                if (b.Active && b.Workers > 0 && b.Def.healthRadius > 0 && math.distance(b.Center, p) <= b.Def.healthRadius) return true;
-            return false;
-        }
 
         // ------------------------------------------------------------------ population
 
@@ -891,7 +933,10 @@ namespace Firstlight.Game
             foreach (var c in Citizens) if (!c.Gone && !c.Female && c.Age >= B.fertileMin) { man = true; break; }
             // The baby stays with its mother, so her home may end up crowded (more sickness) if others had the room.
             int room = HousingCapacity - Population;
-            if (man && FoodDays >= B.birthMinFoodDays && room > 0)
+            // The stores have to carry everyone until the next harvest: families and newcomers plan for the lean
+            // months, not for the pile on the day (a full store just after the harvest has winter and spring to feed).
+            float birthFood = math.max(B.birthMinFoodDays, LeanDays() * B.birthWinterShare);
+            if (man && FoodDays >= birthFood && room > 0)
             {
                 int n = Citizens.Count;
                 for (int i = 0; i < n && room > 0; i++)
@@ -913,11 +958,12 @@ namespace Firstlight.Game
             if (B.migrantCheckDays > 0 && Day % (int)math.max(1, B.migrantCheckDays) == 0)
             {
                 int free = HousingCapacity - Population;
-                if (free >= B.migrantMinFreeHousing && FoodDays >= B.migrantMinFoodDays && AverageHappiness >= B.migrantMinHappiness && _rng.NextDouble() < B.migrantChance)
+                float migrantFood = math.max(B.migrantMinFoodDays, LeanDays() * B.migrantWinterShare);
+                if (free >= B.migrantMinFreeHousing && FoodDays >= migrantFood && AverageHappiness >= B.migrantMinHappiness && _rng.NextDouble() < B.migrantChance * Effect("migrants"))
                 {
                     int n = math.min(free, _rng.Next(B.migrantsMin, B.migrantsMax + 1));
                     // Only as many as the stores can feed for the same number of days with them counted in.
-                    while (n > 0 && FoodStock / (DailyFoodNeed + n * B.foodPerAdult) < B.migrantMinFoodDays) n--;
+                    while (n > 0 && FoodStock / (DailyFoodNeed + n * B.foodPerAdult) < migrantFood) n--;
                     if (n > 0)
                     {
                         int edge = Map.EdgeCellNear(TownCenter.Center, _rng);
