@@ -682,3 +682,12 @@ two hard maps; along the way these strategy fixes came in (the game's rules did 
 - Not done from the rough-edges list: deposits still never run out, the auto-player still stops at ~150 people, and
   the Hunters' Camp still does not use the animated two-man hunt (`Band`).
 - Bronze comes in years 10-13 on all seeds (earlier than the 12-25 asked for).
+
+## Phase 5: QA
+
+Independent QA of phases 1-4: `docs/quarter-qa-report.md` (32 findings, how each was found and fixed, test results,
+an honest assessment). New tools: `-fuzztest` (`tools/fuzztest.sh`), `-autotest -savecheck / -sitecheck / -soundcheck
+/ -difficulty N`, `-load SAVE -soak MINUTES [-crowd N] [-noauto]`, `-reloadtest`, `-load SAVE -shot NAME`. Game
+changes worth knowing when continuing: deliveries reserve room in stores (`Building.HaulReserved` on stores = incoming
+goods; `Settlement.Room`), sites have a build order (their `Priority`), an empty settlement ends the game with a screen,
+the Bronze Age needs a Bronze Foundry and Writing / Bronze Working cost 600.

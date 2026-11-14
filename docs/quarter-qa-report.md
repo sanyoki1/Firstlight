@@ -57,6 +57,14 @@ Severity: **blocker** (crash, lost save, game can't go on), **major** (wrong res
 | F22 | minor | The outbreak warning always said "Crowded homes and unclean water", also in a town where every home had water (by the auto-test's numbers the risk in a big town comes mostly from its size and from homes out of a healer's reach). The player was sent to fix the wrong thing. | `-p4shots` screenshot (Water 100 % next to the warning) | fixed: the warning names the causes that apply (crowded homes / homes without clean water / homes out of a healer's reach / the town's size) |
 | F23 | minor | At a large interface size (2560x1440 at 160 %, 1280x720 at 160 %) the top bar's research box ran over the food figure. | `-shot` stills at both sizes | fixed: a narrow top bar (shorter buttons without key hints, shorter research box) when the room runs out |
 | F24 | cosmetic | The new outbreak warning (F22) was cut off in its chip (chips hold about 60 letters). | the same stills | fixed: shorter wording ("Sickness could spread: crowded homes, no healer near.") |
+| F25 | minor | A hint card nobody dismissed stayed up after its moment ("Winter has come" was still showing in the summer of year 12) and held back every later hint. | `-uishots` screenshot | fixed: a hint whose condition has passed (winter over, flood gone, offer lapsed) closes by itself |
+| F26 | cosmetic | The hint card sat under the goals / jobs / goods / laws panels when something was selected, hiding its buttons. | `-uishots` screenshot | fixed: the card waits while one of those panels is open |
+| F27 | minor | About one garbage collection a second during play (~50 gen-0 collections a minute at 3x speed, with or without the auto-player; heap flat at ~8 MB). No leak and no growth, but each collection is a possible hitch. The source was not found: batch mode cannot count per-frame allocations here (`GC.GetAllocatedBytesForCurrentThread` reads 0 on this Mono). | `-soak` | **not fixed** (needs the Unity profiler on a development build) |
+| F28 | balance | Harsh: the auto-player loses seed 2026 in its first winter (cold 7, starvation 4); seeds 7 and 1234 reach Bronze in years 14 and 11. Gentle: all three reach Bronze (years 9-12). Harsh is measurably harder, possibly too hard on slow maps for a first game. | `-autotest -difficulty` | not changed (the auto-player is not tuned for Harsh; needs a human balance pass) |
+| F29 | cosmetic | "Storage is nearly full" is one of the first two warnings of every Standard game (170 starting goods in the campfire's 180). It points at the right next step (a storage pile, guide step 5) but reads like a problem in the first minute. | p4 screenshot | not changed |
+| F30 | minor | The tin deposit is small: 4-19 valid Tin Mine spots per map, usually more than 30 cells from the campfire. The auto-player missed it on seed 2026 (traders brought tin); a human gets the reason and the deposit hint while placing. | `-sitecheck` | not changed |
+| F31 | minor | F8 (quickload) loads at once even with unsaved play (the menu's Load asks first). | reading `Hud.Keys` | not changed (instant quickload is the convention) |
+| F32 | cosmetic | With the auto-player on, its "running the settlement" toast covers the builders -/+ control at the bottom right. | screenshots | not changed (auto-player only) |
 
 ## Edge states and input paths
 
@@ -90,7 +98,6 @@ Severity: **blocker** (crash, lost save, game can't go on), **major** (wrong res
 - **Speed keys while the game menu is open**: ignored (the menu holds the keys; the settlement is paused).
 
 ## Content audit
-## Content audit
 
 - **Every building has a place on every tested map** (`-sitecheck`, 15 seeds): all 32 buildings can be placed somewhere.
   The copper and tin deposits are mostly more than 30 cells from the suggested campfire (by design: they are far
@@ -110,8 +117,119 @@ Severity: **blocker** (crash, lost save, game can't go on), **major** (wrong res
   reading each stat); they lapse when the council is demolished.
 - **Texts**: every warning and event line was read for grammar and tone; the four wrong ones are F4/F5. All are neutral.
 
-## Test results
-## Test results
+## Balance read as a player's diary (seeds 2026 and 7)
+
+- Stone Age: tense and readable. Food and firewood run close to zero at the end of most winters; a winter warning
+  comes in autumn. Wood is the bottleneck on thin-woods maps (seed 99 starved of wood until F17).
+- Agricultural Age: once fields run, food stops being a decision (2000-6000 in store, 30-45 food days, fields left
+  fallow by the auto-player). Needs reach 95-100 % within a few years; unrest settles at 11-16 %; outbreaks 4-9 in 30
+  years. Clothing stays near 0 in store all game (made and worn as fast as it comes); stone tools pile up once bronze
+  tools arrive.
+- Research: always taken in roughly the same order by the auto-player (its plan), and every topic is known by year
+  13-15, so the last third of a 30-year run has nothing left to research. That is the end of the slice, not a bug.
+- Deaths come with warning: starvation follows "Food will run out", cold follows "Not enough firewood for winter";
+  old age dominates later.
+- Pacing changed (P1): Bronze in years 11-15 for the auto-player (was 9-13).
+
 ## Test results
 
-(filled in at the end)
+All on the final code (the last commits touch only the HUD; the sim is unchanged since the last full runs except for
+warning wording).
+
+### Auto-test, 30 years, the 10 standard + 5 new seeds (all PASS, no errors or exceptions)
+
+| Seed | Agricultural Age | Bronze Age | Final pop (min, max) | Deaths | Result |
+|---|---|---|---|---|---|
+| 2026 | year 6, Spring | year 15, Autumn | 159 (10, 160) | cold 14, old age 123, sickness 8 | PASS |
+| 7 | year 3, Winter | year 12, Spring | 168 (12, 168) | cold 4, old age 164 | PASS |
+| 1234 | year 3, Winter | year 11, Summer | 160 (12, 160) | old age 173, sickness 1 | PASS |
+| 99 | year 7, Spring | year 15, Summer | 159 (8, 160) | cold 10, old age 128, sickness 4 | PASS |
+| 5 | year 4, Spring | year 12, Spring | 162 (12, 162) | cold 2, old age 169 | PASS |
+| 11 | year 6, Spring | year 14, Summer | 166 (12, 166) | old age 142, sickness 3, starvation 1 | PASS |
+| 42 | year 5, Summer | year 12, Autumn | 168 (12, 168) | cold 11, old age 137, sickness 7, starvation 4 | PASS |
+| 3 | year 4, Spring | year 11, Winter | 160 (12, 160) | old age 178 | PASS |
+| 100 | year 5, Spring | year 13, Spring | 162 (12, 162) | old age 161, sickness 3 | PASS |
+| 777 | year 5, Summer | year 12, Summer | 160 (12, 160) | old age 160, sickness 2 | PASS |
+| 13 (new) | year 4, Summer | year 11, Winter | 163 (12, 164) | old age 154, sickness 3, starvation 3 | PASS |
+| 21 (new) | year 3, Winter | year 11, Summer | 158 (12, 158) | old age 174, sickness 1 | PASS |
+| 555 (new) | year 3, Winter | year 11, Spring | 160 (12, 160) | old age 185, sickness 1 | PASS |
+| 8080 (new) | year 5, Spring | year 13, Winter | 156 (12, 156) | cold 1, old age 162, sickness 2 | PASS |
+| 31337 (new) | year 5, Summer | year 13, Summer | 173 (12, 174) | old age 140, sickness 4, starvation 3 | PASS |
+
+Baseline before any fix (same 15 seeds, `runs/qa/baseline-autotest.txt`): 15/15 PASS, Bronze in years 9-13. Along the
+way seeds 3 and 99 failed after game fixes changed their timing; both were auto-player weaknesses (F16, F17 and the
+spring-fields rule) and were fixed in the auto-player. 70-85 s per seed, 0.46-0.53 ms per sim step.
+
+- **Determinism**: seed 2026 twice, 30 years: md and json byte-identical (baseline and final).
+- **Save/load check** (`-saveloadcheck`, 30 years, save at day 483): seeds 2026, 7, 11, 42, 3, 99 all IDENTICAL, runs
+  A and B PASS (baseline: 2026 and 42 at 12 years, IDENTICAL).
+- **Difficulty**: Gentle 2026 / 7 / 1234: Bronze in years 11 / 12 / 9. Harsh: 2026 dies out in year 2; 7 / 1234 reach
+  Bronze in years 14 / 11 (F28).
+
+### Fuzz test (final round, `tools/fuzztest.sh 20 ...`, 28 seeds, 20 years each)
+
+| Mode | Seeds | Result |
+|---|---|---|
+| hostile 2.5 % of hours + auto-player | 1 4 7 10 13 16 19 22 25 28 31 34 37 40 43 46 49 52 | 18/18 no violations (12 reach Bronze, 2 Agricultural, the rest die out) |
+| hostile 8 % of hours + auto-player | 2 5 8 11 14 17 20 23 26 29 | 10/10 no violations |
+| hostile alone (seed % 3 == 0) | 3 6 9 12 (earlier rounds) | no violations; the band dies out in 1-3 years, then 40 days of the empty settlement |
+
+Every run saves and loads 5-60 times at random and awkward moments; every round trip byte-identical. Earlier rounds
+(about 70 runs) found F9-F13 and F20.
+
+### Other probes
+
+- `-autotest -savecheck`: PASS. `-autotest -soundcheck`: wind / river / fire loops peak 0.80, RMS 0.16 / 0.18 / 0.05,
+  DC 0.000, no NaN, loop seams within 2x the typical sample step; click peak 0.35, age-up tone 0.59. Worst case with
+  every source at its loudest at the same instant and all volumes at 100 %: sum of peaks 1.44 (clipping only if the
+  age-up tone and a click land on all three loops' peaks together); the default volumes (80 / 70 / 70 %) keep it under
+  0.8. Nothing plays audibly at volume 0 (every source is volume x master x setting). Sound is off in batch mode, so
+  clip lifetime across new game / load was checked by code (clips now made once per run).
+- `-sitecheck`, 15 seeds: PASS. `-reloadtest`: flat memory over 6 scene reloads, no leak warnings.
+- `-soak` (batch, every frame rendered to 1920x1080; Ryzen 5700X / RX 7800 XT; seed 7's 156-person Bronze town at 3x
+  speed with the auto-player): 5.4-5.7 ms per frame, heap 7.5-7.7 MB, Unity memory 128.0-128.4 MB over 4 minutes. With
+  400 extra people (556): 6.9-7.4 ms per frame over 10 minutes (30 minutes of 1x play), heap 8.1-8.5 MB, Unity memory
+  127.4 -> 128.4 MB, no leak warnings on quit; about 50 gen-0 collections a minute (F27). (The 400 added people have no
+  homes and 10 days of food each, so that town starves down to 7 by minute 9: a load test, not play.)
+- `-smoketest` + `-smokecontinue` at 1280x720: campfire by click, play, save from the menu, Continue: digest MATCH.
+- Screenshots re-shot and looked at (windowed `-uishots -seed 7`, 31 shots; `-p4shots`, 21 shots; `-shot` stills at
+  2560x1440 and 1280x720 at 160 %; the empty-settlement screen). F21-F26 came from them; no other regressions seen.
+  New stills: `docs/art/quarter/qa-empty-settlement.png`, `docs/art/quarter/qa-site-build-order.png`.
+
+## Summary
+
+32 findings: 6 major, 15 minor, 9 cosmetic, 2 balance (plus 3 auto-player strategy fixes needed to keep the test
+honest, F16 and two under F17/seed 3). Fixed: all 6 major, 12 of 15 minor, 7 of 9 cosmetic, 1 balance change (pacing).
+Not fixed: F27 (GC rate, needs a profiler), F28 (Harsh balance), F29, F30, F31, F32. No blockers: no crash or exception
+in any run, saves round-trip bit-exactly under abuse, and a damaged save never crashes the game.
+
+## Honest assessment: how playable is it for a first-time player?
+
+It is a complete-feeling slice: a stranger can start from the title, be walked through the first year by the guide,
+hover any number for what moves it, save and load safely, and play from a campfire to a Bronze Age town of about 150
+in a few hours. The simulation underneath is now robust: a deliberately hostile player could not break its bookkeeping
+in the final 28 fuzz runs, and the worst bugs a human would have hit (people freezing with goods in their hands,
+carriers going round in circles, homes overfilling, no end when everyone died, autosaves overwritten with a dead town,
+no way to choose which site gets the scarce wood) are fixed. What holds it back now is feel, legibility and the late
+game more than correctness.
+
+Top 10 things that still hold it back:
+1. **Nobody has played it.** The guide, warnings and pacing were tuned against a scripted player that never hesitates;
+   a first-time human will be slower and will meet the first-winter famine harder than the tests suggest.
+2. **The first winter is harsh and only partly explained.** Food and firewood run near zero at the end of most Stone Age
+   winters even for the auto-player; why (gathering stops in winter) is explained in a one-time hint.
+3. **Little to decide late.** By year 12-15 every topic is known, needs sit at 95-100 % and food piles up; the sandbox
+   after Bronze has no goals.
+4. **Haul distance is invisible.** Carriers walking 50-100 cells to a store with room are only visible by following a
+   person; there is no logistics view.
+5. **Full storage is only half-explained**: goods are now put down on workplace piles instead of freezing people, but the
+   warning says "Storage is nearly full", not where goods are piling up.
+6. **Difficulty balance is untested by people**: Harsh may be too hard on slow maps (F28).
+7. **Sound is unheard**: the buffers measure clean; whether it sounds good is unknown.
+8. **A garbage collection every second** (F27): probably invisible at 60 fps, possibly stutter on a slower PC.
+9. **Readability in motion**: hundreds of small people, bundles and piles; stills read well, motion has not been judged.
+10. **Dense panels at 1280x720** (the layout is 1707 wide there): usable, tight.
+
+Not verifiable without a human: the feel of the camera and controls (drag, edge scroll, rotation keys), whether
+click-through ever happens with a real mouse at panel edges, readability in motion and at night, the sound, how long
+the first winter takes to understand, and whether the guide's nine steps are the right ones.
