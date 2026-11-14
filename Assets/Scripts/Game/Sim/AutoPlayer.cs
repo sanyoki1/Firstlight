@@ -256,6 +256,13 @@ namespace Firstlight.Game
         /// </summary>
         bool UnblockSites()
         {
+            // A site that makes a material the other sites are short of is built first (a replacement woodcutter waiting
+            // behind a hunters' camp for the same scarce wood starved seed 99 of wood for two years).
+            foreach (var site in S.Sites)
+            {
+                if (!site.IsSite || site.Priority == Priority.High) continue;
+                if (site.Def.outputs.Any(o => LowStock(o.id) > 0 && S.Stock(o.id) < LowStock(o.id))) { S.SetPriority(site, Priority.High); Note($"{site.Def.id} site to be built first"); }
+            }
             foreach (var site in S.Sites)
             {
                 var bd = site.BuildDef;
