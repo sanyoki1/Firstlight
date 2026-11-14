@@ -136,10 +136,12 @@ namespace Firstlight.Game
                 {
                     // Into the store if it still has room, else (no room anywhere) onto the workplace's pile.
                     var s = c.TaskB;
+                    if (s != null && c.TaskAmt > 0) s.HaulReserved = math.max(0, s.HaulReserved - c.TaskAmt);
+                    c.TaskAmt = 0;
                     for (int r = 0; r < ResCount && c.Load != null; r++)
                     {
                         if (c.Load[r] <= 0) continue;
-                        if (s != null && s.Active && s.Store != null) { if (Accepts(s, r)) c.Load[r] -= PutInto(s, r, c.Load[r]); }
+                        if (s != null && s.Active && s.Store != null) { if (Accepts(s, r)) c.Load[r] -= PutInto(s, r, math.min(c.Load[r], math.max(0, Room(s)))); }
                         else if (s == null && c.TaskB2 != null && c.TaskB2.Active) { c.TaskB2.Out[r] += c.Load[r]; c.TaskB2.OutTotal += c.Load[r]; c.Load[r] = 0; }
                     }
                     RecountLoad(c);
@@ -174,7 +176,9 @@ namespace Firstlight.Game
                     var s = c.TaskB;
                     if (s != null && c.TaskAmt > 0) s.HaulReserved = math.max(0, s.HaulReserved - c.TaskAmt);
                     c.TaskAmt = 0;
-                    if (s != null && s.Active && s.Store != null && Accepts(s, c.CarryRes)) c.CarryAmt -= PutInto(s, c.CarryRes, c.CarryAmt);
+                    // Only into room nobody else is on the way to fill (taking more than was promised here sent the others
+                    // round the stores for days).
+                    if (s != null && s.Active && s.Store != null && Accepts(s, c.CarryRes)) c.CarryAmt -= PutInto(s, c.CarryRes, math.min(c.CarryAmt, math.max(0, Room(s))));
                     if (!c.Carrying) c.CarryRes = -1;
                     c.Task = Task.None;     // anything left over: Decide finds another store
                     c.TaskB = null;
@@ -268,6 +272,7 @@ namespace Firstlight.Game
                 case Task.DeliverMaterial: if (c.TaskB2 != null && c.TaskIdx < c.TaskB2.InTransit.Length) c.TaskB2.InTransit[c.TaskIdx] -= c.CarryAmt; break;
                 case Task.HaulPickup: if (c.TaskB != null) c.TaskB.HaulReserved = math.max(0, c.TaskB.HaulReserved - c.TaskAmt); break;
                 case Task.MoveStock: if (c.TaskB2 != null) c.TaskB2.HaulReserved = math.max(0, c.TaskB2.HaulReserved - c.TaskAmt); break;
+                case Task.FieldReturn:
                 case Task.DeliverOutput: if (c.TaskB != null && c.TaskAmt > 0) { c.TaskB.HaulReserved = math.max(0, c.TaskB.HaulReserved - c.TaskAmt); c.TaskAmt = 0; } break;
             }
             if (c.Task == Task.Leave || c.Task == Task.Arrive) return;
@@ -571,13 +576,16 @@ namespace Firstlight.Game
         /// </summary>
         bool ReturnLoad(Citizen c)
         {
-            var s = NearestStorageFor(c.Pos, c.LoadRes, 0.5f);
+            var s = NearestStorageFor(c.Pos, c.LoadRes, 0.5f, true);
             var job = c.Job != null && c.Job.Active ? c.Job : null;
             if (s == null && job == null) return false;
             // Farmers work inside their field, so its door is always nearest: they take the harvest to the store.
             if (s != null && job != null && !job.Def.crop && math.distancesq(job.DoorPos, c.Pos) < math.distancesq(s.DoorPos, c.Pos)) s = null;
             c.Task = Task.FieldReturn;
             c.TaskB = s; c.TaskB2 = s == null ? job : null;
+            // Like every delivery, the room is promised on the way (field loads used to fill gaps others were walking to).
+            c.TaskAmt = s != null ? math.max(0, math.min(c.LoadTotal, Free(s) - s.HaulReserved)) : 0;
+            if (s != null) s.HaulReserved += c.TaskAmt;
             Walk(c, s != null ? s.Door : job.Door, Activity.Carrying);
             return true;
         }
@@ -684,7 +692,7 @@ namespace Firstlight.Game
                 else if (c.Task == Task.DeliverMaterial && c.TaskB2 != null) c.TaskB2.InTransit[c.TaskIdx] += c.CarryAmt;
                 else if (c.Task == Task.HaulPickup && c.TaskB != null) c.TaskB.HaulReserved += c.TaskAmt;
                 else if (c.Task == Task.MoveStock && c.TaskB2 != null) c.TaskB2.HaulReserved += c.TaskAmt;
-                else if (c.Task == Task.DeliverOutput && c.TaskB != null && c.TaskAmt > 0) c.TaskB.HaulReserved += c.TaskAmt;
+                else if ((c.Task == Task.DeliverOutput || c.Task == Task.FieldReturn) && c.TaskB != null && c.TaskAmt > 0) c.TaskB.HaulReserved += c.TaskAmt;
             }
         }
 

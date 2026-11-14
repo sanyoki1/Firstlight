@@ -424,6 +424,9 @@ namespace Firstlight.Game
 
         float Free(Building s) => Capacity(s) - s.Stored;
 
+        /// <summary>Room not already promised to someone carrying goods here.</summary>
+        float Room(Building s) => Free(s) - s.HaulReserved;
+
         /// <summary>A store with an accepts list (the granary) only takes those categories.</summary>
         public bool Accepts(Building s, int r) => r < 0 || s.Def.accepts.Length == 0 || Array.IndexOf(s.Def.accepts, Data.Resources[r].category) >= 0;
 
@@ -461,6 +464,13 @@ namespace Firstlight.Game
         float Deposit(int r, float amt, float2 near)
         {
             float left = amt;
+            // Room nobody is carrying goods to first; then, rather than lose it, any room.
+            for (int k = 0; k < 8 && left > 0.001f; k++)
+            {
+                var s = NearestStorageFor(near, r, 0.01f, true);
+                if (s == null) break;
+                left -= PutInto(s, r, math.min(left, Room(s)));
+            }
             for (int k = 0; k < 8 && left > 0.001f; k++)
             {
                 var s = NearestStorageFor(near, r, 0.01f);
