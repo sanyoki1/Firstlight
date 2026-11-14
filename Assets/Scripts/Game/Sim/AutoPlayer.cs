@@ -57,7 +57,8 @@ namespace Firstlight.Game
             }
             if (S.Age.order >= 1) Agricultural();
             BuildSomething();
-            if (S.CanAdvanceAge())
+            // A new age brings new needs: not on the edge of a hungry winter.
+            if (S.CanAdvanceAge() && (Careless || S.FoodDays >= 3f && (S.Season <= 1 || S.FoodStock >= S.DailyFoodNeed * S.LeanDays() * 0.4f)))
             {
                 string from = S.Age.name;
                 if (S.AdvanceAge()) { Note($"advanced from the {from} to the {S.Age.name}"); QueueResearch(); }
@@ -263,6 +264,9 @@ namespace Firstlight.Game
 
             Want(Count("gatherers_camp") < 1, "gatherers_camp");
             Want(Count("woodcutter") < 1, "woodcutter");
+            // Nobody sleeps out in the cold: from summer on, roofs for everyone come before anything else.
+            bool homeEarly = S.Season >= 1 && housing < pop;
+            Want(homeEarly, D.Building("hide_tent") != null && Unlocked("hide_tent") && S.Stock("hides") >= 8 ? "hide_tent" : S.Age.order >= 1 && Unlocked("thatched_hut") ? "thatched_hut" : "lean_to");
             // Somewhere to put things before the campfire's small store fills up.
             Want(Count("storage_pile") < 1 && S.StorageUsed > S.StorageCapacity * 0.8f, "storage_pile");
             // A first camp in thin woods can't feed the band: a second one before anything else.

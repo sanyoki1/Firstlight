@@ -99,7 +99,7 @@
 
   "_needsComment": "Needs that arrive in the Agricultural Age. unmet = happiness from that need while it is not met (1 = met).",
   "needs": [
-    { "id": "water", "name": "Clean water", "age": "agricultural", "research": "", "unmet": 0.5 },
+    { "id": "water", "name": "Clean water", "age": "agricultural", "research": "", "unmet": 0.6 },
     { "id": "goods", "name": "Pottery", "age": "agricultural", "research": "pottery", "unmet": 0.7 },
     { "id": "faith", "name": "Faith", "age": "agricultural", "research": "shamanism", "unmet": 0.65 }
   ],
