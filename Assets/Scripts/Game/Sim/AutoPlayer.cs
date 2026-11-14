@@ -261,7 +261,10 @@ namespace Firstlight.Game
             foreach (var site in S.Sites)
             {
                 if (!site.IsSite || site.Priority == Priority.High) continue;
-                if (site.Def.outputs.Any(o => LowStock(o.id) > 0 && S.Stock(o.id) < LowStock(o.id))) { S.SetPriority(site, Priority.High); Note($"{site.Def.id} site to be built first"); }
+                // Fields in spring and summer: a field finished after sowing time gives nothing until next autumn (seed 3
+                // starved when the builders spent its first farming spring on the granary).
+                bool sowingSoon = site.Def.crop && S.Season <= 1;
+                if (sowingSoon || site.Def.outputs.Any(o => LowStock(o.id) > 0 && S.Stock(o.id) < LowStock(o.id))) { S.SetPriority(site, Priority.High); Note($"{site.Def.id} site to be built first"); }
             }
             foreach (var site in S.Sites)
             {
