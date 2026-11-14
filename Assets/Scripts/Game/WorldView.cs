@@ -71,6 +71,7 @@ namespace Firstlight.Game
             if (_map.Ground[c] == Ground.Ford) return (byte)MaterialLibrary.Layer("bank");
             if (RiverDist[c] <= 1.01f) return (byte)MaterialLibrary.Layer("bank");
             if (_map.Rock[c] > 0) return (byte)MaterialLibrary.Layer("rock_ground");
+            if (_map.Deposits[c] == Deposit.Clay && !_map.Tree[c]) return (byte)MaterialLibrary.Layer("clay");   // clay beds show from the start
             int trees = 0, rocks = 0;
             for (int dy = -1; dy <= 1; dy++)
                 for (int dx = -1; dx <= 1; dx++)

@@ -56,7 +56,7 @@ namespace Firstlight.Game
         public readonly FlowFieldCache Flow;
 
         public bool TreesDirty = true, RocksDirty = true;
-        bool _costDirty;
+        bool _costDirty, _softDirty;
 
         public GameMap(int size)
         {
@@ -74,7 +74,7 @@ namespace Firstlight.Game
             Open = new bool[n];
             Path = new bool[n];
             for (int i = 0; i < n; i++) BuildingAt[i] = -1;
-            Flow = new FlowFieldCache(W, H, 192);
+            Flow = new FlowFieldCache(W, H, 512);
         }
 
         public void Dispose()
@@ -127,18 +127,37 @@ namespace Firstlight.Game
             return CostGround;
         }
 
+        /// <summary>
+        /// Updates a cell's walking price. A cell becoming blocked or open, or a path tile, changes routes and drops the
+        /// cached paths at the next commit; a tree felled or grown only nudges the price, so those wait for the daily
+        /// soft commit (a town of a few hundred doors would otherwise rebuild every path each time a tree falls).
+        /// </summary>
         public void RefreshCost(int c)
         {
             byte v = CostOf(c);
-            if (Flow.Cost[c] != v) { Flow.Cost[c] = v; _costDirty = true; }
+            byte old = Flow.Cost[c];
+            if (old == v) return;
+            Flow.Cost[c] = v;
+            if (old == 0 || v == 0 || v == CostPath || old == CostPath) _costDirty = true;
+            else _softDirty = true;
         }
 
-        /// <summary>Drops cached paths once per frame if anything blocking changed.</summary>
-        public void CommitCostChanges()
+        /// <summary>Drops cached paths if anything blocking changed (or a path was laid or lifted). True if it did.</summary>
+        public bool CommitCostChanges()
         {
-            if (!_costDirty) return;
-            _costDirty = false;
+            if (!_costDirty) return false;
+            _costDirty = _softDirty = false;
             Flow.Invalidate();
+            return true;
+        }
+
+        /// <summary>Now and then (each season): drops cached paths if only the prices of passable cells (trees) changed.</summary>
+        public bool CommitSoftCostChanges()
+        {
+            if (!_softDirty && !_costDirty) return false;
+            _costDirty = _softDirty = false;
+            Flow.Invalidate();
+            return true;
         }
 
         /// <summary>Counts a feature within a circle around a point (cell units).</summary>

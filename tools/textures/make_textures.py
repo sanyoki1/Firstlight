@@ -37,7 +37,7 @@ BASES = {
     # ore stains and worked metal. Same muted, natural range.
     "shoot": "#6f8047", "cropg": "#7a8a4c", "stubble": "#a08a5c", "flax": "#7f8f6a", "flaxbloom": "#7d8aa6",
     "path": "#806a50", "dressed": "#8d877c", "potter": "#a5694a", "linen": "#b3a98e", "verd": "#5f8a74",
-    "tin": "#7c7c84", "metal": "#b07a48",
+    "tin": "#7c7c84", "metal": "#b07a48", "daub": "#a8946f",
 }
 PAL = Palette.from_ramps({k: make_ramp(v, 5, step_L=0.075, hue_shift=10) for k, v in BASES.items()}, name="firstlight")
 pf.use_palette(PAL)
@@ -548,6 +548,17 @@ def rock_painter(d, t, seed):
     return p
 
 
+def daub(d, t, seed=51):
+    """Wattle and daub: pale earth plaster smoothed by hand, straw flecks, and the weave showing through in cracks."""
+    p = Painter(d, (t, t), seed)
+    p.bands("daub", [2, 3], [0.55], 0.6)
+    p.cv.fill_mask(p.noise(0.4) > 0.82, "daub1")
+    p.strokes("straw3", 6, 0.06, 20, 70)
+    p.strokes("daub0", 0.8, 0.18, 80, 30)
+    p.blobs("daub4", 1.0, 0.05)
+    return p.cv
+
+
 def metal(d, t, seed=50):
     """Worked copper and bronze: a warm metal with hammer facets and a bright edge."""
     p = Painter(d, (t, t), seed)
@@ -615,7 +626,7 @@ MATERIALS = [
     ("clay", clay), ("meat", meat), ("soil", soil), ("crop", crop),
     ("shoots", shoots), ("crop_green", crop_green), ("stubble", stubble), ("flax", flax), ("path", path),
     ("stone_wall", stone_wall), ("pottery", pottery), ("cloth", cloth), ("ore_copper", ore_copper), ("ore_tin", ore_tin),
-    ("metal", metal),
+    ("metal", metal), ("daub", daub),
 ]
 SPRITES = [("bush", sprite_bush), ("tuft", sprite_tuft), ("flowers", sprite_flowers)]
 

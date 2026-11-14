@@ -38,6 +38,8 @@ namespace Firstlight.Game
         readonly Dictionary<BuildingDef, (Batch body, Batch glow, float height)> _defs = new();
         readonly Dictionary<int, Batch> _siteMarks = new(), _scaffolds = new();
         readonly Dictionary<string, Batch> _piles = new();
+        readonly Dictionary<(BuildingDef, int, int, int), Batch> _crops = new();
+        readonly Dictionary<string, Batch> _ores = new();
         readonly List<Batch> _all = new();
         Batch[] _people;                  // [pose * 2 + woman]
         Batch _spearUp, _spearLevel, _rings, _markers;
@@ -66,6 +68,11 @@ namespace Firstlight.Game
         public Building DemolishHover;
         public readonly List<(float2 center, float radius, Color color)> Radii = new();
         public bool HidePeople;           // perf probe only
+        /// <summary>While placing a mine or pit: mark the cells of this deposit kind (None = no hint).</summary>
+        public Deposit DepositHint;
+        /// <summary>Path tiles about to be laid by a drag (drawn as markers).</summary>
+        public readonly List<int2> PathPreview = new();
+        public bool PathPreviewValid = true;
 
         static readonly uint White = Pal.Pack(Color.white);
 
@@ -114,6 +121,16 @@ namespace Firstlight.Game
         }
 
         Batch PileFor(int res) => _piles[BuildingMeshes.PileKind(res >= 0 ? S.Data.Resources[res] : null)];
+
+        Batch CropFor(BuildingDef d, int stage, int crop, int rowsFrom = 0)
+        {
+            var key = (d, stage, crop, rowsFrom);
+            if (_crops.TryGetValue(key, out var b)) return b;
+            var mesh = BuildingMeshes.Crop(d, stage, crop, rowsFrom);
+            b = mesh != null ? Track(new Batch(mesh)) : null;
+            _crops[key] = b;
+            return b;
+        }
 
         // ------------------------------------------------------------------ ground
 
@@ -168,7 +185,9 @@ namespace Firstlight.Game
         {
             _frame++;
             _anim += dt * S.Speed;
+            SyncPaths();
             DrawBuildings();
+            DrawOres();
             DrawPeople(dt);
             DrawKills();
             DrawOverlays();
@@ -189,6 +208,22 @@ namespace Firstlight.Game
                 if (b.Active)
                 {
                     body.Add(new InstanceData(at, 0, new float3(1f), White));
+                    if (b.Def.crop)
+                    {
+                        // The crop: bare soil, shoots, growing, ripe, stubble; each field ripens a shade differently.
+                        int kind = b.Sown > 0 ? b.CropOut : math.max(0, b.Focus);
+                        float k = 0.92f + Hash(b.Id, 11) * 0.12f;
+                        uint tint = Pal.Pack(new Color(k, k, k * 0.97f));
+                        if (S.Season == 2 && b.Harvested > 0.01f && b.Harvested < 0.99f)
+                        {
+                            // Mid-harvest: stubble where it is cut, the ripe rows still standing beyond.
+                            int rows = BuildingMeshes.CropRows(b.Def), cut = math.clamp((int)math.round(b.Harvested * rows), 1, rows - 1);
+                            CropFor(b.Def, 4, kind)?.Add(new InstanceData(at, 0, new float3(1f), tint));
+                            CropFor(b.Def, 3, kind, cut)?.Add(new InstanceData(at, 0, new float3(1f), tint));
+                        }
+                        else CropFor(b.Def, b.CropStage(S.Season), kind)?.Add(new InstanceData(at, 0, new float3(1f), tint));
+                    }
+                    if (b.UpgradeTo != null) DrawRising(b, at, b.UpgradeTo, BuildingMeshes.For(b.UpgradeTo).height, false);
                     // Fires burn while there is fuel; a town fire with nothing to burn shows only ash.
                     bool lit = b.Def.warmthRadius > 0 ? b.Fueled : b.Def.knowledgePerWorker > 0 ? b.Workers > 0 : b.Workers > 0 || b.Def.maxWorkers == 0;
                     if (glow != null && lit) glow.Add(new InstanceData(at, 0, new float3(1f, flicker, 1f), White));
@@ -197,22 +232,81 @@ namespace Firstlight.Game
                 }
                 // A site: marked out, its materials piled up as they arrive, then the building rising inside scaffolding.
                 SiteMarks(b.Def).Add(new InstanceData(at, 0, new float3(1f), White));
-                float rise = math.saturate((b.Progress - 0.3f) / 0.7f);
-                if (rise > 0.01f)
+                DrawRising(b, at, b.Def, height, true);
+            }
+        }
+
+        /// <summary>
+        /// A building going up: scaffolding and the material piles by the footprint; a new site also shows the body
+        /// rising (an upgrade keeps the old building standing inside the scaffolding until it is done).
+        /// </summary>
+        void DrawRising(Building b, float3 at, BuildingDef d, float height, bool rises)
+        {
+            float rise = math.saturate((b.Progress - 0.3f) / 0.7f);
+            if (rises && rise > 0.01f)
+            {
+                byte cut = (byte)math.clamp(math.round(height * rise / 4f * 255f), 1, 254);
+                Def(d).body.Add(new InstanceData(at, 0, new float3(1f), White & 0x00ffffffu | ((uint)cut << 24)));
+            }
+            if (rise > 0.01f || !rises && b.MaterialsFraction > 0.2f) Scaffold(d).Add(new InstanceData(at, 0, new float3(1f), White));
+            for (int i = 0; i < d.cost.Length && i < b.Delivered.Length; i++)
+            {
+                float need = d.cost[i].amount;
+                float f = need <= 0 ? 0 : b.Delivered[i] / need * (1f - rise * 0.85f);   // used up as it rises
+                if (f < 0.02f) continue;
+                var p = new float2(b.Origin.x + 0.45f + i * 0.75f, b.Origin.y - 0.25f);
+                if (i * 0.75f > d.sizeX - 0.6f) p = new float2(b.Origin.x + d.sizeX + 0.25f, b.Origin.y + 0.45f + (i - 2) * 0.75f);
+                PileFor(S.ResIndex(d.cost[i].id)).Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), i * 0.7f, new float3(0.45f + 0.55f * math.saturate(f)), White));
+            }
+        }
+
+        // ------------------------------------------------------------------ deposits and paths
+
+        readonly List<(string mat, InstanceData data)> _oreList = new();
+        bool _oreShown; int _oreBuildings = -1;
+
+        /// <summary>Copper and tin outcrops once Prospecting has revealed them (not under buildings).</summary>
+        void DrawOres()
+        {
+            if (!M.OreRevealed) return;
+            if (!_oreShown || _oreBuildings != S.Buildings.Count)
+            {
+                _oreShown = true; _oreBuildings = S.Buildings.Count;
+                _oreList.Clear();
+                for (int c = 0; c < M.W * M.H; c++)
                 {
-                    byte cut = (byte)math.clamp(math.round(height * rise / 4f * 255f), 1, 254);
-                    body.Add(new InstanceData(at, 0, new float3(1f), White & 0x00ffffffu | ((uint)cut << 24)));
-                    Scaffold(b.Def).Add(new InstanceData(at, 0, new float3(1f), White));
+                    var dep = M.Deposits[c];
+                    if (dep != Deposit.Copper && dep != Deposit.Tin) continue;
+                    // The stained ground shows the extent of the deposit; outcrops break through here and there.
+                    if (M.BuildingAt[c] < 0 && !M.Path[c]) W.SetCellMaterial(c, dep == Deposit.Copper ? "ore_copper" : "ore_tin");
+                    if (M.BuildingAt[c] >= 0 || Hash(c, 21) > (dep == Deposit.Tin ? 0.6f : 0.4f)) continue;
+                    float x = c % M.W + 0.3f + Hash(c, 22) * 0.4f, y = c / M.W + 0.3f + Hash(c, 23) * 0.4f;
+                    float s = 1.1f + Hash(c, 24) * 0.7f;
+                    _oreList.Add((dep == Deposit.Copper ? "ore_copper" : "ore_tin", new InstanceData(new float3(x, M.HeightAt(x, y), y), Hash(c, 25) * 6.28f, new float3(s), White)));
                 }
-                for (int i = 0; i < b.Def.cost.Length; i++)
-                {
-                    float need = b.Def.cost[i].amount;
-                    float f = need <= 0 ? 0 : b.Delivered[i] / need * (1f - rise * 0.85f);   // used up as it rises
-                    if (f < 0.02f) continue;
-                    var p = new float2(b.Origin.x + 0.45f + i * 0.75f, b.Origin.y - 0.25f);
-                    if (i * 0.75f > b.Def.sizeX - 0.6f) p = new float2(b.Origin.x + b.Def.sizeX + 0.25f, b.Origin.y + 0.45f + (i - 2) * 0.75f);
-                    PileFor(S.ResIndex(b.Def.cost[i].id)).Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), i * 0.7f, new float3(0.45f + 0.55f * math.saturate(f)), White));
-                }
+            }
+            foreach (var (mat, data) in _oreList)
+            {
+                if (!_ores.TryGetValue(mat, out var batch)) { batch = Track(new Batch(BuildingMeshes.Ore(mat))); _ores[mat] = batch; }
+                batch.Add(data);
+            }
+        }
+
+        bool[] _pathShown;
+
+        /// <summary>Path tiles show as trodden earth in the ground material map.</summary>
+        void SyncPaths()
+        {
+            if (!M.PathsDirty) return;
+            M.PathsDirty = false;
+            _pathShown ??= new bool[M.W * M.H];
+            for (int c = 0; c < _pathShown.Length; c++)
+            {
+                if (M.Path[c] == _pathShown[c]) continue;
+                _pathShown[c] = M.Path[c];
+                if (M.Path[c]) W.SetCellMaterial(c, "path");
+                else if (M.BuildingAt[c] >= 0 || M.Reserved[c]) W.SetCellMaterial(c, "dirt");
+                else W.RestoreCellMaterial(c);
             }
         }
 
@@ -480,6 +574,24 @@ namespace Firstlight.Game
             {
                 var at = new float3(DemolishHover.Center.x, BaseOf(DemolishHover) + 0.01f, DemolishHover.Center.y);
                 Def(DemolishHover.Def).body.Add(new InstanceData(at, 0, new float3(1.02f), Pal.Pack(new Color(0.9f, 0.3f, 0.25f)) & 0x00ffffffu));
+            }
+            // Where the deposit is, while placing a mine or pit on it.
+            if (DepositHint != Deposit.None && M.DepositVisible(DepositHint))
+            {
+                uint hint = Pal.Pack(DepositHint == Deposit.Copper ? new Color(0.5f, 0.95f, 0.75f) : DepositHint == Deposit.Tin ? new Color(0.8f, 0.8f, 0.95f) : new Color(0.95f, 0.7f, 0.5f));
+                for (int c = 0; c < M.W * M.H; c++)
+                {
+                    if (M.Deposits[c] != DepositHint || M.BuildingAt[c] >= 0) continue;
+                    float x = c % M.W + 0.5f, y = c / M.W + 0.5f;
+                    _markers.Add(new InstanceData(new float3(x, M.HeightAt(x, y), y), 0, new float3(1.6f, 1f, 1.6f), hint));
+                }
+            }
+            // A path being dragged out.
+            if (PathPreview.Count > 0)
+            {
+                uint pc = Pal.Pack(PathPreviewValid ? new Color(0.95f, 0.85f, 0.6f) : new Color(0.9f, 0.35f, 0.3f));
+                foreach (var p in PathPreview)
+                    _markers.Add(new InstanceData(new float3(p.x + 0.5f, M.HeightAt(p.x + 0.5f, p.y + 0.5f), p.y + 0.5f), 0, new float3(3f, 1f, 3f), pc));
             }
             // Radius previews: studs on the ground every cell or so round the circle.
             foreach (var (center, radius, color) in Radii)

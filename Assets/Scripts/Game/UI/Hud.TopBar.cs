@@ -55,7 +55,7 @@ namespace Firstlight.Game.UI
             // Age and calendar.
             GUI.Label(new Rect(x, 5, 250, 22), S.Age?.name ?? "", Title);
             GUI.Label(new Rect(x, 27, 270, 20), $"Year {S.Year + 1}, {S.SeasonName} day {S.DayOfSeason + 1}  ·  {Clock()}", Small);
-            x += 270;
+            x += 262;
 
             // Speed.
             float[] speeds = { 0, 1, 2, 4 };
@@ -74,11 +74,11 @@ namespace Firstlight.Game.UI
             foreach (var c in S.Citizens) if (!c.Gone && S.IsElder(c)) elders++;
             int adults = S.Adults - elders, kids = S.Children;
             int free = S.HousingCapacity - S.Population;
-            var pr = new Rect(x, 5, 270, 42);
-            GUI.Label(new Rect(x, 5, 270, 22), $"<b>{S.Population}</b> people  " + (S.Homeless > 0 ? Col($"{S.Homeless} homeless", Warn) : free > 0 ? Col($"{free} beds free", Dim) : Col("no free beds", Dim)), Label);
-            GUI.Label(new Rect(x, 27, 270, 20), $"{adults} adults · {kids} children · {elders} elders", Small);
+            var pr = new Rect(x, 5, 250, 42);
+            GUI.Label(new Rect(x, 5, 250, 22), $"<b>{S.Population}</b> people  " + (S.Homeless > 0 ? Col($"{S.Homeless} homeless", Warn) : free > 0 ? Col($"{free} beds free", Dim) : Col("no free beds", Dim)), Label);
+            GUI.Label(new Rect(x, 27, 250, 20), $"{adults} adults · {kids} children · {elders} elders", Small);
             Tip(pr, $"Housing for {S.HousingCapacity}. Average happiness {S.AverageHappiness:P0}. Births {S.Births}, migrants {S.Migrants}, left {S.Leavers}, died {S.TotalDeaths}.");
-            x += 280;
+            x += 254;
 
             // Food.
             float fd = S.FoodDays;
@@ -88,44 +88,45 @@ namespace Firstlight.Game.UI
             GUI.Label(new Rect(x, 27, 150, 20), $"{S.FoodStock:0} in store" + Arrow(_foodDelta, 0.5f), Small);
             Tip(fr, $"Food for {fd:0.#} days at {S.DailyFoodNeed:0.#} a day. Change over the last day: {_foodDelta:+0.#;-0.#;0}.");
             if (GUI.Button(fr, GUIContent.none, GUIStyle.none)) ToggleStocks();
-            x += 160;
+            x += 150;
 
-            // Key stocks (click: the full list).
-            float right = VW - 4 * 104 - 270;
+            // The needs that have arrived (Agricultural Age), then key stocks (click: the full list).
+            float right = VW - 4 * 96 - 240;
+            x = DrawNeedsStrip(x, right) + 4;
             foreach (var id in KeyStocks)
             {
                 int r = S.ResIndex(id);
                 if (r < 0) continue;
-                if (x + 96 > right) break;
+                if (x + 80 > right) break;
                 float amt = S.StockTotals[r];
-                var sr = new Rect(x, 5, 92, 42);
-                GUI.Label(new Rect(x, 5, 92, 20), D.Resources[r].name, Small);
-                GUI.Label(new Rect(x, 24, 92, 22), $"{amt:0}" + Arrow(Trend(r), 0.3f), Bold);
+                var sr = new Rect(x, 5, 78, 42);
+                GUI.Label(new Rect(x, 5, 78, 20), D.Resources[r].name, Small);
+                GUI.Label(new Rect(x, 24, 78, 22), $"{amt:0}" + Arrow(Trend(r), 0.3f), Bold);
                 Tip(sr, $"{D.Resources[r].name}: {amt:0.#} in store, {Trend(r):+0.#;-0.#;0} over the last day. Click for every good (T).");
                 if (GUI.Button(sr, GUIContent.none, GUIStyle.none)) ToggleStocks();
-                x += 96;
+                x += 80;
             }
 
             // Research progress.
-            float rx = VW - 4 * 104 - 262;
-            var rr = new Rect(rx, 6, 250, 40);
+            float rx = VW - 4 * 96 - 234;
+            var rr = new Rect(rx, 6, 226, 40);
             string cur = S.CurrentResearch;
             var def = cur != null ? D.ResearchById(cur) : null;
             if (GUI.Button(rr, GUIContent.none, Button)) ToggleResearch();
-            GUI.Label(new Rect(rx + 8, 7, 234, 20), def != null ? $"Researching <b>{def.name}</b>" : Col("Nothing being researched", Warn), new GUIStyle(Label) { fontSize = 14 });
-            Bar(new Rect(rx + 8, 30, 150, 9), def != null ? S.ResearchProgress(cur) : 0, Accent);
-            GUI.Label(new Rect(rx + 166, 25, 84, 18), $"+{_knowPerDay:0.#}/day", Small);
+            GUI.Label(new Rect(rx + 8, 7, 214, 20), def != null ? $"Researching <b>{def.name}</b>" : Col("Nothing being researched", Warn), new GUIStyle(Label) { fontSize = 14 });
+            Bar(new Rect(rx + 8, 30, 130, 9), def != null ? S.ResearchProgress(cur) : 0, Accent);
+            GUI.Label(new Rect(rx + 144, 25, 80, 18), $"+{_knowPerDay:0.#}/day", Small);
             Tip(rr, def != null ? $"{def.name}: {S.ResearchProgress(cur):P0}. {S.ResearchQueue.Count} in the queue. Knowledge {_knowPerDay:0.#} a day. Open the research tree (R)." :
                 $"Knowledge is being banked ({S.KnowledgeBank:0}). Open the research tree (R) and choose what to learn.");
 
             // Panel buttons.
-            float bx = VW - 4 * 104 - 4;
+            float bx = VW - 4 * 96 - 4;
             string[] labels = { "Research", "Goals", "Jobs", "Help" };
             string[] keys = { "R", "G", "J", "F1" };
             bool[] open = { ResearchOpen, GoalsOpen, JobsOpen, HelpOpen };
             for (int i = 0; i < 4; i++)
             {
-                var r = new Rect(bx + i * 104, 9, 98, 34);
+                var r = new Rect(bx + i * 96, 9, 92, 34);
                 if (GUI.Button(r, $"{labels[i]} {Col(keys[i], Dim)}", open[i] ? ButtonOn : Button))
                 {
                     if (i == 0) ToggleResearch(); else if (i == 1) ToggleGoals(); else if (i == 2) ToggleJobs(); else ToggleHelp();

@@ -239,7 +239,7 @@
         {"prim": "cylinder", "pos": [-0.75, 0, 0.75], "size": [0.16, 0.62, 0.16], "material": "bark_broad"},
         {"prim": "cylinder", "pos": [0.75, 0, 0.75], "size": [0.16, 0.62, 0.16], "material": "bark_broad"},
         {"prim": "cylinder", "pos": [0, 0.56, 0], "size": [2.15, 0.12, 2.15], "material": "wood"},
-        {"prim": "cylinder", "pos": [0, 0.68, 0], "size": [1.85, 1.05, 1.85], "material": "clay", "color": "#d8c8b0"},
+        {"prim": "cylinder", "pos": [0, 0.68, 0], "size": [1.85, 1.05, 1.85], "material": "daub"},
         {"prim": "cone", "pos": [0, 1.66, 0], "size": [2.55, 1.15, 2.55], "material": "thatch"},
         {"prim": "box", "pos": [0, 0.75, -0.93], "size": [0.42, 0.55, 0.05], "material": "wood", "color": "#8a7a68"},
         {"prim": "box", "pos": [0, 0, -1.2], "size": [0.38, 0.72, 0.05], "material": "wood"},
@@ -253,7 +253,7 @@
       "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 22}], "buildWork": 4, "unlockedBy": "farming", "maxWorkers": 0,
       "housing": 8, "homeWarmth": 0.85, "upgradesTo": "stone_hut", "color": "#9a8458",
       "parts": [
-        {"prim": "cylinder", "pos": [0, 0, 0.08], "size": [1.62, 0.92, 1.62], "material": "clay", "color": "#d0bca0"},
+        {"prim": "cylinder", "pos": [0, 0, 0.08], "size": [1.62, 0.92, 1.62], "material": "daub"},
         {"prim": "cone", "pos": [0, 0.84, 0.08], "size": [2.0, 1.15, 2.0], "material": "thatch"},
         {"prim": "cylinder", "pos": [0, 1.86, 0.08], "size": [0.22, 0.12, 0.22], "material": "thatch", "color": "#8a7a5a"},
         {"prim": "box", "pos": [0, 0, -0.74], "size": [0.46, 0.68, 0.06], "material": "hide", "color": "#5a4c40"},
@@ -267,7 +267,7 @@
       "housing": 10, "homeWarmth": 1.0, "color": "#8a8478",
       "parts": [
         {"prim": "cylinder", "pos": [0, 0, 0.08], "size": [1.78, 0.42, 1.78], "material": "stone_wall"},
-        {"prim": "cylinder", "pos": [0, 0.42, 0.08], "size": [1.64, 0.62, 1.64], "material": "clay", "color": "#d6c4a8"},
+        {"prim": "cylinder", "pos": [0, 0.42, 0.08], "size": [1.64, 0.62, 1.64], "material": "daub"},
         {"prim": "cone", "pos": [0, 0.98, 0.08], "size": [2.08, 1.2, 2.08], "material": "thatch"},
         {"prim": "cylinder", "pos": [0, 2.04, 0.08], "size": [0.22, 0.12, 0.22], "material": "thatch", "color": "#8a7a5a"},
         {"prim": "box", "pos": [0, 0, -0.8], "size": [0.5, 0.82, 0.06], "material": "wood", "color": "#7a6450"},
@@ -328,7 +328,7 @@
       "nearby": {"feature": "trees", "radius": 10, "min": 2, "full": 10}, "healthRadius": 24, "healChance": 0.35, "healDamage": 0.25, "color": "#6d7d52",
       "workPose": "bend",
       "parts": [
-        {"prim": "cylinder", "pos": [-0.15, 0, 0.2], "size": [1.4, 0.8, 1.4], "material": "clay", "color": "#c8b8a0"},
+        {"prim": "cylinder", "pos": [-0.15, 0, 0.2], "size": [1.4, 0.8, 1.4], "material": "daub"},
         {"prim": "cone", "pos": [-0.15, 0.74, 0.2], "size": [1.75, 0.95, 1.75], "material": "thatch"},
         {"prim": "box", "pos": [-0.15, 0, -0.52], "size": [0.4, 0.6, 0.05], "material": "hide", "color": "#5a4c40"},
         {"prim": "cylinder", "pos": [0.55, 0, -0.62], "size": [0.06, 0.95, 0.06], "material": "wood"},
@@ -424,8 +424,8 @@
       "cropStages": [
         {"name": "Bare soil", "material": "soil", "height": 0},
         {"name": "Shoots", "material": "shoots", "height": 0.12},
-        {"name": "Growing", "material": "crop_green", "height": 0.38},
-        {"name": "Ripe", "material": "crop", "height": 0.62},
+        {"name": "Growing", "material": "crop_green", "height": 0.38, "materials": ["crop_green", "flax"]},
+        {"name": "Ripe", "material": "crop", "height": 0.62, "materials": ["crop", "flax"]},
         {"name": "Stubble", "material": "stubble", "height": 0.1}
       ],
       "parts": [

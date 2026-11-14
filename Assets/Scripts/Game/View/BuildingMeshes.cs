@@ -44,6 +44,58 @@ namespace Firstlight.Game
             return m;
         }
 
+        static readonly Dictionary<(string, int, int, int), Mesh> _crops = new();
+
+        /// <summary>Crop rows across a field's footprint (the row count the meshes use).</summary>
+        public static int CropRows(BuildingDef d) => Mathf.Max(2, Mathf.RoundToInt((d.sizeY - 0.35f) / 0.5f));
+
+        /// <summary>
+        /// The crop rows of a field at one growth stage (data <c>cropStages</c>) for one crop (output index): rows of
+        /// the stage's material across the footprint, as tall as the stage. Null for a stage with no height (bare soil).
+        /// Row tops are tinted per instance (vertex alpha 1) so a field can ripen a little unevenly.
+        /// </summary>
+        public static Mesh Crop(BuildingDef d, int stage, int crop, int rowsFrom = 0)
+        {
+            if (d.cropStages == null || stage < 0 || stage >= d.cropStages.Length) return null;
+            var key = (d.id, stage, crop, rowsFrom);
+            if (_crops.TryGetValue(key, out var mesh)) return mesh;
+            var st = d.cropStages[stage];
+            string mat = st.materials != null && crop < st.materials.Length && !string.IsNullOrEmpty(st.materials[crop]) ? st.materials[crop] : st.material;
+            if (st.height <= 0.001f) { _crops[key] = null; return null; }
+            var b = new MeshBuilder().Mat(mat);
+            float w = d.sizeX - 0.35f, depth = d.sizeY - 0.35f;
+            int rows = CropRows(d);
+            float pitch = depth / rows;
+            // rowsFrom > 0: only the rows not yet cut (the harvest works up from the door side).
+            for (int i = rowsFrom; i < rows; i++)
+            {
+                float z = -depth / 2 + pitch * (i + 0.5f);
+                // Ridged rows (a prism along x), each in two halves of slightly different height: a crop is never quite even.
+                float h1 = st.height * (0.92f + 0.08f * ((i * 7) % 3)), h2 = st.height * (0.96f - 0.06f * ((i * 5) % 2));
+                float across = pitch * (stage == 1 ? 0.55f : 0.95f);
+                b.Prism(MeshBuilder.TRS(new Vector3(-w / 4, 0.04f, z), 90, new Vector3(across, h1, w / 2 - 0.03f)), Tinted);
+                b.Prism(MeshBuilder.TRS(new Vector3(w / 4, 0.04f, z), 90, new Vector3(across, h2, w / 2 - 0.03f)), Tinted);
+            }
+            mesh = b.ToMesh($"{d.id}_crop{stage}_{crop}_{rowsFrom}");
+            _crops[key] = mesh;
+            return mesh;
+        }
+
+        static readonly Dictionary<string, Mesh> _ores = new();
+
+        /// <summary>An ore outcrop: a few stained stones breaking the turf (copper green, tin dark grey).</summary>
+        public static Mesh Ore(string material)
+        {
+            if (_ores.TryGetValue(material, out var mesh)) return mesh;
+            var b = new MeshBuilder().Mat(material);
+            b.Sphere(MeshBuilder.TRS(new Vector3(-0.12f, -0.05f, 0.05f), 20, new Vector3(0.48f, 0.3f, 0.4f)), Fixed, 1);
+            b.Sphere(MeshBuilder.TRS(new Vector3(0.18f, -0.04f, -0.1f), 70, new Vector3(0.34f, 0.24f, 0.3f)), Fixed, 1);
+            b.Sphere(MeshBuilder.TRS(new Vector3(0.05f, -0.03f, 0.22f), 40, new Vector3(0.22f, 0.16f, 0.2f)), Fixed, 1);
+            mesh = b.ToMesh("ore_" + material);
+            _ores[material] = mesh;
+            return mesh;
+        }
+
         /// <summary>Data primitives: the MeshBuilder ones plus a few for camp scenery.</summary>
         public static void Prim(MeshBuilder b, string type, Matrix4x4 m, Color col)
         {
@@ -139,6 +191,8 @@ namespace Firstlight.Game
                 case "stone": case "copper_ore": case "tin_ore": return "stones";
                 case "hides": case "clothing": return "hides";
                 case "clay": return "clay";
+                case "grain": case "fibre": return "sheaf";
+                case "pottery": return "pots";
                 case "meat": case "preserved": return "meat";
                 case "copper": case "bronze": return "ingots";
             }
@@ -146,7 +200,7 @@ namespace Firstlight.Game
             return "basket";
         }
 
-        public static readonly string[] PileKinds = { "logs", "firewood", "stones", "hides", "clay", "meat", "ingots", "tools", "basket" };
+        public static readonly string[] PileKinds = { "logs", "firewood", "stones", "hides", "clay", "meat", "ingots", "tools", "basket", "sheaf", "pots" };
 
         /// <summary>A pile of goods about 0.6 units across (scaled by how much there is).</summary>
         public static Mesh Pile(string kind)
@@ -170,6 +224,15 @@ namespace Firstlight.Game
                     b.Mat("fur").Box(MeshBuilder.TRS(new Vector3(0, 0.16f, 0), 5, new Vector3(0.4f, 0.07f, 0.32f)), Fixed);
                     break;
                 case "clay": b.Mat("clay").Sphere(MeshBuilder.TRS(Vector3.zero, 0, new Vector3(0.45f, 0.28f, 0.4f)), Fixed, 1); break;
+                case "sheaf":     // sacks of grain (or bundles of flax) leaning together
+                    b.Mat("basket").Cylinder(MeshBuilder.TRS(new Vector3(-0.1f, 0, 0), 0, new Vector3(0.26f, 0.34f, 0.26f)), 7, new Color(1.1f, 1.05f, 0.9f, 0));
+                    b.Cylinder(MeshBuilder.TRS(new Vector3(0.14f, 0, 0.06f), 0, new Vector3(0.24f, 0.3f, 0.24f)), 7, new Color(1.05f, 1f, 0.88f, 0));
+                    b.Mat("crop").Sphere(MeshBuilder.TRS(new Vector3(-0.1f, 0.3f, 0), 0, new Vector3(0.22f, 0.1f, 0.22f)), Fixed, 1);
+                    break;
+                case "pots":
+                    b.Mat("pottery").Cylinder(MeshBuilder.TRS(new Vector3(-0.1f, 0, 0), 0, new Vector3(0.22f, 0.3f, 0.22f)), 7, Fixed);
+                    b.Sphere(MeshBuilder.TRS(new Vector3(0.14f, 0, 0.04f), 0, new Vector3(0.24f, 0.24f, 0.24f)), Fixed, 1);
+                    break;
                 case "meat":
                     b.Mat("hide").Box(MeshBuilder.TRS(Vector3.zero, 0, new Vector3(0.45f, 0.06f, 0.35f)), Fixed);
                     b.Mat("meat").Sphere(MeshBuilder.TRS(new Vector3(0, 0.05f, 0), 20, new Vector3(0.36f, 0.2f, 0.26f)), Fixed, 1);

@@ -153,8 +153,14 @@ namespace Firstlight.Game
             }
         }
 
+        /// <summary>Perf probe only: when set, time spent per part of the step is added up (ms).</summary>
+        public bool Profile;
+        public double ProfCitizens, ProfHourly, ProfDaily, ProfJobs;
+        readonly System.Diagnostics.Stopwatch _prof = new();
+
         void StepOnce()
         {
+            if (Profile) _prof.Restart();
             Time += Step;
             DayFraction += Step / B.dayLengthSeconds;
             if (DayFraction >= 1f)
@@ -162,14 +168,16 @@ namespace Firstlight.Game
                 DayFraction -= 1f;
                 Day++;
                 NewDay();
+                if (Profile) { ProfDaily += _prof.Elapsed.TotalMilliseconds; _prof.Restart(); }
             }
             _hourAcc += Step;
             if (_hourAcc >= B.dayLengthSeconds / 24f)
             {
                 _hourAcc -= B.dayLengthSeconds / 24f;
                 Hourly();
+                if (Profile) { ProfHourly += _prof.Elapsed.TotalMilliseconds; _prof.Restart(); }
             }
-            if (_jobsDirty) AssignJobs();
+            if (_jobsDirty) { AssignJobs(); if (Profile) { ProfJobs += _prof.Elapsed.TotalMilliseconds; _prof.Restart(); } }
             bool work = IsWorkTime;
             // People with a job set off a little before the shift, so the walk out isn't all taken from the workday.
             bool early = !work && DayFraction >= B.workdayStart - B.commuteLead && DayFraction < B.workdayStart;
@@ -180,11 +188,12 @@ namespace Firstlight.Game
             }
             UpdateDeparting();
             for (int i = Citizens.Count - 1; i >= 0; i--) if (Citizens[i].Gone) Citizens.RemoveAt(i);
+            if (Profile) ProfCitizens += _prof.Elapsed.TotalMilliseconds;
         }
 
         void Hourly()
         {
-            Map.CommitCostChanges();
+            if (Map.CommitCostChanges()) PrefetchPaths();
             RecountReservations();
             RefreshFullness();
             AssignHomes();
@@ -217,6 +226,7 @@ namespace Firstlight.Game
             DailyOutbreak();
             TraderVisit();
             Map.DailyRegrowth(_rng, B);
+            if (DayOfSeason == 0 && Map.CommitSoftCostChanges()) PrefetchPaths();
             RefreshStock();
             EvaluateMilestones();
             RefreshWarnings();
@@ -494,6 +504,20 @@ namespace Firstlight.Game
             int s = (Season + 1) % 4, days = toNext;
             while (s != target) { days += B.daysPerSeason; s = (s + 1) % 4; }
             return days;
+        }
+
+        readonly List<int> _doors = new();
+
+        /// <summary>
+        /// After the walking map changed, rebuilds the paths to every building door in one parallel batch, rather than
+        /// one at a time as people next set off (a big town would rebuild a few hundred one by one).
+        /// </summary>
+        void PrefetchPaths()
+        {
+            _doors.Clear();
+            foreach (var b in Buildings) if (b.Alive && !_doors.Contains(b.Door)) _doors.Add(b.Door);
+            if (_doors.Count > Map.Flow.Capacity / 2) _doors.RemoveRange(Map.Flow.Capacity / 2, _doors.Count - Map.Flow.Capacity / 2);
+            Map.Flow.Prefetch(_doors);
         }
 
         int NewId() => ++_nextId;

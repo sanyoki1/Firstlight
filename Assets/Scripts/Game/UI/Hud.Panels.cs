@@ -127,7 +127,7 @@ namespace Firstlight.Game.UI
 
         void DrawHelp()
         {
-            var r = Box(new Rect(VW / 2 - 330, VH / 2 - 300, 660, 600));
+            var r = Box(new Rect(VW / 2 - 330, VH / 2 - 314, 660, 628));
             GUI.Label(new Rect(r.x + 20, r.y + 12, 400, 28), "Controls", Title);
             if (GUI.Button(new Rect(r.xMax - 34, r.y + 12, 24, 22), "x", Button)) HelpOpen = false;
             string[,] keys =
@@ -145,6 +145,7 @@ namespace Firstlight.Game.UI
                 { "R", "Research tree" },
                 { "G", "Goals for the next age" },
                 { "J", "Jobs overview" },
+                { "L", "Laws (once there is a Tribal Council)" },
                 { "T", "Goods in store" },
                 { "F1", "This help" },
                 { "F9", "Let the auto-player run the settlement" },

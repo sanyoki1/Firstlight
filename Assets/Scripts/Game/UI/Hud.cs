@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Firstlight.Core;
 using Unity.Mathematics;
 using UnityEngine;
@@ -79,20 +80,21 @@ namespace Firstlight.Game.UI
         public void SelectCitizen(Citizen c) { SelectedCitizen = c; if (c != null) Selected = null; }
 
         public void ToggleResearch() { ResearchOpen = !ResearchOpen; if (ResearchOpen) { GoalsOpen = JobsOpen = StocksOpen = HelpOpen = false; } }
-        public void ToggleGoals() { GoalsOpen = !GoalsOpen; if (GoalsOpen) JobsOpen = StocksOpen = false; }
-        public void ToggleJobs() { JobsOpen = !JobsOpen; if (JobsOpen) GoalsOpen = StocksOpen = false; }
-        public void ToggleStocks() { StocksOpen = !StocksOpen; if (StocksOpen) GoalsOpen = JobsOpen = false; }
+        public void ToggleGoals() { GoalsOpen = !GoalsOpen; if (GoalsOpen) JobsOpen = StocksOpen = LawsOpen = false; }
+        public void ToggleJobs() { JobsOpen = !JobsOpen; if (JobsOpen) GoalsOpen = StocksOpen = LawsOpen = false; }
+        public void ToggleStocks() { StocksOpen = !StocksOpen; if (StocksOpen) GoalsOpen = JobsOpen = LawsOpen = false; }
         public void ToggleHelp() => HelpOpen = !HelpOpen;
         public void OpenCategory(string cat) { BuildCategory = BuildCategory == cat ? null : cat; }
 
         /// <summary>Esc: closes the topmost thing open, else drops the tool, else the selection.</summary>
         public void Back()
         {
-            if (ResearchOpen) ResearchOpen = false;
+            if (EndOpen) EndOpen = false;
+            else if (ResearchOpen) ResearchOpen = false;
             else if (HelpOpen) HelpOpen = false;
             else if (Mode != ToolMode.None && !S.NeedsCampfire) CancelTool();
             else if (BuildCategory != null) BuildCategory = null;
-            else if (GoalsOpen || JobsOpen || StocksOpen) GoalsOpen = JobsOpen = StocksOpen = false;
+            else if (GoalsOpen || JobsOpen || StocksOpen || LawsOpen) GoalsOpen = JobsOpen = StocksOpen = LawsOpen = false;
             else { Select(null); SelectCitizen(null); }
         }
 
@@ -101,6 +103,11 @@ namespace Firstlight.Game.UI
         {
             UpdateHover();
             if (!HoverValid) return;
+            if (Mode == ToolMode.Place && PlaceDef != null && PlaceDef.path)
+            {
+                if (!S.PlacePath(HoverCell, out string pwhy)) PlaceReason = pwhy;
+                return;
+            }
             if (Mode == ToolMode.Place && PlaceDef != null)
             {
                 var b = S.Place(PlaceDef, PlaceOrigin(PlaceDef, HoverCell), out string why);
@@ -112,6 +119,7 @@ namespace Firstlight.Game.UI
             if (Mode == ToolMode.Demolish)
             {
                 if (HoverBuilding != null && S.Demolish(HoverBuilding, out _) && !keepTool) Mode = ToolMode.None;
+                else if (HoverBuilding == null && S.RemovePath(HoverCell) && !keepTool) Mode = ToolMode.None;
                 return;
             }
             var person = G.SView.CitizenNear(HoverPoint, 0.55f);
@@ -190,6 +198,7 @@ namespace Firstlight.Game.UI
                 if (S.AgeLog.Count > 0) ShowBanner($"The settlement enters the {S.Age.name}");
                 if (S.TownCenter != null) JumpTo(S.TownCenter.Center, 34f);
             }
+            CheckEnd();
             if (Selected != null && !Selected.Alive) Select(null);
             if (SelectedCitizen != null && SelectedCitizen.Gone) SelectCitizen(null);
             PushToView();
@@ -207,6 +216,7 @@ namespace Firstlight.Game.UI
             if (kb.escapeKey.wasPressedThisFrame) Back();
             if (kb.f1Key.wasPressedThisFrame) ToggleHelp();
             if (kb.rKey.wasPressedThisFrame && !S.NeedsCampfire) ToggleResearch();
+            if (kb.lKey.wasPressedThisFrame && !S.NeedsCampfire && !ResearchOpen) ToggleLaws();
             if (kb.f9Key.wasPressedThisFrame) G.ToggleAuto();
             if (kb.spaceKey.wasPressedThisFrame) G.TogglePause();
             if (kb.digit1Key.wasPressedThisFrame) G.SetSpeed(1);
@@ -236,6 +246,7 @@ namespace Firstlight.Game.UI
                     if (Mode != ToolMode.None) CancelTool(); else { Select(null); SelectCitizen(null); }
                 }
             }
+            if (PlacingPath) { PathInput(overUI); return; }
             if (overUI) return;
             if (mouse.leftButton.wasPressedThisFrame)
             {
@@ -299,8 +310,16 @@ namespace Firstlight.Game.UI
         {
             var v = G.SView;
             v.Selected = Selected; v.SelectedCitizen = SelectedCitizen;
-            v.GhostDef = Mode == ToolMode.Place && HoverValid && !PointerOverUI ? PlaceDef : null;
+            v.GhostDef = Mode == ToolMode.Place && HoverValid && !PointerOverUI && !PlacingPath ? PlaceDef : null;
             v.Radii.Clear();
+            v.DepositHint = Mode == ToolMode.Place && PlaceDef != null && !string.IsNullOrEmpty(PlaceDef.onDeposit) ? GameMap.DepositOf(PlaceDef.onDeposit) : Deposit.None;
+            v.PathPreview.Clear();
+            if (PlacingPath)
+            {
+                if (_pathStart != null) v.PathPreview.AddRange(_pathCells);
+                else if (HoverValid && !PointerOverUI) v.PathPreview.Add(HoverCell);
+                v.PathPreviewValid = v.PathPreview.Count == 0 || S.CanPlacePath(v.PathPreview[v.PathPreview.Count - 1], out _);
+            }
             v.DemolishHover = Mode == ToolMode.Demolish && !PointerOverUI ? HoverBuilding : null;
             if (v.GhostDef != null)
             {
@@ -311,13 +330,17 @@ namespace Firstlight.Game.UI
             else if (Selected != null && Selected.Alive) AddRadii(v, Selected.Def, Selected.Center);
         }
 
-        static readonly Color RadiusWork = new(0.95f, 0.88f, 0.6f), RadiusWarm = new(1f, 0.62f, 0.35f), RadiusHealth = new(0.6f, 0.85f, 0.7f);
+        static readonly Color RadiusWork = new(0.95f, 0.88f, 0.6f), RadiusWarm = new(1f, 0.62f, 0.35f), RadiusHealth = new(0.6f, 0.85f, 0.7f),
+            RadiusWater = new(0.55f, 0.75f, 0.95f), RadiusFaith = new(0.8f, 0.7f, 0.95f);
 
-        static void AddRadii(SettlementView v, BuildingDef d, float2 c)
+        void AddRadii(SettlementView v, BuildingDef d, float2 c)
         {
             if (d.HasNearby) v.Radii.Add((c, d.nearby.radius, RadiusWork));
             if (d.warmthRadius > 0) v.Radii.Add((c, d.warmthRadius, RadiusWarm));
             if (d.healthRadius > 0) v.Radii.Add((c, d.healthRadius, RadiusHealth));
+            if (d.waterRadius > 0) v.Radii.Add((c, d.waterRadius * S.Effect("water.radius"), RadiusWater));
+            if (d.faithRadius > 0) v.Radii.Add((c, d.faithRadius, RadiusFaith));
+            if (d.crop && d.irrigationRadius > 0 && S.IsResearched("irrigation")) v.Radii.Add((c, d.irrigationRadius, RadiusWater));
         }
 
         // ================================================================== drawing
@@ -344,9 +367,11 @@ namespace Firstlight.Game.UI
                 if (GoalsOpen) DrawGoals();
                 if (JobsOpen) DrawJobs();
                 if (StocksOpen) DrawStocks();
+                if (LawsOpen) DrawLaws();
                 DrawPlacementTip();
                 DrawTopBar();
                 if (ResearchOpen) DrawResearch();
+                if (EndOpen) DrawEndScreen();
             }
             if (HelpOpen) DrawHelp();
             DrawBanner();
@@ -427,7 +452,18 @@ namespace Firstlight.Game.UI
             var at = new Vector2(p.x / Scale + 26, (Screen.height - p.y) / Scale + 18);
             var d = PlaceDef;
             var lines = new List<string> { $"<b>{d.name}</b>" };
-            if (!PlaceOk) lines.Add(Col(PlaceReason, Bad));
+            if (d.path)
+            {
+                int n = _pathStart != null ? _pathCells.Count(c => S.CanPlacePath(c, out _)) : 0;
+                bool ok = S.CanPlacePath(HoverCell, out string why);
+                lines.Add(_pathStart != null ? $"{n} tile{(n == 1 ? "" : "s")} to lay" : ok ? "Press and drag to lay a line of path" : Col(why, Bad));
+                lines.Add(Col("People walk faster on paths, and their routes bend onto them. Free.", Dim));
+            }
+            else if (!PlaceOk)
+            {
+                lines.Add(Col(PlaceReason, Bad));
+                if (!string.IsNullOrEmpty(d.onDeposit) && S.Map.DepositVisible(GameMap.DepositOf(d.onDeposit))) lines.Add(Col($"The {d.onDeposit} deposit is marked on the ground", Dim));
+            }
             else
             {
                 var c = Settlement.FootprintCenter(d, PlaceOrigin(d, HoverCell));
@@ -448,9 +484,12 @@ namespace Firstlight.Game.UI
                     lines.Add($"Within reach: trees {M.CountFeature("trees", c, 11)}, rock {M.CountFeature("rocks", c, 13)}, water {M.CountFeature("water", c, 14)}, game {M.CountFeature("wildlife", c, 18)}");
                     lines.Add(Col($"Warms homes within {d.warmthRadius}", Dim));
                 }
+                if (!string.IsNullOrEmpty(d.onDeposit)) lines.Add(Col($"On the {d.onDeposit} deposit: {S.DepositCells(d, PlaceOrigin(d, HoverCell))} cells (marked)", Good));
+                if (d.waterRadius > 0) { var c2 = Settlement.FootprintCenter(d, PlaceOrigin(d, HoverCell)); float wr = d.waterRadius * S.Effect("water.radius"); int dry = S.Buildings.Count(h => h.Active && h.Def.housing > 0 && h.Residents > 0 && !h.HasWater && math.distance(h.Center, c2) <= wr); lines.Add(dry > 0 ? Col($"Brings water to {dry} home{(dry == 1 ? "" : "s")} without it", Good) : Col("No homes without water in reach", Dim)); }
+                if (d.crop && d.irrigationRadius > 0) { var c2 = Settlement.FootprintCenter(d, PlaceOrigin(d, HoverCell)); lines.Add(M.CountFeature("water", c2, d.irrigationRadius) > 0 ? Col("Water in reach: can be irrigated", Good) : Col("No water in reach to irrigate", Dim)); }
                 if (d.cost.Length > 0) lines.Add("Cost: " + Cost(d));
             }
-            lines.Add(Col(d.townCenter ? "Left-click to place" : "Left-click to place, Shift for several, right-click to stop", Dim));
+            if (!d.path) lines.Add(Col(d.townCenter ? "Left-click to place" : "Left-click to place, Shift for several, right-click to stop", Dim));
             string text = string.Join("\n", lines);
             var style = new GUIStyle(Wrap) { fontSize = 15 };
             float h = style.CalcHeight(new GUIContent(text), 360) + 14;

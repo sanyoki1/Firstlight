@@ -8,7 +8,7 @@ namespace Firstlight.Game.UI
     // Bottom-left bar: build categories, demolish, builders; the list of buildings for the open category.
     public sealed partial class Hud
     {
-        static readonly string[] CategoryOrder = { "Housing", "Food", "Materials", "Storage", "Knowledge", "Services" };
+        static readonly string[] CategoryOrder = { "Housing", "Food", "Materials", "Crafts", "Metal", "Storage", "Knowledge", "Services", "Paths" };
         string[] _cats;
         string[] Categories => _cats ??= CategoryOrder.Where(c => D.Buildings.Any(b => b.category == c && !b.townCenter))
             .Concat(D.Buildings.Where(b => !b.townCenter).Select(b => b.category).Distinct().Where(c => !CategoryOrder.Contains(c))).ToArray();
@@ -21,15 +21,16 @@ namespace Firstlight.Game.UI
         {
             float y = VH - 60;
             var cats = Categories;
-            float w = 12 + cats.Length * 118 + 130 + 220;
+            float bw = cats.Length > 7 ? 100 : 118;
+            float w = 12 + cats.Length * bw + 130 + 220;
             var bar = Box(new Rect(10, y, w, 50), UiTheme.Header);
             float x = bar.x + 8;
             foreach (var c in cats)
             {
-                var r = new Rect(x, y + 8, 112, 34);
+                var r = new Rect(x, y + 8, bw - 6, 34);
                 int ready = InCategory(c).Count(S.IsUnlocked);
                 if (GUI.Button(r, ready > 0 ? c : Col(c, Faint), BuildCategory == c ? ButtonOn : Button)) OpenCategory(c);
-                x += 118;
+                x += bw;
             }
             var dr = new Rect(x + 4, y + 8, 120, 34);
             if (GUI.Button(dr, $"Demolish {Col("X", Faint)}", Mode == ToolMode.Demolish ? ButtonOn : Button))
@@ -75,6 +76,9 @@ namespace Firstlight.Game.UI
         /// <summary>One short line: what the building is for.</summary>
         string Summary(BuildingDef d)
         {
+            if (d.path) return "drag to lay";
+            if (d.crop) return $"{d.maxWorkers} farmers · " + string.Join(" or ", d.outputs.Select(o => ResName(o.id).ToLower()));
+            if (d.waterRadius > 0) return $"water within {d.waterRadius}";
             if (d.housing > 0) return $"houses {d.housing}";
             if (d.storageCapacity > 0) return $"stores {d.storageCapacity}";
             if (d.knowledgePerWorker > 0) return $"{d.maxWorkers} workers · knowledge";
@@ -88,7 +92,8 @@ namespace Firstlight.Game.UI
             var lines = new List<string> { $"<b>{d.name}</b>", d.description, "" };
             if (d.cost.Length > 0) lines.Add("Cost: " + Cost(d) + $"   build work {d.buildWork:0.#}");
             if (d.maxWorkers > 0) lines.Add($"Workers: up to {d.maxWorkers}" + (d.requiresTools ? Col(", need tools", Warn) : d.usesTools ? ", faster with tools" : ""));
-            if (d.outputs.Length > 0) lines.Add("Makes per worker-day: " + string.Join(", ", d.outputs.Select(o => $"{o.amount:0.#} {ResName(o.id).ToLower()}")));
+            if (d.crop) lines.Add("Full harvest per field: " + string.Join(" or ", d.outputs.Select(o => $"{o.amount:0} {ResName(o.id).ToLower()}")) + $"; sowing {d.sowWork:0.#} and harvest {d.harvestWork:0.#} worker-days");
+            else if (d.outputs.Length > 0) lines.Add("Makes per worker-day: " + string.Join(", ", d.outputs.Select(o => $"{o.amount:0.#} {ResName(o.id).ToLower()}")));
             if (d.inputs.Length > 0) lines.Add("Uses per worker-day: " + string.Join(", ", d.inputs.Select(i => $"{i.amount:0.#} {string.Join(" or ", i.ids.Select(ResName)).ToLower()}")));
             if (d.knowledgePerWorker > 0) lines.Add($"Knowledge per worker-day: {d.knowledgePerWorker:0.#} (elders x{D.Balance.elderKnowledgeMult:0.#})");
             if (d.HasNearby) lines.Add($"Needs {d.nearby.feature} within {d.nearby.radius}: at least {d.nearby.min}, full yield at {d.nearby.full}");
@@ -98,6 +103,11 @@ namespace Firstlight.Game.UI
             if (d.storageCapacity > 0) lines.Add($"Holds {d.storageCapacity} goods");
             if (d.warmthRadius > 0) lines.Add($"Warms homes within {d.warmthRadius}");
             if (d.healthRadius > 0) lines.Add($"Treats the sick within {d.healthRadius}");
+            if (d.waterRadius > 0) lines.Add($"Clean water for homes within {d.waterRadius}");
+            if (d.faithRadius > 0) lines.Add($"Faith for homes within {d.faithRadius}");
+            if (d.orderPower > 0) lines.Add($"Calms unrest by {d.orderPower:P0} while staffed" + (d.enablesLaws ? "; passes laws" : ""));
+            if (!string.IsNullOrEmpty(d.onDeposit)) lines.Add($"Must stand on a {d.onDeposit} deposit");
+            if (!string.IsNullOrEmpty(d.upgradesTo)) lines.Add($"Can be rebuilt as a {D.Building(d.upgradesTo)?.name}");
             if (d.unique) lines.Add("Only one can be built.");
             if (!S.IsUnlocked(d)) lines.Add(Col("Needs research: " + (D.ResearchById(d.unlockedBy)?.name ?? d.unlockedBy), Warn));
             return string.Join("\n", lines).Replace("\n\n\n", "\n\n");

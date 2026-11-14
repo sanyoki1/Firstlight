@@ -210,13 +210,22 @@ namespace Firstlight.Game.UI
             var parts = e.stat.Split('.');
             switch (parts[0])
             {
-                case "yield": return $"{Cap(parts.Length > 1 ? parts[1] : "")} output +{pct(e.value)}";
+                case "yield": return parts.Length > 1 && parts[1] == "irrigated" ? $"Irrigated fields +{pct(e.value)}" : $"{Cap(parts.Length > 1 ? parts[1] : "")} output +{pct(e.value)}";
                 case "wear": return $"{Cap(parts.Length > 1 ? parts[1] : "")} last {(1f / e.value - 1f):P0} longer";
                 case "spoil": return $"{Cap(parts.Length > 1 ? parts[1] : "")} spoils {pct(e.value)} slower";
                 case "births": return $"Births +{pct(e.value)}";
-                case "happiness": return $"Happiness +{pct(e.value)}";
+                case "happiness": return $"Happiness {(e.value >= 1 ? "+" : "-")}{pct(e.value)}";
                 case "build": return $"Building +{pct(e.value)}";
                 case "reveal": return "Reveals the copper and tin deposits on the map";
+                case "storage": return $"Every store holds +{pct(e.value)}";
+                case "water": return $"Wells reach +{pct(e.value)} farther";
+                case "traders": return "Traders call in spring, summer and autumn";
+                case "migrants": return $"Migrants come +{pct(e.value)} more readily";
+                case "knowledge": return $"Elders' knowledge {(e.value >= 1 ? "+" : "-")}{pct(e.value)}";
+                case "unrest": return $"Unrest {(e.value >= 1 ? "+" : "-")}{pct(e.value)}";
+                case "food": return $"Food eaten {(e.value >= 1 ? "+" : "-")}{pct(e.value)}";
+                case "sickness": return $"Sickness {(e.value >= 1 ? "+" : "-")}{pct(e.value)} likely";
+                case "law": return "Food is shared out evenly when short";
             }
             return $"{e.stat} x{e.value:0.##}";
         }

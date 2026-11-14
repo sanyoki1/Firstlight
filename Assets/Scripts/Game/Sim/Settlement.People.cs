@@ -129,7 +129,8 @@ namespace Firstlight.Game
                     c.Task = Task.Work;
                     c.TaskAmt = 0;
                     c.AtField = true;
-                    c.Facing = FacingToFeature(c);
+                    if (c.Job != null && c.Job.Def.crop) StepIntoField(c, c.Job);
+                    else c.Facing = FacingToFeature(c);
                     break;
                 case Task.FieldReturn:
                 {
@@ -544,7 +545,7 @@ namespace Firstlight.Game
             bool field = c.AtField && b.Def.fieldWork;
             if (field && FieldGone(c)) { Decide(c, work); return; }   // on to another tree / rock / herd
             // Farmers move along the rows now and then.
-            if (field && b.Def.crop && (c.TaskAmt += Step) > 6f) { c.TaskAmt = 0; Decide(c, work); return; }
+            if (field && b.Def.crop && (c.TaskAmt += Step) > 6f) { c.TaskAmt = 0; StepIntoField(c, b); }
             if (!field && b.OutTotal >= B.carryCapacity && HasStorageRoom()) { TakeOutput(c, b); return; }
             ProductiveSeconds += Step;
             if (b.Def.usesTools && c.Tool < 0) EnsureTool(c, true);   // tools may have come in since the shift began

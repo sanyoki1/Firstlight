@@ -104,15 +104,46 @@ Age:** Writing + Bronze Working.
 - Copper Working + Barter → Bronze Working (key): Tin Mine (on the tin deposit) → Bronze Foundry (copper + tin +
   firewood → bronze) → Bronze Smith (bronze tools).
 
-**Age-up milestones:** 80 people, a Mining Pit and a Smelter (a Granary joins the list once that building exists).
+**Age-up milestones:** 80 people, a Mining Pit, a Smelter and a Granary (decided in the quarter-build experiment: the
+Granary joined the list once it existed).
 
 **New challenges:** winter food shortages, first disease outbreaks (crowding, bad water), first disputes/theft as the
 tribe grows.
+
+#### Settled in the quarter-build experiment (2026-11-14)
+These were left open by draft v1 and were decided while building the playable slice (numbers in the data files;
+`docs/quarter-build-log.md`, Phase 3, has the reasons):
+- **Fields** follow the year: sown in spring (sowing work), green through summer (tended crops grow faster; untended
+  grow at 65%), harvested in autumn into grain (or flax fibre once Weaving is known: the crop is chosen per field and
+  fixed at sowing), nothing in winter, when the farmers go to other work. Farmers work inside the field and carry grain
+  in sacks (three times a normal load). Irrigation: +35% for fields with the river within 10 cells.
+- **Granary**: food only, food in it spoils at 30% of the open rate; idle haulers move food from open piles into it.
+- **Housing upgrades in place**: Lean-to and Hide Tent → Thatched Hut (8, warm) → Stone-footed Hut (10, warmest;
+  Masonry). The old building stays lived in while builders rebuild it.
+- **Needs arrive with the age**: clean water (from the Agricultural Age: homes near the river or a well), pottery (goods,
+  once Pottery is known: one per household, wears out) and faith (once Shamanism is known: homes in a staffed Shaman's
+  Hut's reach). An unmet need caps happiness (water 0.6, pottery 0.7, faith 0.65) instead of being a survival need.
+- **Health tiers**: Herbalist (radius 16) and Healer's Hut (radius 24, better treatment, holds back outbreaks).
+- **Laws** (Tribal Law + a Tribal Council): four toggles with real trade-offs, each changeable once every 4 days and
+  suspended without a council: Food Sharing, Elders Settle Disputes, Shared Labour, Rationing (`laws.json`).
+- **Unrest** (from the Agricultural Age): grows with population, unhappiness, crowding and people without faith; a
+  staffed council halves it. Above 25% disputes cost work days, above 30% goods go missing; warned at 20%.
+- **Outbreaks** (from 30 people): crowding and homes without clean water raise the daily chance; several people in
+  the homes round the worst home fall ill at once; a healer in reach (with herbs) limits it.
+- **Barter**: trading parties call in spring, summer and autumn and swap the biggest surplus for what the settlement is
+  short of (tools, clothing, pottery, herbs, tin once Bronze Working is known).
+- **Masonry**: stone-footed huts and stone-lined wells (reach +50%). **Writing**: knowledge +15%. **Tribes**: migrants
+  +30%.
+- **Bronze buildings** (Tin Mine, Bronze Foundry, Bronze Smith) belong to the Agricultural Age, since Bronze Working is
+  researched there. Mines and the clay pit must stand on their deposit; ore shows on the map after Prospecting.
+- **Dirt paths**: free, immediate, dragged out tile by tile; walking on them is 35% faster and routes bend onto them.
+- **End of the slice**: reaching the Bronze Age shows an end screen with a summary and "Keep playing" (sandbox).
 
 Slice must include: map generation, grid placement, citizens with jobs/needs, resource economy, research tree UI,
 service coverage (healer), milestone goals, save/load.
 
 ## Open questions
 - Research costs and balance numbers (tune in prototype)
-- Law system design (how laws are chosen and what they cost)
+- Law system design beyond the first four toggles (how later laws are chosen and what they cost); the first laws were
+  decided in the quarter-build experiment (see the Agricultural Age)
 - Monetization and price point; Steam page timing

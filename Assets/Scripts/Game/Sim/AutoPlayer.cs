@@ -153,6 +153,10 @@ namespace Firstlight.Game
                 else if (b.Def.outputs.Any(o => o.id == "firewood") && fuelShort) p = Priority.High;
                 else if (b.Def.outputs.Any(o => D.Resource(o.id)?.toolSpeed > 0) && toolsShort) p = Priority.High;
                 else if (b.Def.outputs.Any(o => S.Stock(o.id) < LowStock(o.id))) p = Priority.High;
+                // Services the town is short of now: the council when unrest builds, the shaman while faith is unmet.
+                else if (b.Def.orderPower > 0 && S.Unrest >= 0.12f) p = Priority.High;
+                else if (b.Def.faithRadius > 0 && S.NeedActive("faith") && S.NeedMet("faith") < 0.8f) p = Priority.High;
+                else if (b.Def.healthRadius > 0 && S.OutbreakRisk >= D.Balance.outbreakWarn) p = Priority.High;
                 else if (b.Def.knowledgePerWorker > 0) p = fd < 1f && S.Season == 3 ? Priority.Low : fd < 3f ? Priority.Normal : Priority.High;
                 else if (food && plenty) p = Priority.Low;
                 if (b.Priority != p) S.SetPriority(b, p);

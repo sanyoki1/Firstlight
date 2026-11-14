@@ -27,7 +27,7 @@ namespace Firstlight.Game
     }
 
     /// <summary>One growth stage of a crop building's look: the crop rows' material and height (view only).</summary>
-    [Serializable] public class CropStageDef { public string name, material; public float height; }
+    [Serializable] public class CropStageDef { public string name, material; public float height; public string[] materials; }
 
     /// <summary>A law the council can pass (laws.json): its effects join the research effects while it is in force.</summary>
     [Serializable]

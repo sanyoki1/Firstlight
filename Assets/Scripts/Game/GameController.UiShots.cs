@@ -173,6 +173,10 @@ namespace Firstlight.Game
             yield return Settle(20);
             yield return Shot("winter");
 
+            // On through the Agricultural Age to the Bronze Age (-noagri skips it).
+            if (!HasArg("-noagri")) yield return AgriShots();
+            mid = TownMiddle();
+
             // Frame time with the view on (batch mode only: a windowed player nobody watches is throttled): the town,
             // then with a crowd added.
             if (!Application.isBatchMode) { Debug.Log("[UiShots] done"); yield return null; Application.Quit(); yield break; }

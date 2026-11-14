@@ -63,9 +63,12 @@ namespace Firstlight.Game.UI
                 if (d.warmthRadius > 0) status = b.Fueled ? "The fire is burning" : "Out of firewood: the fire is out";
                 if (status.Length > 0) Row(Col(status, status == "Working" || b.Fueled && d.warmthRadius > 0 ? Good : Warn), Bold);
                 Para(d.description);
+                if (d.crop) DrawCrop(b);
                 if (d.IsWorkplace) DrawWorkplace(b);
                 if (d.housing > 0) DrawHome(b);
                 if (b.Store != null) DrawStore(b);
+                DrawCoverage(b);
+                DrawUpgrade(b);
             }
             Gap(6);
             if (b != S.TownCenter)
@@ -82,6 +85,7 @@ namespace Firstlight.Game.UI
         void DrawSite(Building b)
         {
             Row(Col("Under construction", Warn), Bold);
+            if (!string.IsNullOrEmpty(b.Def.onDeposit)) Row(Col($"On {S.DepositCells(b.Def, b.Origin)} cells of the {b.Def.onDeposit} deposit", Dim), Small, 20);
             BarRow("Progress", b.Progress, Accent, $"{b.Progress:P0}");
             for (int i = 0; i < b.Def.cost.Length; i++)
             {
@@ -116,7 +120,7 @@ namespace Firstlight.Game.UI
             var pa = new Rect(_lx + _lw - 92, _ly, 92, 28);
             if (GUI.Button(pa, b.Paused ? "Resume" : "Pause", b.Paused ? ButtonOn : Button)) S.SetPaused(b, !b.Paused);
             _ly += 34;
-            if (d.outputs.Length >= 2)
+            if (d.outputs.Length >= 2 && !d.exclusiveOutputs)
             {
                 GUI.Label(new Rect(_lx, _ly + 4, 70, 22), "Make", Small);
                 float x = _lx + 72;
@@ -149,7 +153,7 @@ namespace Firstlight.Game.UI
                 float k = d.knowledgePerWorker * research * moodF * ((workers - elders) + elders * D.Balance.elderKnowledgeMult);
                 Row($"Knowledge  <b>about {k:0.#} a day</b>", Label);
             }
-            if (d.outputs.Length > 0)
+            if (d.outputs.Length > 0 && !d.crop)
             {
                 float total = d.outputs.Sum(o => o.amount);
                 float common = season * near * research * toolF * moodF * workers;
@@ -181,7 +185,12 @@ namespace Firstlight.Game.UI
             BarRow("Residents", b.Residents / (float)math.max(1, b.Def.housing), Good, $"{b.Residents} / {b.Def.housing}");
             Row(b.Residents == 0 ? Col("Empty", Faint) : b.Heated ? Col("Heated: firewood today", Good) : S.Data.Balance.firewoodPerHome[S.Season] > 0 ? Col("No firewood today: cold inside", Bad) : "No fire needed this season", Small, 20);
             bool warm = S.TownCenter != null && math.distance(S.TownCenter.Center, b.Center) <= S.TownCenter.Def.warmthRadius;
-            Row(warm ? "Within the campfire's warmth" : Col("Outside the campfire's warmth", Warn), Small, 20);
+            Row(warm ? "Within the campfire's warmth" : b.Def.homeWarmth >= 0.6f ? Col("Outside the campfire's warmth (warm enough when heated)", Dim) : Col("Outside the campfire's warmth", Warn), Small, 20);
+            var has = new List<string>();
+            if (S.NeedActive("water")) has.Add(b.HasWater ? Col("clean water", Good) : Col("no clean water nearby", Bad));
+            if (S.NeedActive("goods")) has.Add(b.GoodsLife > 0 ? Col($"pottery ({b.GoodsLife:0} days)", Good) : Col("no pottery", Warn));
+            if (S.NeedActive("faith")) has.Add(b.HasFaith ? Col("a shaman in reach", Good) : Col("no shaman in reach", Warn));
+            if (has.Count > 0) Row("Household  " + string.Join(", ", has), Small, 20);
             var who = S.Citizens.Where(c => c.Home == b).Select(c => c.Age < D.Balance.adultAge ? $"{c.Name} ({(int)c.Age})" : c.Name).ToList();
             if (who.Count > 0) Para(string.Join(", ", who));
         }
@@ -245,8 +254,12 @@ namespace Firstlight.Game.UI
             if (c.Hungry) needs.Add(Col("hungry", Bad));
             if (c.Cold) needs.Add(Col("cold", Bad));
             if (c.Sick) needs.Add(Col($"sick for {c.SickDays} more days" + (c.Treated ? ", treated" : ""), Warn));
+            if (c.NoWater) needs.Add(Col("no clean water", Warn));
+            if (c.NoGoods) needs.Add(Col("no pottery", Warn));
+            if (c.NoFaith) needs.Add(Col("no faith", Warn));
+            if (c.DisputeDays > 0) needs.Add(Col($"in a dispute ({c.DisputeDays} days off work)", Warn));
             if (c.UnhappyDays > 0) needs.Add(Col($"unhappy {c.UnhappyDays} days, may leave", Bad));
-            Row(needs.Count > 0 ? string.Join(", ", needs) : Col("Fed, warm and well", Good), Small, 20);
+            if (needs.Count > 0) Para(string.Join(", ", needs)); else Row(Col("Fed, warm and well" + (S.Age.order >= 1 ? ", with all it needs" : ""), Good), Small, 20);
             Gap(4);
             Row("Tool  " + (c.Tool >= 0 ? $"{D.Resources[c.Tool].name}, {c.ToolLife:0} work days left" : Col("none", Faint)), Small, 20);
             Row("Clothing  " + (c.ClothingLife > 0 ? $"hide clothing, {c.ClothingLife:0} cold days left" : Col("none", Faint)), Small, 20);

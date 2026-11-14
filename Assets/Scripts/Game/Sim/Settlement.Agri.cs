@@ -89,12 +89,24 @@ namespace Firstlight.Game
         /// <summary>Fields need no hands in winter (their workers go hauling and building).</summary>
         bool WantsWorkers(Building b) => !(b.Def.crop && (Season == 3 || Season == 2 && b.Harvested >= 0.999f));
 
-        /// <summary>A spot inside a field's footprint to work at (fields are walkable).</summary>
+        /// <summary>
+        /// Where a farmer goes: the field's door (one path target per field, so a big farmed area costs no more paths);
+        /// on arrival it steps in among the rows (<see cref="StepIntoField"/>).
+        /// </summary>
         int CropSpot(Building b, out int feature)
         {
-            int x = b.Origin.x + _rng.Next(b.Def.sizeX), y = b.Origin.y + _rng.Next(b.Def.sizeY);
-            feature = Map.Cell(math.min(x + 1, b.Origin.x + b.Def.sizeX - 1), y);
-            return Map.Cell(x, y);
+            feature = b.Door;
+            return b.Door;
+        }
+
+        /// <summary>A farmer moves to a spot among the rows (the view walks it there), facing along the row.</summary>
+        void StepIntoField(Citizen c, Building b)
+        {
+            float x = b.Origin.x + 0.4f + (float)_rng.NextDouble() * (b.Def.sizeX - 0.8f);
+            float y = b.Origin.y + 0.4f + (float)_rng.NextDouble() * (b.Def.sizeY - 0.8f);
+            c.Pos = new float2(x, y);
+            c.Facing = _rng.Next(2) == 0 ? math.PI * 0.5f : -math.PI * 0.5f;
+            c.FieldFeature = -1;
         }
 
         // ------------------------------------------------------------------ granary

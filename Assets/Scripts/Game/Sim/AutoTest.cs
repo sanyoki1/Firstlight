@@ -107,6 +107,7 @@ namespace Firstlight.Game
                     rep.maxPopulation = Math.Max(rep.maxPopulation, pop);
                     if (pop == 0) break;
                     int seasonIdx = s.Day / data.Balance.daysPerSeason;
+                    if (seasonIdx != lastSeasonIdx && seasonIdx % 4 == 0) Debug.Log($"[AutoTest] year {seasonIdx / 4 + 1}: {pop} people, {sw.Elapsed.TotalSeconds:F0} s");
                     if (seasonIdx != lastSeasonIdx)
                     {
                         rep.seasons.Add(Row(s, prev, lastSeasonIdx, data));
@@ -158,6 +159,17 @@ namespace Firstlight.Game
             File.WriteAllText(Path.Combine(outDir, "autotest-report.json"), JsonUtility.ToJson(rep, true));
             Debug.Log($"[AutoTest] seed {seed}: {(rep.pass ? "PASS" : "FAIL")} in {sw.Elapsed.TotalSeconds:F1} s real time, day {rep.finalDay}, population {rep.finalPopulation} (max {rep.maxPopulation}), {msPerStep:F3} ms per sim step with the auto-player");
             // The wall-clock line goes to the log only: the report files stay byte-identical for a seed.
+            // Sim cost on its own (no auto-player) for two more game days of the final town, after the report is written.
+            if (s != null && s.Population > 0)
+            {
+                var sw2 = System.Diagnostics.Stopwatch.StartNew();
+                s.Profile = true;
+                int built0 = map.Flow.FieldsBuilt;
+                s.Tick(data.Balance.dayLengthSeconds * 2f);
+                float steps = 2f * data.Balance.dayLengthSeconds / Settlement.Step;
+                Debug.Log($"[Perf] sim alone, town of {s.Population} with {s.Buildings.Count(b => b.Alive)} buildings: {sw2.Elapsed.TotalMilliseconds / steps:F3} ms per sim step " +
+                          $"(citizens {s.ProfCitizens / steps:F3}, hourly {s.ProfHourly / steps:F3}, daily {s.ProfDaily / steps:F3}, job fill {s.ProfJobs / steps:F3}; {map.Flow.FieldsBuilt - built0} path fields built)");
+            }
             return rep.pass;
         }
 

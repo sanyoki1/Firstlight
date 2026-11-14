@@ -129,12 +129,11 @@ namespace Firstlight.Game
         /// <summary>Crop look for the view: 0 bare soil, 1 shoots, 2 growing, 3 ripe, 4 stubble.</summary>
         public int CropStage(int season)
         {
-            if (Harvested >= 0.5f) return 4;
             if (season == 3) return Harvested > 0.01f ? 4 : 0;
+            if (Harvested >= 0.5f) return 4;
             if (Sown < 0.25f) return 0;
-            if (Growth < 0.3f) return 1;
-            if (Growth < 0.7f && season < 2) return 2;
-            return 3;
+            if (season == 2) return Growth > 0.05f ? 3 : 0;        // ripe at harvest time
+            return Growth < 0.25f ? 1 : 2;                          // shoots, then green through the summer
         }
     }
 
