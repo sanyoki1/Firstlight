@@ -139,13 +139,17 @@ namespace Firstlight.Game.UI
 
         void UpdateHints()
         {
+            // A hint whose moment has passed goes by itself (an undismissed "Winter has come" stood into the summer of
+            // year 12 in the screenshot run, and held back every later hint).
+            if (_hint != null && !_hintForced && !_hint.When(this)) _hint = null;
             if (!GameSettings.Current.hints || _hint != null || S.NeedsCampfire) return;
             foreach (var h in Hints)
-                if (!_hintsSeen.Contains(h.Id) && h.When(this)) { _hint = h; _hintsSeen.Add(h.Id); return; }
+                if (!_hintsSeen.Contains(h.Id) && h.When(this)) { _hint = h; _hintForced = false; _hintsSeen.Add(h.Id); return; }
         }
 
         /// <summary>-p4shots: show a hint as if it had just come up.</summary>
-        public void ShowHint(string id) { _hint = Hints.FirstOrDefault(h => h.Id == id); if (_hint != null) _hintsSeen.Add(id); }
+        public void ShowHint(string id) { _hint = Hints.FirstOrDefault(h => h.Id == id); _hintForced = _hint != null; if (_hint != null) _hintsSeen.Add(id); }
+        bool _hintForced;
 
         void DrawHint()
         {

@@ -20,7 +20,7 @@ namespace Firstlight.Game
         IEnumerator Soak(float minutes)
         {
             for (int i = 0; i < 30; i++) yield return null;
-            Auto ??= new AutoPlayer(Sim);
+            if (HasArg("-noauto")) Auto = null; else Auto ??= new AutoPlayer(Sim);
             int crowd = ArgInt("-crowd", 0);
             if (crowd > 0) Sim.DebugSpawn(crowd);
             SetSpeed(ArgInt("-simspeed", 3));
