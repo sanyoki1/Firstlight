@@ -25,7 +25,9 @@ namespace Firstlight.Game.UI
 
         /// <summary>Scale from virtual (1080 high) to real pixels.</summary>
         // At least 0.75: at 1280x720 the layout is 1707 wide instead of 1920 and the text stays readable.
-        public static float Scale => Mathf.Clamp(Screen.height / 1080f * UserScale, 0.75f, 3f);
+        // At most Screen.height / 780: the tallest panels (settings, help) are about 760 high and must fit, or a large
+        // interface size pushed their Back buttons off the bottom of the screen (160% at 1080p or 720p).
+        public static float Scale => Mathf.Clamp(Mathf.Min(Screen.height / 1080f * UserScale, Screen.height / 780f), 0.75f, 3f);
         /// <summary>The player's interface size setting (1 = the 1080-high layout fitted to the screen height).</summary>
         public static float UserScale = 1f;
         public static float VW => Screen.width / Scale;
