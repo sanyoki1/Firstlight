@@ -457,7 +457,7 @@ namespace Firstlight.Game
                 if (FoodStock < need && fd >= B.foodWarnDays) Warnings.Add($"Food stores won't last until summer ({FoodStock:0} of about {need:0}).");
             }
             if (Unrest >= B.unrestWarn) Warnings.Add($"Unrest is {(Unrest >= B.theftAt ? "high" : "rising")} ({Unrest:P0}): disputes and theft are likely.");
-            if (OutbreakRisk >= B.outbreakWarn) Warnings.Add("Crowded homes and unclean water: sickness could spread.");
+            if (OutbreakRisk >= B.outbreakWarn) Warnings.Add(OutbreakWarning());
             if (_needWater)
             {
                 int dry = 0;
@@ -473,6 +473,29 @@ namespace Firstlight.Game
                 if (!_warnSeen.TryGetValue(key, out int seen) || Day - seen > 3) Log(Severity.Warning, w);
                 _warnSeen[key] = Day;
             }
+        }
+
+        /// <summary>
+        /// The outbreak warning names what is actually driving the risk (it used to blame crowding and unclean water even
+        /// in a town where every home had water: a big town carries risk by its size alone, until a healer covers it).
+        /// </summary>
+        string OutbreakWarning()
+        {
+            int pop = 0, noWater = 0, uncovered = 0, crowded = 0;
+            foreach (var c in Citizens)
+            {
+                if (c.Gone) continue;
+                pop++;
+                if (c.NoWater) noWater++;
+                if (!HealthCover((c.Home ?? TownCenter).Center, out float ch, out _) || ch > 0.45f) uncovered++;
+            }
+            foreach (var h in Buildings) if (h.Active && h.Def.housing > 0 && h.Residents > CrowdFree(h)) crowded += h.Residents;
+            var why = new List<string>();
+            if (crowded * 5 >= pop) why.Add("crowded homes");
+            if (noWater * 5 >= pop) why.Add("homes without clean water");
+            if (uncovered * 3 >= pop) why.Add($"{(pop >= 100 ? "a large town" : "homes")} out of a healer's reach");
+            if (why.Count == 0) why.Add("a town this size");
+            return $"Sickness could spread: {string.Join(", ", why)}.";
         }
 
         /// <summary>Firewood homes and the campfire will burn from now until spring.</summary>

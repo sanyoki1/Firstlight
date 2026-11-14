@@ -104,7 +104,7 @@ namespace Firstlight.Game
             }
             RefreshStock();
             _jobsDirty = true;
-            Log(Severity.Bad, hit > 0 ? $"The river has flooded: {hit} building{(hit == 1 ? " is" : "s are")} under water and {lost:0} goods were spoiled. Work stops there until the water goes down."
+            Log(Severity.Bad, hit > 0 ? $"The river has flooded: {hit} building{(hit == 1 ? " is" : "s are")} under water{(lost >= 1.5f ? $" and {lost:0} goods were spoiled" : lost > 0.01f ? " and a few goods were spoiled" : "")}. Work stops there until the water goes down."
                                       : "The river has flooded the low ground; no buildings stand there.", FloodCentre());
         }
 
