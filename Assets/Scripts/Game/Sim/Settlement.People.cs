@@ -696,12 +696,23 @@ namespace Firstlight.Game
             }
         }
 
-        /// <summary>Builders: carry missing materials to the oldest site that can use them, else build one whose materials are in.</summary>
+        /// <summary>
+        /// Builders: carry missing materials to the oldest site that can use them, else build one whose materials are in.
+        /// High-priority sites come first, low ones last (the player's only way to say "the woodcutter before the rest"
+        /// when wood is short; before, the oldest site always took the wood).
+        /// </summary>
         bool BuilderDecide(Citizen c)
+        {
+            for (int p = (int)Priority.High; p >= (int)Priority.Low; p--)
+                if (BuilderDecide(c, (Priority)p)) return true;
+            return false;
+        }
+
+        bool BuilderDecide(Citizen c, Priority tier)
         {
             foreach (var site in Buildings)
             {
-                if (!site.UnderWork) continue;
+                if (!site.UnderWork || site.Priority != tier) continue;
                 var bd = site.BuildDef;
                 if (!site.MaterialsComplete)
                 {

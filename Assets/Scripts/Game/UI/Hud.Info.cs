@@ -88,7 +88,7 @@ namespace Firstlight.Game.UI
         void DrawSite(Building b)
         {
             Row(Col("Under construction", Warn), Bold);
-            if (!string.IsNullOrEmpty(b.Def.onDeposit)) Row(Col($"On {S.DepositCells(b.Def, b.Origin)} cells of the {b.Def.onDeposit} deposit", Dim), Small, 20);
+            if (!string.IsNullOrEmpty(b.Def.onDeposit)) Row(Col($"On {S.DepositCells(b.Def, b.Origin, b.Rot)} cells of the {b.Def.onDeposit} deposit", Dim), Small, 20);
             BarRow("Progress", b.Progress, Accent, $"{b.Progress:P0}");
             for (int i = 0; i < b.Def.cost.Length; i++)
             {
@@ -101,8 +101,24 @@ namespace Firstlight.Game.UI
             Row(builders > 0 ? $"{builders} builder{(builders == 1 ? "" : "s")} on it" : Col(S.BuildersWanted == 0 ? "No builders assigned (bottom bar)" : "Waiting for builders", Warn), Small, 20);
             var missing = b.Def.cost.Where((c, i) => b.Delivered[i] + b.InTransitOf(i) < c.amount - 0.01f && S.Stock(c.id) < 0.5f).Select(c => ResName(c.id).ToLower()).ToList();
             if (missing.Count > 0) Row(Col("No " + string.Join(", ", missing) + " in store", Bad), Small, 20);
+            DrawBuildOrder(b);
             Gap(4);
             Para(b.Def.description);
+        }
+
+        /// <summary>Which sites the builders serve first (materials and work): High, then Normal, then Low.</summary>
+        void DrawBuildOrder(Building b)
+        {
+            Gap(4);
+            GUI.Label(new Rect(_lx, _ly + 4, 80, 22), "Build order", Small);
+            string[] pn = { "Last", "Normal", "First" };
+            for (int i = 0; i < 3; i++)
+            {
+                var pr = new Rect(_lx + 84 + i * 76, _ly, 72, 28);
+                if (GUI.Button(pr, pn[i], (int)b.Priority == i ? ButtonOn : Button)) S.SetPriority(b, (Priority)i);
+            }
+            Tip(new Rect(_lx + 84, _ly, 226, 28), "Builders bring materials to, and build, the sites marked First before the others (oldest first within each). Use it when a material is short: the woodcutter before the huts.");
+            _ly += 34;
         }
 
         /// <summary>Workers, priority, pause, focus, and output per day with the factors behind it.</summary>
