@@ -388,9 +388,12 @@ namespace Firstlight.Game
 
         // ------------------------------------------------------------------ events and warnings
 
-        void Log(Severity s, string text)
+        void Log(Severity s, string text) => Log(s, text, false, default);
+        void Log(Severity s, string text, float2 at) => Log(s, text, true, at);
+
+        void Log(Severity s, string text, bool hasPlace, float2 at)
         {
-            Events.Add(new SimEvent { Day = Day, Severity = s, Text = text });
+            Events.Add(new SimEvent { Day = Day, Severity = s, Text = text, HasPlace = hasPlace, Place = at });
             if (Events.Count > 20000) Events.RemoveRange(0, 5000);
         }
 

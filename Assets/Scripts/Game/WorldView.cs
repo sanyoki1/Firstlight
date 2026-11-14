@@ -15,7 +15,8 @@ namespace Firstlight.Game
         readonly GameMap _map;
         GameObject _terrainGo, _waterGo;
         Texture2D _matMap;
-        byte[] _matBytes;
+        byte[] _matBytes, _matOrig;
+        bool _matDirty;
         InstanceBatch _conifers, _broadleaves, _rocks, _bushes, _tufts, _flowers;
         readonly List<InstanceData> _bushData = new(), _tuftData = new(), _flowerData = new();
         readonly List<InstanceData> _tmp = new();
@@ -89,6 +90,7 @@ namespace Firstlight.Game
             var rng = new System.Random(99);
             _matBytes = new byte[_map.W * _map.H];
             for (int c = 0; c < _matBytes.Length; c++) _matBytes[c] = LayerForCell(c, rng);
+            _matOrig = (byte[])_matBytes.Clone();
             _matMap = new Texture2D(_map.W, _map.H, TextureFormat.R8, false, true)
             {
                 filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, name = "MaterialMap",
@@ -99,12 +101,17 @@ namespace Firstlight.Game
             Shader.SetGlobalVector("_FL_MatMapSize", new Vector4(_map.W, _map.H, 0, 0));
         }
 
-        /// <summary>Changes one cell's ground material (e.g. a building clears it to dirt).</summary>
+        /// <summary>Changes one cell's ground material (e.g. a building clears it to dirt); uploaded once per frame.</summary>
         public void SetCellMaterial(int c, string layer)
         {
-            _matBytes[c] = (byte)MaterialLibrary.Layer(layer);
-            _matMap.SetPixelData(_matBytes, 0);
-            _matMap.Apply(false, false);
+            byte v = (byte)MaterialLibrary.Layer(layer);
+            if (_matBytes[c] != v) { _matBytes[c] = v; _matDirty = true; }
+        }
+
+        /// <summary>Puts a cell's generated ground material back (a building was pulled down).</summary>
+        public void RestoreCellMaterial(int c)
+        {
+            if (_matBytes[c] != _matOrig[c]) { _matBytes[c] = _matOrig[c]; _matDirty = true; }
         }
 
         void BuildTerrain()
@@ -253,10 +260,13 @@ namespace Firstlight.Game
 
         // ------------------------------------------------------------------ nature
 
+        readonly List<InstanceData> _con = new(), _brd = new();
+        InstanceData[] _treeArr = new InstanceData[1024];
+
         public void RefreshTrees()
         {
-            var con = new List<InstanceData>();
-            var brd = new List<InstanceData>();
+            var con = _con; var brd = _brd;
+            con.Clear(); brd.Clear();
             for (int c = 0; c < _map.W * _map.H; c++)
             {
                 if (!_map.Tree[c]) continue;
@@ -269,8 +279,8 @@ namespace Firstlight.Game
                 else
                     brd.Add(new InstanceData(new float3(px, _map.HeightAt(px, pz) - 0.05f, pz), _map.TreeYaw[c], new float3(2.2f * s, 2.0f * s, 2.2f * s), tint));
             }
-            _conifers.Upload(con.ToArray(), con.Count);
-            _broadleaves.Upload(brd.ToArray(), brd.Count);
+            UploadList(_conifers, con);
+            UploadList(_broadleaves, brd);
             _map.TreesDirty = false;
         }
 
@@ -281,14 +291,20 @@ namespace Firstlight.Game
             {
                 if (_map.Rock[c] <= 0) continue;
                 int x = c % _map.W, y = c / _map.W;
-                var rng = new System.Random(c);
                 float k = Mathf.Clamp(_map.Rock[c] / 30f, 0.35f, 1.2f);
                 float px = x + 0.5f, pz = y + 0.5f;
-                _tmp.Add(new InstanceData(new float3(px, _map.HeightAt(px, pz), pz), (float)rng.NextDouble() * 6.28f,
+                _tmp.Add(new InstanceData(new float3(px, _map.HeightAt(px, pz), pz), Hash01(c) * 6.28f,
                     new float3(1.2f, 1.0f, 1.2f) * (0.7f + 0.5f * k), Tint(c, 0.85f, 1f)));
             }
-            _rocks.Upload(_tmp.ToArray(), _tmp.Count);
+            UploadList(_rocks, _tmp);
             _map.RocksDirty = false;
+        }
+
+        void UploadList(InstanceBatch batch, List<InstanceData> list)
+        {
+            if (_treeArr.Length < list.Count) _treeArr = new InstanceData[Mathf.NextPowerOfTwo(list.Count)];
+            list.CopyTo(_treeArr);
+            batch.Upload(_treeArr, list.Count);
         }
 
         void BuildDecor()
@@ -338,11 +354,13 @@ namespace Firstlight.Game
             _flowers.Mesh = Shapes.Flowers;
         }
 
+        static float Hash01(int c) { uint h = (uint)c * 2654435761u; h ^= h >> 15; h *= 2246822519u; h ^= h >> 13; return (h & 0xffffff) / 16777216f; }
+
         static uint Tint(int seed, float lo, float hi)
         {
-            var rng = new System.Random(seed * 7919);
-            float k = lo + (float)rng.NextDouble() * (hi - lo);
-            float warm = (float)rng.NextDouble() * 0.05f;
+            // Hash, not System.Random: trees are re-uploaded whenever one is felled or grows (no garbage).
+            float k = lo + Hash01(seed * 7919) * (hi - lo);
+            float warm = Hash01(seed * 7919 + 1) * 0.05f;
             return Pal.Pack(new Color(k + warm, k, k - warm));
         }
 
@@ -352,6 +370,12 @@ namespace Firstlight.Game
         {
             if (_map.TreesDirty) RefreshTrees();
             if (_map.RocksDirty) RefreshRocks();
+            if (_matDirty)
+            {
+                _matDirty = false;
+                _matMap.SetPixelData(_matBytes, 0);
+                _matMap.Apply(false, false);
+            }
             UpdateDeer();
             UpdatePeople();
             if (_water != null) UpdateWaterMesh();
@@ -362,8 +386,11 @@ namespace Firstlight.Game
                 foreach (var batch in _people) batch.Draw();
                 _spearUp.Draw(); _spearLevel.Draw(); _tent.Draw(); _fire.Draw();
             }
-            _bushes.Draw(); _tufts.Draw(); _flowers.Draw();
+            if (!HideGroundCover) { _bushes.Draw(); _tufts.Draw(); _flowers.Draw(); }
         }
+
+        /// <summary>Bushes, grass tufts and flowers are not drawn (snow lies over them).</summary>
+        public bool HideGroundCover;
 
         public void AttachWildlife(Wildlife wild) => _wild = wild;
 

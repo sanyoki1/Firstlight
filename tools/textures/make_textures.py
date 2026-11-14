@@ -30,6 +30,9 @@ BASES = {
     "rockg": "#7d786b", "rock": "#88837a", "lichen": "#7b8263", "water": "#4f6a74", "shallow": "#6a8483",
     "barkc": "#5a4535", "barkb": "#6c6355", "needle": "#4a5d3f", "leaf": "#5f7341", "fur": "#86684b",
     "berry": "#6e4652", "deer": "#7e6149", "deerpale": "#bfae90", "skin": "#a57c63", "hide": "#8b7354", "hair": "#3a302a", "wood": "#9b8566", "bloom": "#b9a676", "bloom2": "#8f7f9a", "snow": "#d3d8d8",
+    "brush": "#5f5040", "dryleaf": "#7a6a48", "straw": "#a08c5c", "wicker": "#94795a", "ash": "#6f6a64",
+    "char": "#3b3531", "ember": "#b4602e", "flame": "#d9893a", "clay": "#9a6f55", "meat": "#8c4c40",
+    "soil": "#5f4b38", "crop": "#a6915a",
 }
 PAL = Palette.from_ramps({k: make_ramp(v, 5, step_L=0.075, hue_shift=10) for k, v in BASES.items()}, name="firstlight")
 pf.use_palette(PAL)
@@ -318,6 +321,104 @@ def snow(d, t, seed=15):
     return p.cv
 
 
+def branches(d, t, seed=30):
+    """Brushwood roofs (lean-to): a tangle of thin branches with dried leaves caught in it."""
+    p = Painter(d, (t, t), seed)
+    p.bands("brush", [1, 2], [0.5], 0.6)
+    for ang, tone in ((25, "brush0"), (155, "brush3"), (70, "brush1"), (110, "brush4")):
+        p.strokes(tone, 7, 0.35, ang, 20)
+    p.blobs("dryleaf1", 3, 0.07)
+    p.blobs("dryleaf3", 2, 0.06)
+    return p.cv
+
+
+def thatch(d, t, seed=31):
+    """Straw thatch: long strands running down the roof, darker rows where the bundles overlap."""
+    p = Painter(d, (t, t), seed)
+    p.fill("straw2")
+    p.strokes("straw1", 30, 0.18, 90, 6)
+    p.strokes("straw3", 22, 0.16, 90, 6)
+    p.strokes("straw4", 5, 0.12, 90, 8)
+    row = p.px(0.35)
+    for y in range(0, t, row):
+        p.cv.rect(0, y, t, max(1, p.px(0.02)), "straw0")
+    return p.cv
+
+
+def basket(d, t, seed=32):
+    """Woven wicker (baskets, screens): an over-under weave of light and dark rods."""
+    p = Painter(d, (t, t), seed)
+    p.fill("wicker1")
+    cell = p.px(0.05, 2)
+    for y in range(0, t, cell):
+        for x in range(0, t, cell * 2):
+            off = cell if (y // cell) % 2 else 0
+            p.cv.rect((x + off) % t, y, cell, max(1, cell - 1), "wicker3")
+            p.cv.px((x + off) % t, y, "wicker4")
+    return p.cv
+
+
+def ash(d, t, seed=33):
+    """Hearth ash: grey ash, black charcoal chunks and a few glowing embers."""
+    p = Painter(d, (t, t), seed)
+    p.bands("ash", [1, 2, 3], [0.35, 0.7], 0.3)
+    p.blobs("char1", 6, 0.06)
+    p.blobs("char0", 3, 0.05)
+    p.blobs("ember2", 1.2, 0.03)
+    p.blobs("ember4", 0.5, 0.02)
+    return p.cv
+
+
+def flame(d, t, seed=34):
+    """Flames (drawn unlit, so they glow): orange with yellow tongues licking upwards."""
+    p = Painter(d, (t, t), seed)
+    p.bands("flame", [2, 3], [0.5], 0.2, 0.4)
+    p.strokes("flame4", 30, 0.12, 90, 12)
+    p.strokes("ember3", 12, 0.1, 90, 12)
+    return p.cv
+
+
+def clay(d, t, seed=35):
+    """Wet clay and clay walls: smooth with finger smears and grit."""
+    p = Painter(d, (t, t), seed)
+    p.bands("clay", [1, 2, 3], [0.3, 0.7], 0.5)
+    p.strokes("clay3", 3, 0.12, 0, 60)
+    p.pebbles("clay", 0.6, 0.04)
+    return p.cv
+
+
+def meat(d, t, seed=36):
+    """Meat strips drying: dark red with pale fat streaks."""
+    p = Painter(d, (t, t), seed)
+    p.bands("meat", [1, 2], [0.5], 0.15)
+    p.strokes("meat4", 14, 0.08, 90, 15)
+    p.strokes("meat0", 8, 0.06, 90, 15)
+    return p.cv
+
+
+def soil(d, t, seed=37):
+    """Tilled soil: dark earth in furrows with lighter crumbled ridges."""
+    p = Painter(d, (t, t), seed)
+    p.bands("soil", [1, 2], [0.5], 0.5)
+    row = p.px(0.25)
+    for y in range(0, t, row):
+        p.cv.rect(0, y, t, max(1, row // 3), "soil0")
+        p.cv.rect(0, y + row // 3, t, max(1, row // 6), "soil3")
+    p.pebbles("rockg", 0.4, 0.05)
+    return p.cv
+
+
+def crop(d, t, seed=38):
+    """Ripe grain: dense upright stalks with heads at the top of each row."""
+    p = Painter(d, (t, t), seed)
+    p.fill("crop1")
+    p.strokes("crop2", 40, 0.18, 90, 8)
+    p.strokes("crop3", 25, 0.14, 90, 8)
+    p.blobs("crop4", 6, 0.04)
+    p.strokes("grass1", 6, 0.12, 90, 10)
+    return p.cv
+
+
 # ---------------------------------------------------------------------------------------------- sprites
 # Drawn at native size (metres x density), not wrapped; placed top-left in their layer.
 
@@ -372,6 +473,8 @@ MATERIALS = [
     ("needles", needles), ("leaves", leaves), ("fur", fur), ("snow", snow),
     ("deer", deer), ("deer_pale", deer_pale),
     ("skin", skin), ("hide", hide), ("hair", hair), ("wood", wood),
+    ("branches", branches), ("thatch", thatch), ("basket", basket), ("ash", ash), ("flame", flame),
+    ("clay", clay), ("meat", meat), ("soil", soil), ("crop", crop),
 ]
 SPRITES = [("bush", sprite_bush), ("tuft", sprite_tuft), ("flowers", sprite_flowers)]
 

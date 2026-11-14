@@ -195,3 +195,16 @@ Perf probe: `-autotest -crowd 400` adds 400 adults and times a season: 413 citiz
 - `Settlement.Update(Time.deltaTime)` is already called from `GameController.Update`; `SetSpeed` drives it.
 - `Warnings` are refreshed hourly and are the "current problems" list; `Events` is the log (new entries are appended;
   remember the last count you showed).
+
+## Phase 2: 3D view of the settlement and the HUD
+
+Status: in progress (this section is updated at each commit).
+
+### What exists so far
+- Settlement drawn from the sim (`Game/View/`): buildings from their data parts, each part with a material; sites
+  marked out, piled with delivered materials, rising inside scaffolding; citizens in poses with what they carry;
+  fires that burn while fuelled; day/night and seasons (tints, snow); selection ring, placement ghost, radius studs.
+- IMGUI HUD (`Game/UI/`): campfire start flow, top bar, build menu, building/citizen panels, research tree, goals,
+  feed of events and warnings, jobs, stocks, help.
+- Field work in the sim (gatherers, woodcutters, stone gatherers, hunters walk out and carry loads back).
+- `-uishots` screenshot mode (see below).

@@ -1,12 +1,16 @@
-// Draws many copies of one mesh from a GPU buffer (citizens, trees, rocks, animals, plants).
+// Draws many copies of one mesh from a GPU buffer (citizens, trees, rocks, animals, plants, buildings).
 // Each instance: position, yaw, scale, packed sRGB colour. Vertex COLOR = tint, alpha = how much the instance
-// colour applies. TEXCOORD1 = (material layer, uv mode). Box projection uses the instance's own (scaled)
-// local space, so texture pixels stay the same size on every copy and turn with it.
+// colour applies. TEXCOORD1 = (material layer, uv mode: 0 box projected, 1 explicit UV, 3 box projected and
+// unlit = glowing). Box projection uses the instance's own (scaled) local space, so texture pixels stay the
+// same size on every copy and turn with it.
+// Instance colour alpha: 255 = normal; 1..254 = construction (nothing drawn above alpha/255 * 4 units: a site
+// rising); 0 = placement ghost (the whole mesh washed with the instance colour).
 Shader "Firstlight/InstancedFlat"
 {
     Properties
     {
         [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull", Float) = 2
+        _Snowable ("Takes snow", Float) = 1
     }
     SubShader
     {
@@ -14,6 +18,13 @@ Shader "Firstlight/InstancedFlat"
 
         HLSLINCLUDE
         #include "FlatCommon.hlsl"
+        float _Snowable;
+        #define BUILD_HEIGHT 4.0
+        float BuildCut(uint color, float y)
+        {
+            float a = ((color >> 24) & 255) / 255.0;
+            return a < 0.995 && a > 0.002 ? a * BUILD_HEIGHT - y : 1;
+        }
         struct InstanceData { float3 pos; float yaw; float3 scale; uint color; };
         StructuredBuffer<InstanceData> _Instances;
 
@@ -51,6 +62,7 @@ Shader "Firstlight/InstancedFlat"
             {
                 float4 positionCS : SV_POSITION; float3 positionWS : TEXCOORD0; float3 local : TEXCOORD1;
                 half3 color : COLOR; float2 uv : TEXCOORD2; nointerpolation float3 mat : TEXCOORD3; half fog : TEXCOORD4;
+                nointerpolation half4 inst : TEXCOORD5;    // instance colour (linear rgb, raw alpha)
             };
 
             Varyings vert(Attributes v)
@@ -66,15 +78,29 @@ Shader "Firstlight/InstancedFlat"
                 o.uv = v.uv;
                 o.mat = float3(v.mat, d.yaw);
                 o.fog = ComputeFogFactor(o.positionCS.z);
+                o.inst = ic;
                 return o;
             }
 
             half4 frag(Varyings i) : SV_Target
             {
+                if (i.inst.a < 0.995 && i.inst.a > 0.002) clip(i.inst.a * BUILD_HEIGHT - i.local.y);
                 float3 n = FlatNormal(i.positionWS);
-                half4 t = i.mat.y > 0.5 ? SampleExplicit(i.uv, i.mat.x) : SampleBoxProjected(i.local, Unrotate(i.mat.z, n), i.mat.x, 0);
+                float3 nl = Unrotate(i.mat.z, n);
+                bool explicitUV = i.mat.y > 0.5 && i.mat.y < 1.5;
+                half4 t = explicitUV ? SampleExplicit(i.uv, i.mat.x) : SampleBoxProjected(i.local, nl, i.mat.x, 0);
                 clip(t.a - 0.5);
-                half3 c = FlatShade(i.positionWS, n, t.rgb * i.color);
+                half3 albedo = SeasonTint(t.rgb, i.mat.x) * i.color;
+                bool ghost = i.inst.a <= 0.002;
+                if (i.mat.y > 2.5)
+                {
+                    half3 g = albedo * _FL_Glow;
+                    if (ghost) g = lerp(g, i.inst.rgb, 0.55);
+                    return half4(MixFog(g, i.fog), 1);
+                }
+                if (_Snowable > 0.5 && !ghost) albedo = ApplySnow(albedo, i.positionWS, n, i.local, nl);
+                half3 c = FlatShade(i.positionWS, n, albedo);
+                if (ghost) c = lerp(c, i.inst.rgb, 0.5) + i.inst.rgb * 0.12;
                 return half4(MixFog(c, i.fog), 1);
             }
             ENDHLSL
@@ -91,7 +117,7 @@ Shader "Firstlight/InstancedFlat"
             #pragma fragment frag
             #pragma multi_compile_vertex _ _CASTING_PUNCTUAL_LIGHT_SHADOW
             struct Attributes { float4 positionOS : POSITION; float3 normalOS : NORMAL; float2 uv : TEXCOORD0; float2 mat : TEXCOORD1; uint id : SV_InstanceID; };
-            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; nointerpolation float2 mat : TEXCOORD1; };
+            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; nointerpolation float2 mat : TEXCOORD1; float cut : TEXCOORD2; };
             Varyings vert(Attributes v)
             {
                 InstanceData d = _Instances[v.id];
@@ -99,11 +125,13 @@ Shader "Firstlight/InstancedFlat"
                 float3 n = normalize(Rotate(d.yaw, v.normalOS / d.scale));
                 o.positionCS = ShadowCasterClip(Rotate(d.yaw, v.positionOS.xyz * d.scale) + d.pos, n);
                 o.uv = v.uv; o.mat = v.mat;
+                o.cut = BuildCut(d.color, v.positionOS.y * d.scale.y);
                 return o;
             }
             half4 frag(Varyings i) : SV_Target
             {
-                if (i.mat.y > 0.5) clip(SAMPLE_TEXTURE2D_ARRAY_LOD(_FL_Tex, sampler_FL_Tex, i.uv, i.mat.x, 0).a - 0.5);
+                clip(i.cut);
+                if (i.mat.y > 0.5 && i.mat.y < 1.5) clip(SAMPLE_TEXTURE2D_ARRAY_LOD(_FL_Tex, sampler_FL_Tex, i.uv, i.mat.x, 0).a - 0.5);
                 return 0;
             }
             ENDHLSL
@@ -119,18 +147,20 @@ Shader "Firstlight/InstancedFlat"
             #pragma vertex vert
             #pragma fragment frag
             struct Attributes { float4 positionOS : POSITION; float2 uv : TEXCOORD0; float2 mat : TEXCOORD1; uint id : SV_InstanceID; };
-            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; nointerpolation float2 mat : TEXCOORD1; };
+            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; nointerpolation float2 mat : TEXCOORD1; float cut : TEXCOORD2; };
             Varyings vert(Attributes v)
             {
                 InstanceData d = _Instances[v.id];
                 Varyings o;
                 o.positionCS = TransformWorldToHClip(Rotate(d.yaw, v.positionOS.xyz * d.scale) + d.pos);
                 o.uv = v.uv; o.mat = v.mat;
+                o.cut = BuildCut(d.color, v.positionOS.y * d.scale.y);
                 return o;
             }
             half4 frag(Varyings i) : SV_Target
             {
-                if (i.mat.y > 0.5) clip(SAMPLE_TEXTURE2D_ARRAY_LOD(_FL_Tex, sampler_FL_Tex, i.uv, i.mat.x, 0).a - 0.5);
+                clip(i.cut);
+                if (i.mat.y > 0.5 && i.mat.y < 1.5) clip(SAMPLE_TEXTURE2D_ARRAY_LOD(_FL_Tex, sampler_FL_Tex, i.uv, i.mat.x, 0).a - 0.5);
                 return 0;
             }
             ENDHLSL

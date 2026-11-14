@@ -24,6 +24,8 @@ namespace Firstlight.Core
         public static bool PointerOverUI;
         /// <summary>Set by the UI when a text field or modal screen has keyboard focus.</summary>
         public static bool KeyboardCaptured;
+        /// <summary>Pan when the pointer touches the screen edge.</summary>
+        public bool EdgeScroll = true;
 
         public Camera Cam { get; private set; }
 
@@ -43,6 +45,19 @@ namespace Firstlight.Core
 
             Vector2 move = Vector2.zero;
             float rot = 0;
+            // Edge scrolling: only with a real, focused window (in batch mode the pointer sits at 0,0).
+            if (mouse != null && EdgeScroll && Application.isFocused && !Application.isBatchMode)
+            {
+                var mp = mouse.position.ReadValue();
+                const float edge = 4f;
+                if (mp.x >= 0 && mp.y >= 0 && mp.x <= Screen.width && mp.y <= Screen.height)
+                {
+                    if (mp.x < edge) move.x -= 1;
+                    if (mp.x > Screen.width - edge) move.x += 1;
+                    if (mp.y < edge) move.y -= 1;
+                    if (mp.y > Screen.height - edge) move.y += 1;
+                }
+            }
             if (kb != null && !KeyboardCaptured)
             {
                 if (kb.wKey.isPressed || kb.upArrowKey.isPressed) move.y += 1;

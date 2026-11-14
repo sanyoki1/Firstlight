@@ -67,6 +67,7 @@ namespace Firstlight.Game
         public bool usesTools;       // workers wear tools down; without one they work at Balance.noToolWorkSpeed
         public bool requiresTools;   // no work at all without a tool (implies usesTools)
         public bool fieldWork;       // workers walk out to the nearby trees / rocks / herd and carry their load back
+        public string workPose;      // how workers look while working (view): bend, chop, dig, stalk, sit, stand
         public PartDef[] parts = Array.Empty<PartDef>();
 
         public bool HasNearby => nearby != null && !string.IsNullOrEmpty(nearby.feature);

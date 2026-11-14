@@ -12,8 +12,8 @@ namespace Firstlight.Core
     public static class PersonModel
     {
         public const int Frames = 8;
-        public enum Pose { Stand, Windup, Release, Bend, Walk0, Stalk0 = Walk0 + Frames, Carry0 = Stalk0 + Frames }
-        public static int PoseCount => (int)Pose.Carry0 + Frames;
+        public enum Pose { Stand, Windup, Release, Bend, Walk0, Stalk0 = Walk0 + Frames, Carry0 = Stalk0 + Frames, Sit = Carry0 + Frames }
+        public static int PoseCount => (int)Pose.Sit + 1;
         public enum Hold { Upright, Level, Back, None }
 
         static readonly Mesh[] _man = new Mesh[PoseCount], _woman = new Mesh[PoseCount];
@@ -38,7 +38,7 @@ namespace Firstlight.Core
         {
             if (pose == (int)Pose.Windup) return Hold.Level;
             if (pose == (int)Pose.Release) return Hold.None;
-            if (pose == (int)Pose.Bend) return Hold.None;
+            if (pose == (int)Pose.Bend || pose == (int)Pose.Sit) return Hold.None;
             if (pose >= (int)Pose.Carry0) return Hold.Back;
             if (pose >= (int)Pose.Stalk0) return Hold.Level;
             return Hold.Upright;
@@ -57,7 +57,7 @@ namespace Firstlight.Core
             p.arm[0] = 0.08f; p.elbow[0] = 0.15f;
             p.arm[1] = 0.25f; p.elbow[1] = 1.25f;                      // right hand forward at the waist: holds the spear
             int frame = -1; float stride = 0.42f, armSwing = 0.3f;
-            if (pose >= (int)Pose.Carry0) { frame = pose - (int)Pose.Carry0; stride = 0.32f; armSwing = 0f; }
+            if (pose >= (int)Pose.Carry0 && pose < (int)Pose.Sit) { frame = pose - (int)Pose.Carry0; stride = 0.32f; armSwing = 0f; }
             else if (pose >= (int)Pose.Stalk0) { frame = pose - (int)Pose.Stalk0; stride = 0.24f; armSwing = 0.1f; }
             else if (pose >= (int)Pose.Walk0) frame = pose - (int)Pose.Walk0;
 
@@ -80,7 +80,7 @@ namespace Firstlight.Core
                 p.arm[1] = 0.55f; p.elbow[1] = 0.9f;
                 p.arm[0] = 0.5f + p.arm[0] * 0.3f; p.elbow[0] = 0.6f;
             }
-            if (pose >= (int)Pose.Carry0)
+            if (pose >= (int)Pose.Carry0 && pose < (int)Pose.Sit)
             {
                 // Both hands up at the shoulders, steadying the deer across them.
                 p.lean = 8;
@@ -97,6 +97,11 @@ namespace Firstlight.Core
                     p.lean = 18; p.thigh[0] = -0.35f; p.shin[0] = -0.2f; p.thigh[1] = 0.35f; p.shin[1] = 0.6f;
                     p.arm[1] = 1.5f; p.elbow[1] = 0f;                      // thrown arm follows through, forward
                     p.arm[0] = 0.3f; p.elbow[0] = 0.4f;
+                    break;
+                case Pose.Sit:
+                    // On the ground, legs out in front, hands in the lap.
+                    p.lean = 8; p.thigh[0] = p.thigh[1] = -1.45f; p.shin[0] = -1.35f; p.shin[1] = -1.55f;
+                    p.arm[0] = p.arm[1] = 0.45f; p.elbow[0] = p.elbow[1] = 0.9f;
                     break;
                 case Pose.Bend:
                     p.lean = 55; p.thigh[0] = p.thigh[1] = -0.6f; p.shin[0] = p.shin[1] = 0.5f;

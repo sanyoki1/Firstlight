@@ -14,6 +14,16 @@ SAMPLER(sampler_FL_Tex);
 float _FL_TexelsPerUnit;   // texture pixels per world unit (unit = 2 m)
 float _FL_TileTexels;      // size of one layer in pixels
 float _FL_LayerDirt, _FL_LayerGrass, _FL_LayerLitter, _FL_LayerSnow, _FL_LayerShallow;
+float _FL_LayerLeaves, _FL_LayerNeedles, _FL_LayerTuft, _FL_LayerBush, _FL_LayerFlowers;
+
+// Seasons and time of day (Atmosphere.cs): tints for grass and foliage, snow cover 0..1, glow of fires.
+float4 _FL_SeasonGrass;    // rgb multiplier for grass, litter, tufts, bushes, flowers
+float4 _FL_SeasonLeaf;     // rgb multiplier for broadleaf leaves
+float4 _FL_SeasonNeedle;   // rgb multiplier for conifer needles
+float _FL_Snow;            // 0 = none, 1 = full cover on flat ground
+float _FL_Glow;            // brightness of unlit (glowing) materials
+
+
 
 // Terrain material map: one texel per grid cell holding a layer index.
 TEXTURE2D(_FL_MatMap);
@@ -51,6 +61,26 @@ half4 SampleBoxProjected(float3 p, float3 n, float layer, float2 offset)
 half4 SampleExplicit(float2 uv, float layer)
 {
     return SAMPLE_TEXTURE2D_ARRAY(_FL_Tex, sampler_FL_Tex, uv, layer);
+}
+
+half3 SeasonTint(half3 albedo, float layer)
+{
+    if (layer == _FL_LayerGrass || layer == _FL_LayerLitter || layer == _FL_LayerTuft || layer == _FL_LayerBush || layer == _FL_LayerFlowers) return albedo * _FL_SeasonGrass.rgb;
+    if (layer == _FL_LayerLeaves) return albedo * _FL_SeasonLeaf.rgb;
+    if (layer == _FL_LayerNeedles) return albedo * _FL_SeasonNeedle.rgb;
+    return albedo;
+}
+
+// Snow lies on upward-facing surfaces in pixel clumps (one decision per 2x2 texture pixels), thicker on flat
+// ground, so it reads as pixel art and comes and goes with _FL_Snow.
+half3 ApplySnow(half3 albedo, float3 posWS, float3 n, float3 pBox, float3 nBox)
+{
+    if (_FL_Snow <= 0.001 || n.y < 0.3) return albedo;
+    float2 block = floor(posWS.xz * _FL_TexelsPerUnit / 2) + floor(posWS.y * _FL_TexelsPerUnit / 2) * 17.0;
+    float h = frac(sin(dot(block, float2(12.9898, 78.233))) * 43758.5453);
+    float cover = _FL_Snow * smoothstep(0.3, 0.85, n.y) * 1.15;
+    if (h > cover) return albedo;
+    return SampleBoxProjected(pBox, nBox, _FL_LayerSnow, 0).rgb;
 }
 
 // Flowing water: the texture is carried along the simulated flow (flow = velocity in units/s) using two

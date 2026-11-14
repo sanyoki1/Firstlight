@@ -905,7 +905,7 @@ namespace Firstlight.Game
                     m.BirthCooldown = B.birthCooldownDays;
                     room--;
                     Births++;
-                    Log(Severity.Info, $"{m.Name} gave birth to {baby.Name}.");
+                    Log(Severity.Info, $"{m.Name} gave birth to {baby.Name}.", m.Home.DoorPos);
                 }
             }
 
@@ -930,7 +930,7 @@ namespace Firstlight.Game
                             Walk(c, TownCenter.Door, Activity.Arriving);
                         }
                         Migrants += n;
-                        Log(Severity.Info, $"{n} migrants arrived.");
+                        Log(Severity.Info, $"{n} migrants arrived.", from);
                         AssignHomes();
                     }
                 }
@@ -946,7 +946,7 @@ namespace Firstlight.Game
                 c.CarryAmt = 0; c.CarryRes = -1;
                 c.Gone = true;
                 Leavers++;
-                Log(Severity.Bad, $"{c.Name} left the settlement, unhappy.");
+                Log(Severity.Bad, $"{c.Name} left the settlement, unhappy.", c.Pos);
                 var walker = new Citizen { Id = c.Id, Name = c.Name, Female = c.Female, Age = c.Age, Pos = c.Pos, Facing = c.Facing, Task = Task.Leave };
                 Walk(walker, Map.EdgeCellNear(c.Pos, _rng), Activity.Leaving);
                 Departing.Add(walker);
@@ -961,7 +961,7 @@ namespace Firstlight.Game
             c.Gone = true;
             c.Job = null; c.IsBuilder = false; c.Home = null;
             Deaths[cause] = Deaths.TryGetValue(cause, out int n) ? n + 1 : 1;
-            Log(Severity.Bad, cause == "old age" ? $"{c.Name} died of old age at {(int)c.Age}." : $"{c.Name} ({(int)c.Age}) died of {cause}.");
+            Log(Severity.Bad, cause == "old age" ? $"{c.Name} died of old age at {(int)c.Age}." : $"{c.Name} ({(int)c.Age}) died of {cause}.", c.Pos);
             _jobsDirty = true;
         }
     }

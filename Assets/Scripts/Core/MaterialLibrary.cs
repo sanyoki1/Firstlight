@@ -43,6 +43,16 @@ namespace Firstlight.Core
             Shader.SetGlobalFloat("_FL_LayerLitter", Layer("litter"));
             Shader.SetGlobalFloat("_FL_LayerSnow", Layer("snow"));
             Shader.SetGlobalFloat("_FL_LayerShallow", Layer("shallow"));
+            Shader.SetGlobalFloat("_FL_LayerLeaves", Layer("leaves"));
+            Shader.SetGlobalFloat("_FL_LayerNeedles", Layer("needles"));
+            Shader.SetGlobalFloat("_FL_LayerTuft", Layer("tuft"));
+            Shader.SetGlobalFloat("_FL_LayerBush", Layer("bush"));
+            Shader.SetGlobalFloat("_FL_LayerFlowers", Layer("flowers"));
+            Shader.SetGlobalVector("_FL_SeasonGrass", Vector4.one);
+            Shader.SetGlobalVector("_FL_SeasonLeaf", Vector4.one);
+            Shader.SetGlobalVector("_FL_SeasonNeedle", Vector4.one);
+            Shader.SetGlobalFloat("_FL_Snow", 0f);
+            Shader.SetGlobalFloat("_FL_Glow", 1f);
         }
 
         public static int Layer(string name)

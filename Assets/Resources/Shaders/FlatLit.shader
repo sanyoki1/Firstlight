@@ -70,8 +70,13 @@ Shader "Firstlight/FlatLit"
                 float2 scroll = floor(_Time.y * _UVScroll.xy) / _FL_TileTexels;
                 half4 t = i.mat.y > 0.5 ? SampleExplicit(i.uv + scroll, layer) : SampleBoxProjected(i.positionOS, n, layer, scroll);
                 clip(t.a - 0.5);
-                if (_UseMatMap > 0.5) t.rgb *= MacroVariation(i.positionWS.xz);
-                half3 c = FlatShade(i.positionWS, n, t.rgb * i.color.rgb);
+                half3 albedo = t.rgb * i.color.rgb;
+                if (_UseMatMap > 0.5)
+                {
+                    albedo = SeasonTint(albedo * MacroVariation(i.positionWS.xz), layer);
+                    albedo = ApplySnow(albedo, i.positionWS, n, i.positionOS, n);
+                }
+                half3 c = FlatShade(i.positionWS, n, albedo);
                 return half4(MixFog(c, i.fog), 1);
             }
             ENDHLSL

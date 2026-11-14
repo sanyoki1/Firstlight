@@ -238,7 +238,7 @@ namespace Firstlight.Game
         }
 
         /// <summary>Best spot near the campfire: features nearby for producers, short walks, a free ring around it.</summary>
-        int2? FindSite(BuildingDef d)
+        public int2? FindSite(BuildingDef d)
         {
             var tc = S.TownCenter.Center;
             int R = d.HasNearby ? 30 : 22;

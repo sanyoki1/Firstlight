@@ -24,6 +24,8 @@ namespace Firstlight.Game
         public int Day;
         public Severity Severity;
         public string Text;
+        public bool HasPlace;            // where it happened (cell units), for the HUD to jump to
+        public float2 Place;
         public override string ToString() => $"day {Day} [{Severity}] {Text}";
     }
 

@@ -85,6 +85,10 @@ namespace Firstlight.Game
                     Map.RefreshCost(c);
                 }
             Map.Reserved[b.Door] = true;
+            // The ground round it is cleared too: a yard, and room to walk round.
+            for (int y = origin.y - 1; y <= origin.y + d.sizeY; y++)
+                for (int x = origin.x - 1; x <= origin.x + d.sizeX; x++)
+                    if (Map.InBounds(x, y)) Map.RemoveTree(Map.Cell(x, y));
             Map.CommitCostChanges();
             if (d.townCenter)
             {
@@ -129,7 +133,7 @@ namespace Firstlight.Game
             foreach (var o in Buildings) if (o.Alive && o.Door == b.Door) doorShared = true;
             if (!doorShared) Map.Reserved[b.Door] = false;
             Map.CommitCostChanges();
-            Log(Severity.Info, $"{b.Def.name} removed.");
+            Log(Severity.Info, $"{b.Def.name} removed.", b.Center);
             _jobsDirty = true;
             RefreshStock();
             return true;
@@ -185,7 +189,7 @@ namespace Firstlight.Game
             b.Work = 1f;
             if (b.IsStorage && b.Store == null) b.Store = new float[ResCount];
             RefreshFullness(b);
-            if (!b.Def.townCenter) Log(Severity.Info, $"{b.Def.name} finished.");
+            if (!b.Def.townCenter) Log(Severity.Info, $"{b.Def.name} finished.", b.Center);
             _jobsDirty = true;
         }
 
@@ -207,7 +211,7 @@ namespace Firstlight.Game
                 // The band brings no tools (Basic Tools is the first research) and no clothing.
                 c.BirthCooldown = R(0f, B.birthCooldownDays);
             }
-            Log(Severity.Info, $"The band lights its campfire: {Population} people.");
+            Log(Severity.Info, $"The band lights its campfire: {Population} people.", tc.Center);
             RefreshStock();
             AssignHomes();
             AssignJobs();

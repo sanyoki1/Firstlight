@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.IO;
 using Firstlight.Core;
+using Firstlight.Game.UI;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -10,9 +11,10 @@ namespace Firstlight.Game
 {
     /// <summary>
     /// Runs the game scene: loads data, generates the map and drives views and input.
-    /// Command line: -seed N, -texels 8|16|32, -shots (density comparison screenshots, then quit), -outdir DIR.
+    /// Command line: -seed N, -texels 8|16|32, -shots (density comparison screenshots, then quit), -outdir DIR,
+    /// -uishots (HUD and settlement screenshots, see GameController.UiShots.cs), -autoplay, -simspeed N, -quitafter S.
     /// </summary>
-    public sealed class GameController : MonoBehaviour
+    public sealed partial class GameController : MonoBehaviour
     {
         public GameData Data { get; private set; }
         public GameMap Map { get; private set; }
@@ -23,6 +25,11 @@ namespace Firstlight.Game
         public Band Band { get; private set; }
         public Settlement Sim { get; private set; }
         public AutoPlayer Auto { get; private set; }   // F9: let the auto-player run the settlement
+        public SettlementView SView { get; private set; }
+        public Atmosphere Atmo { get; private set; }
+        public Hud Hud { get; private set; }
+        bool _demo;                   // a screenshot / clip mode with its own fixed lighting and no HUD
+        float _lastSpeed = 1f;
         float _autoClock;
         Light _sun;
         int _seed;
@@ -56,13 +63,20 @@ namespace Firstlight.Game
             var site = FindViewpoint();
             Cam.SetView(new Vector3(site.x, Map.HeightAt(site.x, site.y), site.y), 45f, 50f, 30f);
 
-            // A band camps on open ground near the starting view and hunts every few minutes (F7 sends them now).
-            var camp = OpenGroundNear(new Vector3(site.x, 0, site.y));
-            Band = new Band(Map, Wild, new float2(camp.x, camp.z), _seed);
-            View.AttachBand(Band);
+            _demo = HasArg("-shots") || HasArg("-watershots") || HasArg("-deershots") || HasArg("-deerpair") || HasArg("-huntshots");
+            // The animated hunting band is a show piece for the clip modes; in the game the Hunters' Camp workers hunt.
+            if (_demo && !HasArg("-huntshots"))
+            {
+                var camp = OpenGroundNear(new Vector3(site.x, 0, site.y));
+                Band = new Band(Map, Wild, new float2(camp.x, camp.z), _seed);
+                View.AttachBand(Band);
+            }
 
-            // The settlement waits for its campfire site (F8 = suggested site until the HUD exists).
+            // The settlement waits for its campfire site: the HUD opens in campfire placement.
             Sim = new Settlement(Data, Map, _seed);
+            SView = new SettlementView(Sim, View, Wild);
+            Atmo = new Atmosphere(_sun, Cam.Cam);
+            Hud = new Hud(this);
             // -autoplay: the auto-player runs the settlement from the start (-simspeed N, -quitafter seconds for smoke tests).
             if (HasArg("-autoplay")) Auto = new AutoPlayer(Sim);
             Sim.SetSpeed(ArgInt("-simspeed", 1));
@@ -74,7 +88,12 @@ namespace Firstlight.Game
             if (HasArg("-deershots")) StartCoroutine(DeerShots());
             if (HasArg("-deerpair")) StartCoroutine(DeerPairShots());
             if (HasArg("-huntshots")) StartCoroutine(HuntShots());
+            if (HasArg("-uishots")) StartCoroutine(UiShots());
         }
+
+        public void ToggleAuto() => Auto = Auto == null ? new AutoPlayer(Sim) : null;
+        public void SetSpeed(float s) { if (s > 0) _lastSpeed = s; Sim.SetSpeed(s); }
+        public void TogglePause() => SetSpeed(Sim.Speed > 0 ? 0 : _lastSpeed);
 
         /// <summary>An interesting spot: open ground near forest, rocks and the river.</summary>
         float2 FindViewpoint()
@@ -101,16 +120,10 @@ namespace Firstlight.Game
             var kb = Keyboard.current;
             if (kb != null)
             {
-                if (kb.escapeKey.wasPressedThisFrame && !Application.isEditor) Application.Quit();
                 if (kb.f6Key.wasPressedThisFrame) StartFlood();
-                if (kb.f7Key.wasPressedThisFrame) Band.StartHunt();
-                if (kb.f8Key.wasPressedThisFrame && Sim.NeedsCampfire) Sim.Place(Data.Buildings.Find(b => b.townCenter), Sim.SuggestCampfireSite());
-                if (kb.f9Key.wasPressedThisFrame) Auto = Auto == null ? new AutoPlayer(Sim) : null;
-                if (kb.spaceKey.wasPressedThisFrame) Sim.SetSpeed(Sim.Speed > 0 ? 0 : 1);
-                if (kb.digit1Key.wasPressedThisFrame) Sim.SetSpeed(1);
-                if (kb.digit2Key.wasPressedThisFrame) Sim.SetSpeed(2);
-                if (kb.digit3Key.wasPressedThisFrame) Sim.SetSpeed(4);
+                if (kb.f7Key.wasPressedThisFrame) Band?.StartHunt();
             }
+            if (!_demo) Hud.Update(Time.deltaTime);   // HUD keys and mouse (speed, panels, placing, selecting)
             UpdateWater(Time.deltaTime);
             Map.CommitCostChanges();
             if (Sim != null)
@@ -120,18 +133,23 @@ namespace Firstlight.Game
                 _autoClock += Time.deltaTime * Sim.Speed;
                 if (Auto != null && (_autoClock >= Data.Balance.dayLengthSeconds / 24f || Sim.NeedsCampfire)) { _autoClock = 0; Auto.Think(); }
             }
-            Band.Update(Time.deltaTime);      // first, so the deer see where people are this frame
+            Band?.Update(Time.deltaTime);     // first, so the deer see where people are this frame
             Wild.Update(Time.deltaTime);
             WorldLighting.UpdateForZoom(Cam.Distance);
+            if (!_demo) { Atmo.Apply(Sim); View.HideGroundCover = Atmo.Snow > 0.4f; }
             View.Draw(Time.time);
+            SView.Draw(Time.deltaTime);
         }
 
         void OnGUI()
         {
-            if (_hideGui || View == null) return;
-            var style = new GUIStyle(GUI.skin.box) { alignment = TextAnchor.UpperLeft, fontSize = 14 };
-            style.normal.textColor = new Color(0.92f, 0.9f, 0.85f);
-            GUI.Box(new Rect(10, 10, 400, 102), $"Firstlight  seed {_seed}  texture density {MaterialLibrary.Density} px/m\nF6 = flood surge   F7 = send the hunters   WASD, Q/E, wheel, right-drag\nwater sim {Water.LastStepMs:F2} ms/frame   river level +{Water.SourceBoost:F2}\ndeer drinks so far: {Wild.DrinksTaken}\nhunts {Band.Hunts}   spears thrown {Band.Throws}   deer brought home {Band.Kills}", style);
+            if (_hideGui || View == null || _demo) return;
+            // -uishots: on the frame of a shot the camera renders into _shotRT and the HUD is drawn into it too.
+            bool shot = _pendingShot != null && Event.current.type == EventType.Repaint && Cam.Cam.targetTexture == _shotRT;
+            var prev = RenderTexture.active;
+            if (shot) RenderTexture.active = _shotRT;
+            Hud.OnGUI();
+            if (shot) { _guiDrawn = true; RenderTexture.active = prev; }
         }
 
         bool _hideGui;
@@ -639,6 +657,7 @@ namespace Firstlight.Game
 
         void OnDestroy()
         {
+            SView?.Dispose();
             View?.Dispose();
             Water?.Dispose();
             Map?.Dispose();

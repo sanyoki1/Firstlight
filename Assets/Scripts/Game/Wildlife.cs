@@ -433,6 +433,10 @@ namespace Firstlight.Game
             return c;
         }
 
+        /// <summary>Leaves a carcass on the ground (the settlement's hunters took an animal; the herd count is the sim's).</summary>
+        public void AddCarcass(float2 pos, float yaw, bool stag, uint tint) =>
+            Carcasses.Add(new Carcass { Pos = pos, Yaw = yaw, Stag = stag, Tint = tint });
+
         /// <summary>Carcasses at rest age; ones nobody carries off are gone after a while (scavengers).</summary>
         public void UpdateCarcasses(float dt)
         {
