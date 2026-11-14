@@ -30,7 +30,7 @@ namespace Firstlight.Game
         public readonly List<Citizen> Citizens = new();
         public readonly List<SimEvent> Events = new();
         public readonly List<string> Warnings = new();
-        readonly HashSet<string> _warnedBefore = new();
+        readonly Dictionary<string, int> _warnSeen = new();   // warning key -> last day it was showing
 
         // ------------------------------------------------------------------ calendar
         public float Time { get; private set; }            // game seconds since the campfire was lit
@@ -409,16 +409,14 @@ namespace Firstlight.Game
             foreach (var c in Citizens) if (c.UnhappyDays > 0) unhappy++;
             if (unhappy > 0 && unhappy >= Population / 4) Warnings.Add($"{unhappy} people are unhappy and may leave.");
 
-            // Log each warning once when it appears (keyed by its first words so changing numbers don't repeat it).
-            var now = new HashSet<string>();
+            // Log a warning when it appears, but not again while it keeps flickering on and off within a few days
+            // (keyed by its first words so changing numbers don't repeat it).
             foreach (var w in Warnings)
             {
                 string key = w.Length > 14 ? w.Substring(0, 14) : w;
-                now.Add(key);
-                if (!_warnedBefore.Contains(key)) Log(Severity.Warning, w);
+                if (!_warnSeen.TryGetValue(key, out int seen) || Day - seen > 3) Log(Severity.Warning, w);
+                _warnSeen[key] = Day;
             }
-            _warnedBefore.Clear();
-            foreach (var k in now) _warnedBefore.Add(k);
         }
 
         /// <summary>Firewood homes and the campfire will burn from now until spring.</summary>

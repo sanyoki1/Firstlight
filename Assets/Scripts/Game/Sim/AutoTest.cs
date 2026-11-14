@@ -30,6 +30,7 @@ namespace Firstlight.Game
         public class Report
         {
             public int seed, years, finalDay, finalPopulation, minPopulation, maxPopulation;
+            public bool careless;
             public bool campfirePlaced, populationNeverZero, reachedNextAge, noErrors, pass;
             public int ageUpDay = -1;
             public string nextAge = "";
@@ -41,7 +42,7 @@ namespace Firstlight.Game
 
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-        public static bool Run(GameData data, GameMap map, int seed, int years, string outDir)
+        public static bool Run(GameData data, GameMap map, int seed, int years, string outDir, bool careless = false)
         {
             var errors = new List<string>();
             void OnLog(string msg, string stack, LogType type)
@@ -50,14 +51,14 @@ namespace Firstlight.Game
                     errors.Add($"{type}: {msg}" + (type == LogType.Exception ? "\n" + stack : ""));
             }
             Application.logMessageReceived += OnLog;
-            var rep = new Report { seed = seed, years = years, minPopulation = int.MaxValue };
+            var rep = new Report { seed = seed, years = years, minPopulation = int.MaxValue, careless = careless };
             var sw = System.Diagnostics.Stopwatch.StartNew();
             Settlement s = null;
             AutoPlayer ap = null;
             try
             {
                 s = new Settlement(data, map, seed);
-                ap = new AutoPlayer(s);
+                ap = new AutoPlayer(s) { Careless = careless };
                 rep.nextAge = s.Age.next;
                 ap.Think();
                 rep.campfirePlaced = !s.NeedsCampfire;
@@ -80,7 +81,7 @@ namespace Firstlight.Game
                         lastSeasonIdx = seasonIdx;
                     }
                 }
-                if (rep.campfirePlaced) rep.seasons.Add(Row(s, prev, lastSeasonIdx, data));
+                if (rep.campfirePlaced && (rep.seasons.Count == 0 || rep.seasons[rep.seasons.Count - 1].day != s.Day)) rep.seasons.Add(Row(s, prev, lastSeasonIdx, data));
             }
             catch (Exception e)
             {
@@ -173,7 +174,7 @@ namespace Firstlight.Game
         static string Markdown(Report r, Settlement s, GameData data)
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"# Firstlight auto-test, seed {r.seed}");
+            sb.AppendLine($"# Firstlight auto-test, seed {r.seed}{(r.careless ? " (careless player)" : "")}");
             sb.AppendLine();
             sb.AppendLine($"Ran {r.years} game years ({r.finalDay} days). Final population {r.finalPopulation} (min {r.minPopulation}, max {r.maxPopulation}).");
             sb.AppendLine($"Births {r.births}, migrants {r.migrants}, leavers {r.leavers}, deaths: {(r.deaths.Length > 0 ? r.deaths : "none")}.");

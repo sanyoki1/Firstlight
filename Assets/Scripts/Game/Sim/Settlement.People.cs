@@ -625,14 +625,14 @@ namespace Firstlight.Game
                 }
                 else c.Health = math.min(1f, c.Health + B.recoverPerDay);
 
-                // Happiness follows the needs: half their average, half the worst of them.
+                // Happiness follows the needs: a blend of their average and the worst of them.
                 float food = c.Hungry ? 0f : 1f;
                 float warm = math.saturate(w / comfort);
                 float shelter = home != null ? 1f : B.homelessShelter;
                 float health = c.Health * (c.Sick ? 0.6f : 1f);
                 float avg = (food + warm + shelter + health) * 0.25f;
                 float min = math.min(math.min(food, warm), math.min(shelter, health));
-                float target = math.saturate((avg * 0.5f + min * 0.5f) * Effect("happiness"));
+                float target = math.saturate((avg * (1f - B.happinessWorstWeight) + min * B.happinessWorstWeight) * Effect("happiness"));
                 c.Happiness = math.lerp(c.Happiness, target, B.happinessSmoothing);
                 c.UnhappyDays = c.Happiness < B.leaveHappiness ? c.UnhappyDays + 1 : 0;
             }

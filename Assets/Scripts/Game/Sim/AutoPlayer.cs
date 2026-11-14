@@ -28,6 +28,12 @@ namespace Firstlight.Game
             "prospecting", "barter", "copper_working", "writing", "bronze_working",
         };
 
+        /// <summary>
+        /// A careless player builds the same things but never reacts: no priorities, pausing or focus, no extra food
+        /// or firewood buildings when short, no moving worn-out producers. Used to check that neglect is punished.
+        /// </summary>
+        public bool Careless;
+
         public AutoPlayer(Settlement s) { S = s; D = s.Data; M = s.Map; }
 
         void Note(string text) => Actions.Add($"day {S.Day} {text}");
@@ -44,7 +50,11 @@ namespace Firstlight.Game
             }
             QueueResearch();
             S.SetBuilders(math.clamp(S.Adults / 4, 2, 6));
-            SetPriorities();
+            if (!Careless)
+            {
+                SetPriorities();
+                Relocate();
+            }
             BuildSomething();
             if (S.CanAdvanceAge())
             {
@@ -88,7 +98,7 @@ namespace Firstlight.Game
         void SetPriorities()
         {
             float fd = S.FoodDays;
-            bool hungry = fd < 6f || (S.Season == 2 && S.FoodStock < S.DailyFoodNeed * 10f), plenty = fd > 20f && S.Season < 2;
+            bool hungry = fd < 3f || (S.Season == 2 && S.FoodStock < S.DailyFoodNeed * 10f), plenty = fd > 20f && S.Season < 2;
             bool fuelShort = S.Stock("firewood") < math.max(10f, S.FuelNeedUntilSpring() * 0.8f);
             bool toolsShort = S.ToolStock < 3;
             var shortMat = new HashSet<string>();
@@ -123,9 +133,44 @@ namespace Firstlight.Game
                 else if (b.Def.outputs.Any(o => shortMat.Contains(o.id))) p = Priority.High;
                 else if (b.Def.outputs.Any(o => o.id == "firewood") && fuelShort) p = Priority.High;
                 else if (b.Def.outputs.Any(o => D.Resource(o.id)?.toolSpeed > 0) && toolsShort) p = Priority.High;
+                else if (b.Def.outputs.Any(o => S.Stock(o.id) < LowStock(o.id))) p = Priority.High;
                 else if (b.Def.knowledgePerWorker > 0) p = fd < 1f && S.Season == 3 ? Priority.Low : fd < 4f ? Priority.Normal : Priority.High;
                 else if (food && plenty) p = Priority.Low;
                 if (b.Priority != p) S.SetPriority(b, p);
+            }
+        }
+
+        float LowStock(string id) => id == "wood" ? 15f : id == "stone" ? 10f : 0f;
+
+        readonly Dictionary<Building, Building> _replacing = new();   // new site -> the worn-out building it replaces
+
+        /// <summary>
+        /// Producers whose nearby trees, rock or game are nearly used up get a replacement on fresh ground; the old
+        /// one is pulled down once the new one works.
+        /// </summary>
+        void Relocate()
+        {
+            foreach (var kv in _replacing.ToList())
+            {
+                if (!kv.Key.Alive) { _replacing.Remove(kv.Key); continue; }
+                if (!kv.Key.Active) continue;
+                if (kv.Value.Alive) { S.Demolish(kv.Value); Note($"removed worn-out {kv.Value.Def.id}"); }
+                _replacing.Remove(kv.Key);
+            }
+            if (S.Sites.Count() >= 2) return;
+            foreach (var b in S.Buildings)
+            {
+                if (!b.Active || !b.Def.HasNearby || b.Def.nearby.feature == "water" || b.Fullness >= 0.3f || _replacing.ContainsValue(b)) continue;
+                var at = FindSite(b.Def);
+                if (at == null) continue;
+                var center = Settlement.FootprintCenter(b.Def, at.Value);
+                float fresh = math.saturate(M.CountFeature(b.Def.nearby.feature, center, b.Def.nearby.radius) / (float)math.max(1, b.Def.nearby.full));
+                if (fresh < 0.6f) continue;
+                var nb = S.Place(b.Def, at.Value);
+                if (nb == null) continue;
+                _replacing[nb] = b;
+                Note($"placed {b.Def.id} at {at.Value.x},{at.Value.y} to replace a worn-out one (fullness {b.Fullness:F2})");
+                return;
             }
         }
 
@@ -145,16 +190,16 @@ namespace Firstlight.Game
             Want(housing < pop + 2, hidesForTent ? "hide_tent" : "lean_to");
             Want(Count("stone_gatherer") < 1, "stone_gatherer");
             Want(Count("storage_pile") < 1 || (S.StorageUsed > S.StorageCapacity * 0.7f && S.Sites.All(b => !b.IsStorage)), "storage_pile");
-            Want(Count("gatherers_camp") < 2 && (pop >= 12 || S.FoodDays < 8f), "gatherers_camp");
+            Want(Count("gatherers_camp") < 2 && (pop >= 12 || !Careless && S.FoodDays < 8f), "gatherers_camp");
             Want(Count("toolmaker") < 1, "toolmaker");
-            Want(Count("woodcutter") < 2 && S.Season >= 1 && S.Stock("firewood") < S.FuelNeedUntilSpring(), "woodcutter");
+            Want(!Careless && Count("woodcutter") < 2 && S.Season >= 1 && S.Stock("firewood") < S.FuelNeedUntilSpring(), "woodcutter");
             Want(Count("hunters_camp") < 1, "hunters_camp");
             Want(Count("herbalist") < 1, "herbalist");
             Want(Count("drying_rack") < 1 && Count("hunters_camp") > 0, "drying_rack");
             Want(Count("woodcutter") < 2 && pop >= 15, "woodcutter");
             Want(Count("fishing_spot") < 1, "fishing_spot");
             Want(Count("hide_worker") < 1 && Count("hunters_camp") > 0, "hide_worker");
-            bool foodShort = S.FoodDays < 5f && S.Season < 3;
+            bool foodShort = !Careless && S.FoodDays < 5f && S.Season < 3;
             Want(Count("hunters_camp") < 2 && (pop >= 20 || foodShort && pop >= 14), "hunters_camp");
             Want(Count("gatherers_camp") < 3 && foodShort && pop >= 16, "gatherers_camp");
             Want(Count("fishing_spot") < 2 && foodShort && pop >= 18, "fishing_spot");

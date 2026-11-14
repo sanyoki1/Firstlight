@@ -68,7 +68,7 @@
   "migrantsMin": 2,
   "migrantsMax": 4,
 
-  "leaveHappiness": 0.3,
+  "leaveHappiness": 0.35,
   "leaveAfterDays": 6,
   "workSpeedMin": 0.5,
 
@@ -90,6 +90,7 @@
   "focusShare": 0.8,
   "homelessShelter": 0.3,
   "happinessSmoothing": 0.35,
+  "happinessWorstWeight": 0.6,
   "fuelResource": "firewood",
   "clothingResource": "clothing",
   "herbsResource": "herbs",

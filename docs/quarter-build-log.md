@@ -97,7 +97,23 @@ site, F9 toggles the auto-player, space pauses, 1/2/3 = 1x/2x/4x.
 
 ### Auto-test results
 
-(updated at each commit; see the end of this section)
+12-year runs (`-years 12`), about 15 s each:
+
+| Seed | Result | Agricultural Age | Final pop (max) | Births / migrants / leavers | Deaths |
+|---|---|---|---|---|---|
+| 2026 | PASS | day 133 (year 5, spring) | 61 (61) | 28 / 29 / 0 | cold 1, old age 6, sickness 1 |
+| 7 | PASS | day 156 (year 5, winter) | 60 (64) | 26 / 38 / 0 | old age 11, starvation 5 |
+| 1234 | PASS | day 120 (year 4, winter) | 67 (68) | 20 / 45 / 0 | old age 10 |
+| 99 | PASS | day 138 (year 5, summer) | 60 (60) | 26 / 36 / 0 | old age 8, starvation 6 |
+| 5 | PASS | day 140 (year 5, summer) | 62 (63) | 20 / 38 / 0 | old age 8 |
+
+Same seed twice gives byte-identical reports (md and json). `-careless` (the auto-player builds the same things but
+never reacts: no priorities, no pausing, no extra food/firewood buildings, no moving worn-out producers) dies out
+in year 3 on seed 2026 (starvation 9, cold 2, sickness 1, 1 leaver), so neglect is punished.
+
+Typical shape (seed 2026): food runs low at the end of every winter (gatherers make almost nothing in winter), the
+first winter is hungry, the Elders' Fire is up by the end of year 1, Basic Tools early in winter of year 1, Spears
+and Fishing in year 2, Farming and Tribes in year 4, 25 people in year 4-5, then the age-up.
 
 ### Balance changes (and why)
 

@@ -63,6 +63,11 @@ namespace Firstlight.Game
 
             // The settlement waits for its campfire site (F8 = suggested site until the HUD exists).
             Sim = new Settlement(Data, Map, _seed);
+            // -autoplay: the auto-player runs the settlement from the start (-simspeed N, -quitafter seconds for smoke tests).
+            if (HasArg("-autoplay")) Auto = new AutoPlayer(Sim);
+            Sim.SetSpeed(ArgInt("-simspeed", 1));
+            float quitAfter = ArgInt("-quitafter", 0);
+            if (quitAfter > 0) StartCoroutine(QuitAfter(quitAfter));
 
             if (HasArg("-shots")) StartCoroutine(DensityShots());
             if (HasArg("-watershots")) StartCoroutine(WaterShots());
@@ -607,10 +612,17 @@ namespace Firstlight.Game
                 Water = new WaterSim(Map);
                 Water.SyncWaterClasses();
                 Map.CommitCostChanges();
-                code = AutoTest.Run(Data, Map, _seed, years, outDir) ? 0 : 1;
+                code = AutoTest.Run(Data, Map, _seed, years, outDir, HasArg("-careless")) ? 0 : 1;
             }
             catch (Exception e) { Debug.LogException(e); }
             Application.Quit(code);
+        }
+
+        IEnumerator QuitAfter(float seconds)
+        {
+            yield return new WaitForSecondsRealtime(seconds);
+            Debug.Log($"[Smoke] quitting after {seconds} s: {Time.frameCount} frames, game time {Sim.Time:F0} s, day {Sim.Day}, population {Sim.Population}, buildings {Sim.Buildings.Count}, events {Sim.Events.Count}");
+            Application.Quit();
         }
 
         static bool HasArg(string name) => Array.IndexOf(Environment.GetCommandLineArgs(), name) >= 0;
