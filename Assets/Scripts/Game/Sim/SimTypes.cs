@@ -96,7 +96,7 @@ namespace Firstlight.Game
         {
             get
             {
-                for (int i = 0; i < Def.cost.Length; i++) if (Delivered[i] < Def.cost[i].amount - 0.001f) return false;
+                for (int i = 0; i < Def.cost.Length; i++) if (Delivered[i] < Def.cost[i].amount - Settlement.MaterialTolerance) return false;
                 return true;
             }
         }

@@ -116,7 +116,7 @@
       "id": "elders_fire", "name": "Elders' Fire", "age": "stone", "category": "Knowledge",
       "description": "Elders gather here to remember and teach. Produces knowledge for research. Older workers are worth more.",
       "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 15 }, { "id": "stone", "amount": 8 } ], "buildWork": 4, "unlockedBy": "",
-      "maxWorkers": 3, "workerTitle": "Elder", "knowledgePerWorker": 1.2, "yieldTag": "knowledge",
+      "maxWorkers": 3, "workerTitle": "Elder", "knowledgePerWorker": 1.4, "yieldTag": "knowledge",
       "color": "#6f6458",
       "parts": [
         { "prim": "cylinder", "pos": [0, 0, 0], "size": [0.9, 0.14, 0.9], "color": "#7d7a74" },

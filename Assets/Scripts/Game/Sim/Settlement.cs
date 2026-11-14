@@ -19,6 +19,8 @@ namespace Firstlight.Game
     {
         /// <summary>Fixed sim step in game seconds.</summary>
         public const float Step = 0.25f;
+        /// <summary>A site counts as supplied when less than this is missing of any material.</summary>
+        public const float MaterialTolerance = 0.01f;
 
         public readonly GameData Data;
         public readonly GameMap Map;
@@ -176,6 +178,7 @@ namespace Firstlight.Game
         void Hourly()
         {
             Map.CommitCostChanges();
+            RecountReservations();
             RefreshFullness();
             AssignHomes();
             AssignJobs();

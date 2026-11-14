@@ -612,7 +612,8 @@ namespace Firstlight.Game
                 Water = new WaterSim(Map);
                 Water.SyncWaterClasses();
                 Map.CommitCostChanges();
-                code = AutoTest.Run(Data, Map, _seed, years, outDir, HasArg("-careless")) ? 0 : 1;
+                if (ArgInt("-crowd", 0) > 0) { AutoTest.Crowd(Data, Map, _seed, ArgInt("-crowd", 0)); code = 0; }
+                else code = AutoTest.Run(Data, Map, _seed, years, outDir, HasArg("-careless")) ? 0 : 1;
             }
             catch (Exception e) { Debug.LogException(e); }
             Application.Quit(code);

@@ -97,23 +97,34 @@ site, F9 toggles the auto-player, space pauses, 1/2/3 = 1x/2x/4x.
 
 ### Auto-test results
 
-12-year runs (`-years 12`), about 15 s each:
+12-year runs (`-years 12`), 10-15 s each, all PASS:
 
-| Seed | Result | Agricultural Age | Final pop (max) | Births / migrants / leavers | Deaths |
-|---|---|---|---|---|---|
-| 2026 | PASS | day 133 (year 5, spring) | 61 (61) | 28 / 29 / 0 | cold 1, old age 6, sickness 1 |
-| 7 | PASS | day 156 (year 5, winter) | 60 (64) | 26 / 38 / 0 | old age 11, starvation 5 |
-| 1234 | PASS | day 120 (year 4, winter) | 67 (68) | 20 / 45 / 0 | old age 10 |
-| 99 | PASS | day 138 (year 5, summer) | 60 (60) | 26 / 36 / 0 | old age 8, starvation 6 |
-| 5 | PASS | day 140 (year 5, summer) | 62 (63) | 20 / 38 / 0 | old age 8 |
+| Seed | Agricultural Age | Final pop (max) | Births / migrants / leavers | Deaths |
+|---|---|---|---|---|
+| 2026 | day 140 (year 5, summer) | 60 (60) | 25 / 30 / 0 | old age 6, sickness 1 |
+| 7 | day 141 (year 5, summer) | 64 (70) | 26 / 39 / 0 | cold 5, old age 8 |
+| 1234 | day 149 (year 5, autumn) | 63 (63) | 26 / 34 / 0 | old age 9 |
+| 99 | day 143 (year 5, summer) | 43 (45) | 24 / 25 / 0 | cold 2, old age 6, sickness 2, starvation 8 |
+| 5 | day 144 (year 5, autumn) | 71 (72) | 39 / 30 / 0 | old age 6, starvation 4 |
+| 11 | day 281 (year 9, winter) | 39 (40) | 15 / 22 / 0 | cold 2, old age 6, sickness 1, starvation 1 |
+| 42 | day 145 (year 5, autumn) | 50 (58) | 21 / 37 / 1 | cold 1, old age 4, sickness 1, starvation 13 |
+| 3 | day 152 (year 5, winter) | 60 (60) | 19 / 37 / 0 | old age 7, starvation 1 |
+| 100 | day 120 (year 4, winter) | 54 (65) | 27 / 33 / 0 | old age 11, sickness 4, starvation 3 |
+| 777 | day 142 (year 5, summer) | 58 (59) | 25 / 28 / 0 | old age 7 |
 
-Same seed twice gives byte-identical reports (md and json). `-careless` (the auto-player builds the same things but
-never reacts: no priorities, no pausing, no extra food/firewood buildings, no moving worn-out producers) dies out
-in year 3 on seed 2026 (starvation 9, cold 2, sickness 1, 1 leaver), so neglect is punished.
+Same seed twice gives byte-identical reports (md and json). Seed 11 is a hard map (labour-starved, slow to grow) and
+takes until year 9. `-careless` (the auto-player builds the same things but never reacts: no priorities, no pausing,
+no extra food/firewood buildings, no moving worn-out producers) dies out in year 4 on seed 2026 (cold 12, starvation
+5), so neglect is punished. Earlier tuning rounds also showed single winters killing 15-19 people when firewood ran
+out, and settlements recovering from them.
 
 Typical shape (seed 2026): food runs low at the end of every winter (gatherers make almost nothing in winter), the
-first winter is hungry, the Elders' Fire is up by the end of year 1, Basic Tools early in winter of year 1, Spears
-and Fishing in year 2, Farming and Tribes in year 4, 25 people in year 4-5, then the age-up.
+first winter is hungry, the Elders' Fire is up by the end of year 1, Basic Tools around the first winter, Spears and
+Fishing in year 2, Farming and Tribes in year 4, 25 people in year 4-5, then the age-up. Population levels off at
+50-70 in the Agricultural Age with Stone Age housing (phase 3 adds more).
+
+Perf probe: `-autotest -crowd 400` adds 400 adults and times a season: 413 citizens cost 0.26 ms per sim step
+(41 ms per game day), so a few hundred people are trivial at any game speed.
 
 ### Balance changes (and why)
 
@@ -121,18 +132,22 @@ and Fishing in year 2, Farming and Tribes in year 4, 25 people in year 4-5, then
 - Start: 12 people (2 children, 2 elders; design says 8-12), more starting food (60 wild food + 25 meat) and wood;
   campfire store 80 -> 180 so the start goods fit.
 - Gatherers 1.6 -> 4.5 wild food per worker-day; woodcutter wood/firewood 1.4/1.4 -> 2.4/2.0; stone gatherer 1.2 ->
-  1.6; hunters meat 2.0 -> 3.0, hides 0.35 -> 0.4; elders' knowledge 1.0 -> 1.2. Effective output is ~70% of nominal
+  1.6; hunters meat 2.0 -> 3.0, hides 0.35 -> 0.4. Effective output is ~70% of nominal
   because of walking and carrying, and the early band has no tools (x0.6), so the drafted numbers starved everyone.
 - Hunters use up one animal per 10 meat (was 2: herds vanished in days); stone gatherer takes one stone off a rock
   per stone made (rocks now run out as described).
 - Firewood per home [0.3, 0, 0.6, 1.2] -> [0.2, 0, 0.4, 0.8], campfire fuel [0.3, 0, 0.5, 0.8] -> [0.2, 0, 0.4, 0.6].
 - Builder work per day 1.0 -> 1.5 (a lean-to took most of a season).
 - Wild food spoils 2.5% -> 1.5% a day (roots and nuts keep).
-- Births need 3 days of food (was 5); migrants 5 (was 8). Births need free housing anywhere (the baby stays with its
-  mother, so homes can end up crowded).
+- Births need 3 days of food (was 5), chance 0.02 -> 0.025 a day; migrants need 5 days of food (was 8) counted
+  with the newcomers included. Births need free housing anywhere (the baby stays with its mother, so homes can end
+  up crowded).
+- Elders' knowledge 1.0 -> 1.4 per worker-day: Basic Tools came only in year 2.
+- Happiness = 40% average of needs + 60% worst need (`happinessWorstWeight`), leave threshold 0.3 -> 0.35: before,
+  starving people stayed above the threshold and nobody ever left.
 - Trees regrow 3 -> 12 a day map-wide (only next to existing forest).
 - New balance fields: `startChildren`, `startElders`, `migrantCheckDays`, `migrantChance`, `foodWarnDays`,
-  `workHaulMin`, `demolishRefund`, `focusShare`, `homelessShelter`, `happinessSmoothing`, `buildersUseTools`,
+  `workHaulMin`, `demolishRefund`, `focusShare`, `homelessShelter`, `happinessSmoothing`, `happinessWorstWeight`, `buildersUseTools`,
   `fuelResource`/`clothingResource`/`herbsResource` (the only resource ids the code needs), name lists.
 
 ### Known gaps

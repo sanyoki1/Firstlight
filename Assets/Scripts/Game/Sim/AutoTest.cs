@@ -42,6 +42,30 @@ namespace Firstlight.Game
 
         static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
+        /// <summary>
+        /// Perf probe (-autotest -crowd N): the auto-player's first season with N extra adults, timed per game day.
+        /// Writes nothing; logs one line.
+        /// </summary>
+        public static void Crowd(GameData data, GameMap map, int seed, int extra)
+        {
+            var s = new Settlement(data, map, seed);
+            var ap = new AutoPlayer(s);
+            ap.Think();
+            s.DebugSpawn(extra);
+            float hour = data.Balance.dayLengthSeconds / 24f;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            int days = 0;
+            while (s.Day < data.Balance.daysPerSeason)   // one spring: before winter thins an unhoused crowd
+            {
+                s.Tick(hour);
+                ap.Think();
+                days = s.Day;
+            }
+            double ms = sw.Elapsed.TotalMilliseconds;
+            Debug.Log($"[Perf] {s.Population} citizens at the end ({extra} added): {ms / Math.Max(1, days):F1} ms per game day, " +
+                      $"{ms / Math.Max(1, days) / (data.Balance.dayLengthSeconds / Settlement.Step):F3} ms per sim step, {s.Buildings.Count} buildings");
+        }
+
         public static bool Run(GameData data, GameMap map, int seed, int years, string outDir, bool careless = false)
         {
             var errors = new List<string>();
@@ -70,6 +94,8 @@ namespace Firstlight.Game
                     s.Tick(hour);
                     ap.Think();
                     int pop = s.Population;
+                    // What people are doing at midday (the season rows are taken at midnight, when everyone sleeps).
+                    if (s.DayFraction >= 0.5f && s.DayFraction < 0.5f + 1f / 24f) _noon = Detail(s);
                     rep.minPopulation = Math.Min(rep.minPopulation, pop);
                     rep.maxPopulation = Math.Max(rep.maxPopulation, pop);
                     if (pop == 0) break;
@@ -134,6 +160,8 @@ namespace Firstlight.Game
             workerSec = s.WorkerSeconds, prodSec = s.ProductiveSeconds,
         };
 
+        static string _noon = "";
+
         static SeasonRow Row(Settlement s, Snap prev, int seasonIdx, GameData data)
         {
             var b = data.Balance;
@@ -152,7 +180,7 @@ namespace Firstlight.Game
                 buildings = s.Buildings.Count(x => x.Active), sites = s.Buildings.Count(x => x.IsSite), housing = s.HousingCapacity,
                 researched = s.ResearchLog.Count, age = s.Age.name,
                 newResearch = string.Join(", ", s.ResearchLog.Skip(prev.research).Select(r => data.ResearchById(r.id)?.name)),
-                detail = Detail(s) + " | made " + string.Join(", ", Enumerable.Range(0, s.ResCount).Where(i => s.Produced[i] - prev.produced[i] > 0.05f)
+                detail = _noon + " | made " + string.Join(", ", Enumerable.Range(0, s.ResCount).Where(i => s.Produced[i] - prev.produced[i] > 0.05f)
                     .Select(i => $"{s.Data.Resources[i].id} {s.Produced[i] - prev.produced[i]:F0}")) + " | used " + string.Join(", ", Enumerable.Range(0, s.ResCount).Where(i => s.Consumed[i] - prev.consumed[i] > 0.05f)
                     .Select(i => $"{s.Data.Resources[i].id} {s.Consumed[i] - prev.consumed[i]:F0}")) + $" | at work {(s.ProductiveSeconds - prev.prodSec) / Math.Max(1f, s.WorkerSeconds - prev.workerSec):P0}",
             };
@@ -163,7 +191,8 @@ namespace Firstlight.Game
             var parts = s.Buildings.Where(b => b.Alive && (b.Def.IsWorkplace || b.IsSite)).Select(b =>
                 b.IsSite ? $"{b.Def.id}[site {b.MaterialsFraction:F2}/{b.Work:F2}]"
                          : $"{b.Def.id}[{b.Priority.ToString()[0]} {b.Workers}w out {b.OutTotal:F1} full {b.Fullness:F2}{(b.Status.Length > 0 ? " " + b.Status : "")}]");
-            var acts = s.Citizens.GroupBy(c => c.Activity).OrderBy(g => g.Key).Select(g => $"{g.Key} {g.Count()}");
+            var acts = s.Citizens.GroupBy(c => c.Activity).OrderBy(g => g.Key).Select(g => $"{g.Key} {g.Count()}")
+                .Concat(new[] { "builder tasks: " + string.Join(" ", s.Citizens.Where(c => c.IsBuilder).Select(c => $"{c.Task}{(c.TaskB2 != null ? "@" + c.TaskB2.Def.id : "")}{(c.Walking ? "~" : "")}")) });
             int jobs = s.Citizens.Count(c => c.Job != null), builders = s.Citizens.Count(c => c.IsBuilder), sick = s.Citizens.Count(c => c.Sick);
             float hp = s.Citizens.Count > 0 ? s.Citizens.Average(c => c.Health) : 0;
             return $"{string.Join(" ", parts)} | jobs {jobs} builders {builders} sick {sick} health {hp:F2} tools held {s.Citizens.Count(c => c.Tool >= 0)} | {string.Join(", ", acts)}";
@@ -193,7 +222,7 @@ namespace Firstlight.Game
             sb.AppendLine();
             sb.AppendLine("Each row is the state at the end of that season; births, deaths, migrants and leavers are counted over the season.");
             sb.AppendLine();
-            sb.AppendLine("## Season detail (workplaces, people)");
+            sb.AppendLine("## Season detail (workplaces and people at noon on the last day; goods made and used over the season)");
             sb.AppendLine();
             foreach (var x in r.seasons) sb.AppendLine($"- Y{x.year} {data.Balance.seasonNames[x.season]}: {x.detail}");
             sb.AppendLine();

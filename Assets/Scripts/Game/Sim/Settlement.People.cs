@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Firstlight.Core;
 using Unity.Mathematics;
@@ -12,6 +13,21 @@ namespace Firstlight.Game
         readonly List<Building> _demand = new();
         readonly List<Citizen> _free = new();
         readonly List<Citizen> _order = new();
+
+        /// <summary>Debug/perf only: adds adults around the campfire, with food and room for them.</summary>
+        public void DebugSpawn(int count)
+        {
+            if (TownCenter == null) return;
+            for (int i = 0; i < count; i++)
+            {
+                float a = i * 2.39996f, r = 2f + (i % 7);
+                NewCitizen(_rng.Next(2) == 0, R(B.fertileMin, B.elderAge), TownCenter.Center + new float2(math.sin(a), math.cos(a)) * r);
+            }
+            TownCenter.Store[_foodByPerish[0]] += count * 10f;
+            TownCenter.Stored += count * 10f;
+            RefreshStock();
+            _jobsDirty = true;
+        }
 
         Citizen NewCitizen(bool female, float age, float2 pos)
         {
@@ -160,6 +176,9 @@ namespace Firstlight.Game
                     if (site.IsSite)
                     {
                         site.Delivered[c.TaskIdx] += c.CarryAmt;
+                        // Snap away float dust so a site is never left a hair short of its materials.
+                        if (site.Def.cost[c.TaskIdx].amount - site.Delivered[c.TaskIdx] < MaterialTolerance) site.Delivered[c.TaskIdx] = site.Def.cost[c.TaskIdx].amount;
+                        if (math.abs(site.InTransit[c.TaskIdx]) < 1e-3f) site.InTransit[c.TaskIdx] = 0;
                         c.CarryAmt = 0; c.CarryRes = -1;
                         if (site.MaterialsComplete && site.Def.buildWork <= 0) Complete(site);
                     }
@@ -321,6 +340,7 @@ namespace Firstlight.Game
             }
             if (b.OutTotal >= B.carryCapacity && HasStorageRoom()) { TakeOutput(c, b); return; }
             ProductiveSeconds += Step;
+            if (b.Def.usesTools && c.Tool < 0) EnsureTool(c, true);   // tools may have come in since the shift began
             float speed = WorkSpeed(c, b.Def.usesTools, b.Def.requiresTools);
             if (speed <= 0) { b.Status = "Needs tools"; c.Activity = Activity.Idle; return; }
             bool did = WorkStep(c, b, speed);
@@ -359,6 +379,22 @@ namespace Firstlight.Game
             if (c.ToolLife <= 0) { c.Tool = -1; c.ToolLife = 0; }
         }
 
+        /// <summary>
+        /// Rebuilds the reservations (materials on their way to sites, loads promised to haulers) from what people are
+        /// actually doing, so a missed release or float drift can never leave a site waiting forever.
+        /// </summary>
+        void RecountReservations()
+        {
+            foreach (var b in Buildings) { if (b.InTransit != null) Array.Clear(b.InTransit, 0, b.InTransit.Length); b.HaulReserved = 0; }
+            foreach (var c in Citizens)
+            {
+                if (c.Gone) continue;
+                if (c.Task == Task.FetchMaterial && c.TaskB2 != null) c.TaskB2.InTransit[c.TaskIdx] += c.TaskAmt;
+                else if (c.Task == Task.DeliverMaterial && c.TaskB2 != null) c.TaskB2.InTransit[c.TaskIdx] += c.CarryAmt;
+                else if (c.Task == Task.HaulPickup && c.TaskB != null) c.TaskB.HaulReserved += c.TaskAmt;
+            }
+        }
+
         /// <summary>Builders: carry missing materials to the oldest site that can use them, else build one whose materials are in.</summary>
         bool BuilderDecide(Citizen c)
         {
@@ -370,7 +406,7 @@ namespace Firstlight.Game
                     for (int i = 0; i < site.Def.cost.Length; i++)
                     {
                         float remaining = site.Def.cost[i].amount - site.Delivered[i] - site.InTransit[i];
-                        if (remaining < 0.01f) continue;
+                        if (remaining < MaterialTolerance) continue;
                         var s = NearestStorageWith(site.DoorPos, site.CostRes[i]);
                         if (s == null) continue;
                         float amt = math.min(B.carryCapacity, math.min(remaining, s.Store[site.CostRes[i]]));
@@ -453,7 +489,7 @@ namespace Firstlight.Game
 
         /// <summary>
         /// Fills jobs: high-priority workplaces first, then builders (only while there are sites), then normal and low
-        /// priority. Short jobs take people from strictly lower priorities. Elders are preferred for knowledge work.
+        /// priority. Short jobs take people from strictly lower priorities (high jobs never take builders). Elders are preferred for knowledge work.
         /// Anyone left over hauls and helps build.
         /// </summary>
         void AssignJobs()
@@ -497,7 +533,8 @@ namespace Firstlight.Game
                 if (b.Active && b.Def.IsWorkplace) b.Status = b.Paused ? "Paused" : b.Workers == 0 ? "No workers" : b.Status == "No workers" || b.Status == "Paused" ? "" : b.Status;
         }
 
-        int Tier(Building b) => b == null ? 1 : b.Priority == Priority.High ? 0 : b.Priority == Priority.Normal ? 2 : 3;
+        // Builders share the top tier with high-priority jobs: filled after them, but never taken by them.
+        int Tier(Building b) => b == null ? 0 : b.Priority == Priority.High ? 0 : b.Priority == Priority.Normal ? 2 : 3;
 
         Citizen PickFree(Building b)
         {
@@ -698,18 +735,23 @@ namespace Firstlight.Game
                 if (free >= B.migrantMinFreeHousing && FoodDays >= B.migrantMinFoodDays && AverageHappiness >= B.migrantMinHappiness && _rng.NextDouble() < B.migrantChance)
                 {
                     int n = math.min(free, _rng.Next(B.migrantsMin, B.migrantsMax + 1));
-                    int edge = Map.EdgeCellNear(TownCenter.Center, _rng);
-                    var from = new float2(edge % Map.W + 0.5f, edge / Map.W + 0.5f);
-                    for (int i = 0; i < n; i++)
+                    // Only as many as the stores can feed for the same number of days with them counted in.
+                    while (n > 0 && FoodStock / (DailyFoodNeed + n * B.foodPerAdult) < B.migrantMinFoodDays) n--;
+                    if (n > 0)
                     {
-                        bool child = i > 0 && _rng.NextDouble() < 0.25;
-                        var c = NewCitizen(_rng.Next(2) == 0, child ? R(3f, 12f) : R(B.fertileMin, B.fertileMax), from + new float2(R(-0.4f, 0.4f), R(-0.4f, 0.4f)));
-                        c.Task = Task.Arrive;
-                        Walk(c, TownCenter.Door, Activity.Arriving);
+                        int edge = Map.EdgeCellNear(TownCenter.Center, _rng);
+                        var from = new float2(edge % Map.W + 0.5f, edge / Map.W + 0.5f);
+                        for (int i = 0; i < n; i++)
+                        {
+                            bool child = i > 0 && _rng.NextDouble() < 0.25;
+                            var c = NewCitizen(_rng.Next(2) == 0, child ? R(3f, 12f) : R(B.fertileMin, B.fertileMax), from + new float2(R(-0.4f, 0.4f), R(-0.4f, 0.4f)));
+                            c.Task = Task.Arrive;
+                            Walk(c, TownCenter.Door, Activity.Arriving);
+                        }
+                        Migrants += n;
+                        Log(Severity.Info, $"{n} migrants arrived.");
+                        AssignHomes();
                     }
-                    Migrants += n;
-                    Log(Severity.Info, $"{n} migrants arrived.");
-                    AssignHomes();
                 }
             }
 

@@ -56,7 +56,7 @@
   "elderKnowledgeMult": 1.5,
   "fertileMin": 16,
   "fertileMax": 40,
-  "birthChancePerDay": 0.02,
+  "birthChancePerDay": 0.025,
   "birthMinFoodDays": 3,
   "birthCooldownDays": 32,
   "oldAgeStart": 55,

@@ -85,7 +85,7 @@ namespace Firstlight.Game
             if (r.isFood) return float.MaxValue;
             if (id == "firewood") return S.FuelNeedUntilSpring() + 40f;
             if (r.toolSpeed > 0) return 6f + S.Adults / 2f;
-            if (id == "wood") return 100f;
+            if (id == "wood") return 60f;
             if (id == "stone") return 60f;
             if (id == "clothing") return S.Population * 0.5f + 4f;
             return 40f;
@@ -124,6 +124,10 @@ namespace Firstlight.Game
                     int focus = -1;
                     for (int i = 0; i < b.Def.outputs.Length && !pause; i++)
                         if (!Plenty(b.Def.outputs[i].id) && b.Def.outputs.Where((o, j) => j != i).All(o => Plenty(o.id))) focus = i;
+                    // Before winter, firewood comes first unless wood itself is scarce.
+                    int fw = Array.FindIndex(b.Def.outputs, o => o.id == "firewood");
+                    if (fw >= 0 && (S.Season == 1 || S.Season == 2) && S.Stock("firewood") < S.FuelNeedUntilSpring() * 1.2f
+                        && S.Stock("wood") >= LowStock("wood") && !shortMat.Contains("wood")) focus = fw;
                     if (b.Focus != focus) S.SetFocus(b, focus);
                 }
                 if (feedsOnFood) pause = fd < 6f || S.Season == 3;
@@ -134,7 +138,7 @@ namespace Firstlight.Game
                 else if (b.Def.outputs.Any(o => o.id == "firewood") && fuelShort) p = Priority.High;
                 else if (b.Def.outputs.Any(o => D.Resource(o.id)?.toolSpeed > 0) && toolsShort) p = Priority.High;
                 else if (b.Def.outputs.Any(o => S.Stock(o.id) < LowStock(o.id))) p = Priority.High;
-                else if (b.Def.knowledgePerWorker > 0) p = fd < 1f && S.Season == 3 ? Priority.Low : fd < 4f ? Priority.Normal : Priority.High;
+                else if (b.Def.knowledgePerWorker > 0) p = fd < 1f && S.Season == 3 ? Priority.Low : fd < 3f ? Priority.Normal : Priority.High;
                 else if (food && plenty) p = Priority.Low;
                 if (b.Priority != p) S.SetPriority(b, p);
             }
@@ -187,7 +191,7 @@ namespace Firstlight.Game
             Want(Count("gatherers_camp") < 1, "gatherers_camp");
             Want(Count("woodcutter") < 1, "woodcutter");
             Want(Count("elders_fire") < 1, "elders_fire");
-            Want(housing < pop + 2, hidesForTent ? "hide_tent" : "lean_to");
+            Want(housing < pop + 4, hidesForTent ? "hide_tent" : "lean_to");
             Want(Count("stone_gatherer") < 1, "stone_gatherer");
             Want(Count("storage_pile") < 1 || (S.StorageUsed > S.StorageCapacity * 0.7f && S.Sites.All(b => !b.IsStorage)), "storage_pile");
             Want(Count("gatherers_camp") < 2 && (pop >= 12 || !Careless && S.FoodDays < 8f), "gatherers_camp");
@@ -199,11 +203,21 @@ namespace Firstlight.Game
             Want(Count("woodcutter") < 2 && pop >= 15, "woodcutter");
             Want(Count("fishing_spot") < 1, "fishing_spot");
             Want(Count("hide_worker") < 1 && Count("hunters_camp") > 0, "hide_worker");
-            bool foodShort = !Careless && S.FoodDays < 5f && S.Season < 3;
+            // Short of food now, or (in summer and autumn) heading into winter without a winter's worth.
+            bool foodShort = !Careless && (S.FoodDays < 5f && S.Season < 3
+                || (S.Season == 1 || S.Season == 2) && S.FoodStock < S.DailyFoodNeed * D.Balance.daysPerSeason * 1.2f && S.FoodDays < 10f);
             Want(Count("hunters_camp") < 2 && (pop >= 20 || foodShort && pop >= 14), "hunters_camp");
             Want(Count("gatherers_camp") < 3 && foodShort && pop >= 16, "gatherers_camp");
+            // Keep food work in step with the mouths to feed: about one food workplace per seven people.
+            int foodPlaces = S.Buildings.Count(b => b.Alive && b.Def.outputs.Any(o => D.Resource(o.id)?.isFood == true) && b.Def.inputs.Length == 0);
+            if (foodPlaces < 1 + pop / 7)
+            {
+                Want(Count("hunters_camp") < 1 + pop / 20, "hunters_camp");
+                Want(Count("fishing_spot") < 1 + pop / 25, "fishing_spot");
+                Want(true, "gatherers_camp");
+            }
             Want(Count("fishing_spot") < 2 && foodShort && pop >= 18, "fishing_spot");
-            Want(Count("elders_fire") < 2 && pop >= 16, "elders_fire");
+            Want(Count("elders_fire") < 2 && pop >= 20, "elders_fire");
             Want(Count("field") < 2 + pop / 15, "field");
             Want(Count("gatherers_camp") < 3 && pop >= 26, "gatherers_camp");
             Want(Count("woodcutter") < 3 && pop >= 28, "woodcutter");
