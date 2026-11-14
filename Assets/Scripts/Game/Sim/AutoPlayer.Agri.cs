@@ -49,7 +49,7 @@ namespace Firstlight.Game
         }
 
         float _grainShare = 0.6f;
-        int _lastHungryYear = -1;
+        int _lastHungryYear = -1, _lastFullYear = -1;
 
         int FibreFields() => S.IsResearched("weaving") && S.Population >= 40 ? 1 + S.Population / 100 : 0;
 
@@ -100,6 +100,8 @@ namespace Firstlight.Game
             WatchHarvest();
             // A year that ran short of food: grow more of it next year.
             if (S.Season <= 1 && S.FoodDays < 1.5f && _lastHungryYear != S.Year) { _lastHungryYear = S.Year; _grainShare = math.min(0.9f, _grainShare + 0.1f); Note($"food ran short: grain share now {_grainShare:F1}"); }
+            // Still plenty at the end of summer: a smaller share will do.
+            if (S.Season == 1 && S.DayOfSeason == 7 && S.FoodDays > 15f && _lastFullYear != S.Year) { _lastFullYear = S.Year; _grainShare = math.max(0.5f, _grainShare - 0.1f); Note($"food to spare: grain share now {_grainShare:F1}"); }
             Laws();
             Crops();
             Upgrades();

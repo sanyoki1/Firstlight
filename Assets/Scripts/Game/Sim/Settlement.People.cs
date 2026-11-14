@@ -790,7 +790,9 @@ namespace Firstlight.Game
         }
 
         // Builders share the top tier with high-priority jobs: filled after them, but never taken by them.
-        int Tier(Building b) => b == null ? 0 : b.Priority == Priority.High ? 0 : b.Priority == Priority.Normal ? 2 : 3;
+        // A high-priority field in sowing or harvest time outranks everything else: it may take people from other
+        // high-priority jobs (a few days there feed people for months).
+        int Tier(Building b) => b == null ? 0 : b.Priority == Priority.High ? (b.Def.crop && (Season == 0 || Season == 2) ? -1 : 0) : b.Priority == Priority.Normal ? 2 : 3;
 
         Citizen PickFree(Building b)
         {
@@ -978,7 +980,9 @@ namespace Firstlight.Game
             int room = HousingCapacity - Population;
             // The stores have to carry everyone until the next harvest: families and newcomers plan for the lean
             // months, not for the pile on the day (a full store just after the harvest has winter and spring to feed).
-            float birthFood = math.max(B.birthMinFoodDays, LeanDays() * B.birthWinterShare);
+            // (A Stone Age band lives off what it gathers day by day; planning for the lean months comes with farming.)
+            bool plan = Data.AgeOrder(B.planFoodAge) <= Age.order;
+            float birthFood = math.max(B.birthMinFoodDays, plan ? LeanDays() * B.birthWinterShare : 0);
             if (man && FoodDays >= birthFood && room > 0)
             {
                 int n = Citizens.Count;
@@ -1001,7 +1005,7 @@ namespace Firstlight.Game
             if (B.migrantCheckDays > 0 && Day % (int)math.max(1, B.migrantCheckDays) == 0)
             {
                 int free = HousingCapacity - Population;
-                float migrantFood = math.max(B.migrantMinFoodDays, LeanDays() * B.migrantWinterShare);
+                float migrantFood = math.max(B.migrantMinFoodDays, plan ? LeanDays() * B.migrantWinterShare : 0);
                 if (free >= B.migrantMinFreeHousing && FoodDays >= migrantFood && AverageHappiness >= B.migrantMinHappiness && _rng.NextDouble() < B.migrantChance * Effect("migrants"))
                 {
                     int n = math.min(free, _rng.Next(B.migrantsMin, B.migrantsMax + 1));

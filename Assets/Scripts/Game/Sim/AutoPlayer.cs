@@ -138,6 +138,8 @@ namespace Firstlight.Game
                     if (b.Focus != focus) S.SetFocus(b, focus);
                 }
                 if (feedsOnFood) pause = fd < 6f || S.Season == 3;
+                // More than a year and a half of food in store: leave some fields fallow and free their farmers.
+                if (b.Def.crop) pause = b.Paused ? fd > 30f : fd > 45f;
                 // Don't eat into an input that a site is waiting for (the potter's clay while the smelter waits).
                 if (!food && b.Def.outputs.All(o => D.Resource(o.id)?.category == "goods" && S.Stock(o.id) >= Enough(o.id) * 0.4f)
                     && b.Def.inputs.Any(i => i.ids.Any(shortMat.Contains))) pause = true;
@@ -231,6 +233,9 @@ namespace Firstlight.Game
             {
                 if (!b.Active || !b.Def.HasNearby || b.Def.nearby.feature == "water" || b.Fullness >= 0.3f || _replacing.ContainsValue(b)) continue;
                 var at = FindSite(b.Def);
+                // The woods near town are gone: look farther out for fresh ones.
+                if (at != null && math.saturate(M.CountFeature(b.Def.nearby.feature, Settlement.FootprintCenter(b.Def, at.Value), b.Def.nearby.radius) / (float)math.max(1, b.Def.nearby.full)) < 0.6f)
+                    at = FindSite(b.Def, 18);
                 if (at == null) continue;
                 var center = Settlement.FootprintCenter(b.Def, at.Value);
                 float fresh = math.saturate(M.CountFeature(b.Def.nearby.feature, center, b.Def.nearby.radius) / (float)math.max(1, b.Def.nearby.full));
@@ -332,10 +337,13 @@ namespace Firstlight.Game
         }
 
         /// <summary>Best spot near the campfire: features nearby for producers, short walks, a free ring around it.</summary>
-        public int2? FindSite(BuildingDef d)
+        public int2? FindSite(BuildingDef d) => FindSite(d, 0);
+
+        /// <summary>Same, searching <paramref name="extra"/> cells farther out (fresh woods once the near ones are cut).</summary>
+        public int2? FindSite(BuildingDef d, int extra)
         {
             var tc = S.TownCenter.Center;
-            int R = d.crop ? 30 : d.HasNearby ? 30 : 22 + S.Population / 12;
+            int R = (d.crop ? 30 : d.HasNearby ? 30 : 22 + S.Population / 12) + extra;
             int2? best = null; float bestScore = float.MinValue;
             for (int dy = -R; dy <= R; dy++)
                 for (int dx = -R; dx <= R; dx++)

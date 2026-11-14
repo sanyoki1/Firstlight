@@ -113,6 +113,7 @@
   "growthSpring": 0.07,
   "growthSummer": 0.09,
   "untendedGrowth": 0.65,
+  "planFoodAge": "agricultural",
   "migrantWinterShare": 0.5,
   "birthWinterShare": 0.25,
   "unrestAge": "agricultural",

@@ -206,6 +206,7 @@ namespace Firstlight.Game
         public int riverWaterRadius = 7;            // homes this close to the river have water without a well
         public float noWaterSick = 0.004f, noWaterWorkSpeed = 0.9f;
         public float growthSpring = 0.07f, growthSummer = 0.09f, untendedGrowth = 0.65f;
+        public string planFoodAge = "agricultural";  // from this age births and migrants look ahead to the next harvest
         public float migrantWinterShare = 0.8f;     // in autumn and winter, migrants want food for this share of the days to summer
         public float birthWinterShare = 0.5f;
         public string unrestAge = "agricultural";   // unrest counts from this age (a band of a dozen has no factions)
