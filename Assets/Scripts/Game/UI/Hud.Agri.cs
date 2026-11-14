@@ -155,7 +155,7 @@ namespace Firstlight.Game.UI
             var research = D.Laws.Count > 0 ? D.ResearchById(D.Laws[0].research) : null;
             if (research != null && !S.IsResearched(research.id)) Para(Col($"Laws need {research.name} and a {council?.name ?? "council"}.", Warn), Wrap);
             else if (!S.LawsInForce) Para(Col($"Build a {council?.name ?? "council"} to pass laws. Laws already passed are suspended without one.", Warn), Wrap);
-            else Para($"The council can change each law once every {D.Balance.lawCooldownDays} days. Unrest now {Col($"{S.Unrest:P0}", S.Unrest >= D.Balance.disputeAt ? Bad : S.Unrest >= D.Balance.unrestWarn ? Warn : Good)}.", Wrap);
+            else Para($"The council can change each law once every {D.Balance.lawCooldownDays} days. Unrest is {Col($"{S.Unrest * 100:0}%", S.Unrest >= D.Balance.disputeAt ? Bad : S.Unrest >= D.Balance.unrestWarn ? Warn : Good)}.", Wrap);
             Gap(4);
             foreach (var l in D.Laws)
             {

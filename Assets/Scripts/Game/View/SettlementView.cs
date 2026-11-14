@@ -603,7 +603,7 @@ namespace Firstlight.Game
                     float a = i * 2f * math.PI / n;
                     var p = center + new float2(math.sin(a), math.cos(a)) * radius;
                     if (p.x < 0 || p.y < 0 || p.x >= M.W || p.y >= M.H) continue;
-                    _markers.Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), 0, new float3(1f), col));
+                    _markers.Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), 0, new float3(1.6f, 1f, 1.6f), col));
                 }
             }
         }

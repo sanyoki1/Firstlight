@@ -113,7 +113,7 @@ namespace Firstlight.Game
             if (!S.LawsInForce) return;
             void Set(string id, bool on) { if (S.LawActive(id) != on && S.SetLaw(id, on, out _)) Note($"{(on ? "passed" : "ended")} law {id}"); }
             float outlook = S.FoodStock / math.max(1f, S.DailyFoodNeed * S.DaysUntilSummer());
-            bool lean = S.Season >= 2 || S.Season == 0;
+            bool lean = S.Season == 3 || S.Season == 0;                 // after the harvest is in, before the summer food
             Set("elders_settle", S.Unrest >= 0.12f || S.LawActive("elders_settle") && S.Unrest >= 0.06f);
             // Sharing spreads a moderate shortage; in a famine (less than half the food) it would starve everyone together.
             Set("food_sharing", (lean && outlook < 0.75f || S.FoodDays < 3f) && outlook > 0.45f);

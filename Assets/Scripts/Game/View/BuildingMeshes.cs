@@ -72,7 +72,7 @@ namespace Firstlight.Game
                 float z = -depth / 2 + pitch * (i + 0.5f);
                 // Ridged rows (a prism along x), each in two halves of slightly different height: a crop is never quite even.
                 float h1 = st.height * (0.92f + 0.08f * ((i * 7) % 3)), h2 = st.height * (0.96f - 0.06f * ((i * 5) % 2));
-                float across = pitch * (stage == 1 ? 0.55f : 0.95f);
+                float across = pitch * (stage == 1 ? 0.75f : 0.95f);
                 b.Prism(MeshBuilder.TRS(new Vector3(-w / 4, 0.04f, z), 90, new Vector3(across, h1, w / 2 - 0.03f)), Tinted);
                 b.Prism(MeshBuilder.TRS(new Vector3(w / 4, 0.04f, z), 90, new Vector3(across, h2, w / 2 - 0.03f)), Tinted);
             }

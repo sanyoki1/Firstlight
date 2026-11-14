@@ -218,6 +218,7 @@ namespace Firstlight.Game.UI
             {
                 case Activity.Working:
                     if (!c.AtField) return "Working";
+                    if (c.Job != null && c.Job.Def.crop) return S.Season == 0 ? "Sowing the field" : S.Season == 1 ? "Tending the crop" : "Bringing in the harvest";
                     return c.Job?.Def.nearby?.feature switch { "wildlife" => "Out hunting", "rocks" => "Working at the rocks", "trees" => "Working in the woods", _ => "Working out" };
                 case Activity.Building: return "Building";
                 case Activity.Carrying: return "Carrying goods";

@@ -329,13 +329,211 @@ out in its second or third winter; it is labour- and wood-starved and the extra 
 - New sim warnings show as chips automatically; events logged with `Log(severity, text, at)` are clickable.
 - Research effect text: `Hud.Research.EffectText` formats the known stat prefixes; add new prefixes there.
 
-## Phase 3: the Agricultural Age (in progress)
+## Phase 3: the Agricultural Age
 
-Status: simulation, data and auto-player in (commit 8085526); view, HUD, screenshots and balance still being worked
-on. This section is rewritten at each commit.
+Status: working. The slice plays from the campfire to "The settlement enters the Bronze Age" and an end screen; the
+auto-player gets there on 10 of the 10 test seeds (see "Auto-test"). Screenshots `docs/art/quarter/agri-*.png`.
 
-### What exists so far
-- Sim partial files: `Settlement.Agri.cs` (fields through the year, granary restocking, tool tiers, traders) and
-  `Settlement.Society.cs` (needs that arrive with the age, health tiers, laws, unrest, outbreaks); `AutoPlayer.Agri.cs`.
-- New data: `laws.json`; buildings granary, thatched_hut, stone_hut, animal_pen, well, healers_hut, shamans_hut,
-  tribal_council, potter, weaver, dirt_path; resources fibre and pottery; every resource has a barter `value`.
+### What exists
+
+**Sim** (`Game/Sim/`, new partial files; still deterministic: the same seed twice gives byte-identical reports)
+
+| File | Contents |
+|---|---|
+| `Settlement.Agri.cs` | fields through the year (`CropWork`, `DailyCrops`, `ExpectedHarvest`, `StepIntoField`), seasonal field labour (`WantsWorkers`), granary restocking (`MoveStockDecide`), traders (`TraderVisit`) |
+| `Settlement.Society.cs` | needs that arrive with the age (`NeedActive`, `RefreshHomes`, `DailyGoods`, `ExtraNeeds`, `NeedMet`), health tiers (`HealthCover`), laws (`SetLaw`, `CanSetLaw`, `LawActive`, `LawsInForce`), unrest (`DailyUnrest`: disputes, theft), outbreaks (`RefreshOutbreakRisk`, `DailyOutbreak`) |
+| `Settlement.Buildings.cs` | + deposits (`DepositCells`, `onDeposit` placement rule), paths (`PlacePath`, `RemovePath`, `CanPlacePath`), upgrades in place (`UpgradeOption`, `CanUpgrade`, `Upgrade`, `CancelUpgrade`), store `Capacity` (x `storage` effect) and `Accepts` (granary: food only), `NearestStorageFor` (spoiling goods prefer the granary) |
+| `AutoPlayer.Agri.cs` | the auto-player's Agricultural Age (below) |
+
+Mechanics and numbers (data files unless noted):
+- **Fields** (`crop`, 4x4, 3 farmers, need tools): spring = sowing (`sowWork` 3 worker-days per field); growth per day
+  x share sown: spring `growthSpring` 0.07, summer `growthSummer` 0.09 x (0.65 untended .. 1 tended; `tendWork` 1.5
+  worker-days a day); autumn = harvest (`harvestWork` 4) into the farmers' loads: full yield 400 grain (or 120 flax
+  fibre) x growth x research (`yield.farming`) x irrigation (`yield.irrigated` 1.35 if water within
+  `irrigationRadius` 10); winter: nothing, and fields want no workers (farmers haul and build). The crop
+  (`exclusiveOutputs`, chosen with `SetFocus`) is fixed at sowing; fibre needs Weaving (resource `unlockedBy`). Farmers
+  walk to the field's door and then step about among the rows (one path target per field). In sowing and harvest a
+  High field outranks other High jobs (`Tier` -1: it may take their people). Grain is carried in sacks (resource
+  `carry` 3: a load is 15).
+- **Granary**: holds 300 (x1.2 with Pottery), food only (`accepts`), spoil x0.3; idle haulers move spoiling food from
+  open stores into it (`Task.MoveStock`).
+- **Housing**: Thatched Hut 8 / warmth 0.85; Stone-footed Hut 10 / 1.0 (Masonry). `upgradesTo`: lean-to and hide tent
+  -> thatched hut -> stone hut, same footprint; the building keeps housing its people while builders bring the new
+  building's full cost and build it (`Building.UpgradeTo`, `UnderWork`, `BuildDef`). Crowding now counts residents above
+  max(4, 75% of the beds).
+- **Needs** (balance `needs`): water from the Agricultural Age (home within `riverWaterRadius` 7 of the river, or a well's
+  `waterRadius` 10 x `water.radius`; unmet: happiness capped at 0.6, sickness +0.004/day, work speed x0.9), pottery
+  once Pottery is known (each occupied home uses one, lasting `goodsWearDays` 48; unmet 0.7), faith once Shamanism is
+  known (home within a staffed shaman's `faithRadius` 22; unmet 0.65). Needs join the happiness average and the
+  worst-need term.
+- **Health tiers**: buildings carry `healChance` / `healDamage` (herbalist 0.5/0.4 radius 16, healer's hut 0.35/0.25
+  radius 24); the best one in reach applies (with herbs in store).
+- **Laws** (`laws.json`, need Tribal Law + a finished council; suspended without one; each changeable once every
+  `lawCooldownDays` 4): Food Sharing (`law.foodsharing`: equal shares when short; `food.eaten` x1.08), Elders Settle
+  Disputes (`unrest` x0.6, `knowledge.elders` x0.8), Shared Labour (`build.speed` x1.35, `happiness` x0.94), Rationing
+  (`food.eaten` x0.85, `happiness` x0.9, `sickness` x1.25). Law effects join the research effects (`RebuildEffects`).
+- **Unrest** (from `unrestAge`): target = pop/400 + 0.8 x share unhappy (<0.5) + 0.5 x crowded share + 0.15 x share
+  without faith, x `unrest` effects, x (1 - 0.5) with a staffed council; smoothed 0.15/day. Warned at 20%; above 25% a
+  daily chance of a dispute (2-4 workers lose 2 days), above 30% of a theft (8-20% of one store's most valuable good,
+  at most 40).
+- **Outbreaks** (from 30 people): daily chance 0.003 x (1 + 3 x share in crowded homes + 4 x share without water +
+  pop/100) x (1 - 0.6 x share covered by a healer with herbs); warned at 1.5%. It starts in the worst home; people in
+  homes within 6 cells fall ill with chance 0.55 (x1.3 without water, x the healer's chance in reach), longer
+  untreated.
+- **Traders** (Barter, stat `traders`): day 2 of spring, summer and autumn; want = the traded good furthest below its
+  target (tools: adults x0.35, clothing: pop x0.3, pottery: homes x0.5, herbs 4, tin ore 12 once Bronze Working is
+  known); give = the biggest surplus by `value`; worth 40, at 75%.
+- **Metal chain**: Prospecting reveals copper/tin (map ground stained, outcrops drawn); Clay Pit, Copper Mine and Tin
+  Mine must stand on their deposit (`onDeposit`, `depositMin`; reason text and a deposit hint while placing). Tin Mine,
+  Bronze Foundry and Bronze Smith moved to the Agricultural Age (Bronze Working is researched there). Workers swap up
+  to a better tool tier when one is in stock (the old one goes back to store if more than half its life is left).
+- **Paths** (`dirt_path`, `path: true`): a map layer (`GameMap.Path`), not buildings; free and immediate; walking cost 1
+  vs 2 for ground (trees 4, fields 3, shallow water 8) and 35% faster (`pathSpeed`); buildings can be placed over them.
+- **Animal Pen**: meat 2.4 + hides 0.45 per herder-day, needs 25+ open grass cells within 6 (`nearby: open`).
+  **Potter**: clay + firewood -> pottery. **Weaver**: flax fibre -> clothing.
+- **Research effects** now: Irrigation +35% irrigated fields; Pottery storage +20%; Masonry stone huts + wells +50%
+  reach; Barter traders; Writing knowledge +15%; Tribes migrants +30%; the rest unlock buildings (descriptions fixed to
+  say what they do).
+- **Ages**: Agricultural milestones 80 people, Mining Pit, Smelter, Granary; key Writing + Bronze Working. Reaching the
+  Bronze Age (the last age in the data) is the end of the slice.
+- **Famine**: hunger harms in proportion to what was not eaten; people hungry 3+ days in a row may leave (10%/day) to
+  find food elsewhere, and the last adult of a household takes its children. **Food planning** (from
+  `planFoodAge`): births need food for 25% and migrants 50% of the days to the next autumn (`LeanDays`).
+- **Builders** fetch a material from a workplace's output pile when no store has it (a full campfire store no longer
+  blocks the first storage pile).
+
+**View** (`Game/View/`): fields from `cropStages` (bare, shoots, green, ripe, stubble; flax its own colour; the
+harvest cuts row by row: ridged prism rows, `BuildingMeshes.Crop`); upgrades show scaffolding and their materials
+round the old building; copper/tin ground stains and outcrops after Prospecting (`DrawOres`); clay beds as clay ground
+from the start (`WorldView.LayerForCell`); paths as trodden earth (`SyncPaths`); deposit hints and path previews as
+studs; new pile kinds (sacks, pots). New materials (`make_textures.py`): shoots, crop_green, stubble, flax, path,
+stone_wall, pottery, cloth, ore_copper, ore_tin, metal, daub.
+
+**HUD** (`Game/UI/Hud.Agri.cs` + edits): field section (stage, sown/grown/harvested, expected harvest, irrigation,
+crop choice), "Rebuild as..." button with cost and progress / stop, coverage lines for wells, healers, shamans and the
+council (radius and homes in reach; radius studs: water blue, faith violet, irrigation), deposit cells for mines,
+household needs in the home panel, needs in the citizen panel, needs + unrest in the top bar (only once they apply), a
+Laws screen (L), path drag-placement (press, drag an L-shaped line, release; X/Delete tool removes path tiles), new
+build categories Crafts / Metal / Paths, research effect texts for the new stats, and the end screen ("You have reached
+the Bronze Age", years taken, people, born/arrived, left/died, buildings, research, winters, food; Keep playing).
+
+### Auto-player (Agricultural Age)
+Fields sized to the people (a share of the year's food, 0.6 to start, +0.1 after a hungry spring/summer, -0.1 after a
+summer with 15+ days of food; per-field yield measured from the last harvest; capped at 40% of the adults / 2),
+granaries by population and fullness, thatched huts (rebuilds when wood allows), a well where 2+ homes have no water,
+healer, council (laws: Elders Settle at unrest 12%, Food Sharing in a moderate shortage, Rationing in a deep one,
+Shared Labour with 3+ sites), shaman, clay pit + potter, more elders, mining pit, copper mine, smelter, coppersmith,
+tin mine, foundry, bronze smith, pens, a weaver with flax fields, paths from busy buildings to the campfire. Fields
+High in sowing and harvest; council, shaman and healer High when unrest, faith or outbreak risk call for it; a year
+and a half of food in store leaves fields fallow. Stone Age fixes: roofs before winter, a second gatherers' camp when
+the first is in thin woods, a storage pile before the campfire store fills, a maker of any material a site waits for
+and nobody makes, firewood focus in autumn before building, woodcutters relocated farther out when the near woods are
+gone, no age-up on the edge of a hungry winter, housing only while food keeps up (and the town stops growing near 150:
+its plan, not a rule).
+
+### Auto-test
+`tools/autotest.sh` now defaults to 30 years; the report has an "Agricultural systems" table (fields and growth,
+harvest, grain, pottery, clay, ore, copper, tin, bronze, tools held per tier and stock, water/goods/faith met,
+unrest, outbreaks, thefts, disputes, trader visits, path tiles, laws in force) and PASS needs the Bronze Age.
+`player.log` also gets a line per game year and, after the report is written, a "sim alone" timing of two more days.
+
+30-year runs (all PASS; the same seed twice gives byte-identical md and json):
+
+| Seed | Agricultural Age | Bronze Age | Final pop (min, max) | Births / migrants / leavers | Deaths | Outbreaks / thefts / disputes | Trader visits | Rebuilds | Tool swaps | Result |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 2026 | year 5, Spring | year 13, Summer | 166 (min 8, max 168) | 161 / 144 / 9 | cold 4, old age 124, sickness 5, starvation 9 | 9 / 0 / 1 | 45 | 16 | 261 | PASS |
+| 7 | year 4, Winter | year 11, Autumn | 162 (min 12, max 162) | 196 / 129 / 0 | old age 174, sickness 1 | 9 / 0 / 0 | 51 | 9 | 355 | PASS |
+| 11 | year 9, Summer | year 18, Autumn | 164 (min 8, max 164) | 149 / 118 / 4 | cold 10, old age 94, sickness 3, starvation 4 | 10 / 2 / 4 | 41 | 10 | 248 | PASS |
+| 1234 | year 4, Spring | year 11, Summer | 155 (min 12, max 156) | 196 / 115 / 0 | old age 165, sickness 3 | 13 / 0 / 0 | 59 | 10 | 354 | PASS |
+| 99 | year 5, Summer | year 13, Autumn | 160 (min 8, max 160) | 189 / 120 / 3 | cold 4, old age 151, sickness 3 | 10 / 0 / 0 | 51 | 16 | 338 | PASS |
+| 5 | year 4, Autumn | year 11, Summer | 158 (min 8, max 158) | 200 / 124 / 0 | cold 4, old age 170, sickness 4 | 6 / 0 / 0 | 62 | 11 | 299 | PASS |
+| 42 | year 7, Summer | year 20, Summer | 160 (min 6, max 160) | 142 / 126 / 13 | cold 2, old age 90, sickness 2, starvation 13 | 7 / 0 / 0 | 36 | 9 | 47 | PASS |
+| 3 | year 3, Winter | year 11, Spring | 160 (min 11, max 160) | 209 / 120 / 0 | old age 178, sickness 3 | 10 / 0 / 0 | 65 | 8 | 352 | PASS |
+| 100 | year 5, Spring | year 12, Winter | 162 (min 11, max 162) | 178 / 139 / 0 | old age 165, sickness 2 | 8 / 0 / 0 | 60 | 9 | 333 | PASS |
+| 777 | year 5, Summer | year 12, Spring | 162 (min 12, max 162) | 217 / 142 / 0 | cold 27, old age 173, sickness 9 | 6 / 0 / 1 | 63 | 9 | 339 | PASS |
+
+Deaths are mostly old age once the fields are in; the hard maps (11, 42) are slow in the Stone Age (Agricultural in
+year 7-9) and reach Bronze in years 18-20. Before this phase's fixes seed 11 died out in its second winter; along the
+way most seeds collapsed after the age-up (see "Balance changes").
+
+**Performance**: a town of 160 costs 0.3-0.55 ms per sim step with nothing drawn (two days timed after the run:
+citizens ~0.2-0.4 ms, hourly work ~0.12 ms per step averaged), 0.55 ms per step with the auto-player thinking hourly;
+at 4x speed that is ~0.15 ms per 60 fps frame. Drawn (batch `-uishots`, seed 7, 1920x1080 render target, sim at 1x): the Bronze-age town of 132 with 97 buildings and 348 path tiles takes 4.4 ms per frame; with 300 extra people (432) 6.0 ms; no gen-0 collections during the probes.
+
+### Balance changes (and why)
+- Fields 2.4 grain/worker-day (fewer per worker than gathering) -> a real seasonal crop yielding 400 per field: at
+  first fields fed fewer people per worker than gatherers and the town starved every spring.
+- Grain `carry` 3: with 5 per trip, carrying the harvest to the granary was the bottleneck (a 4x4 field needed 80
+  trips) and grain rotted in the fields' piles while people starved.
+- Builders take materials from workplace output piles: seeds 2026/11/3 deadlocked with a full campfire store.
+- Births/migrants plan for the lean months in the Agricultural Age (not the Stone Age, where it stalled growth at
+  ~23 and kept seed 42 from ever ageing up): towns grew in autumn on a full granary and starved by summer.
+- Famine leaving (with children): famines used to kill everyone at once (Food Sharing made all hungry together).
+- Tool handout fix: a worker only tried the best tier; with that tier scattered over stores in part-tools it got none,
+  while 150 stone tools sat in store and the fields failed for want of tools (the "slow decline after Bronze").
+- Agricultural research costs x1.6 (key research x2.4): Bronze came in years 8-9.
+- Clean water unmet 0.5 -> 0.6, toolmaker 1 -> 2 workers and 0.6 -> 0.7 tools: the age-up itself caused a happiness
+  crash and the tool supply could not keep 100+ workers in tools.
+- Woodcutters relocate up to 18 cells farther when the woods near town are gone (towns froze in year 20+ winters).
+- Path performance: tree felling/growth no longer invalidates every cached path (soft commit each season), the
+  path cache holds 512 fields (was 192), doors are re-pathed in one parallel batch after a change, and farmers use
+  their field's door as their only path target: the sim cost of a 160-town fell from ~2.7 to ~0.4 ms per step, and
+  late years no longer slowed to a crawl (seed 3 took 113 s for one game year before).
+
+### New data fields
+- `BuildingDef`: `upgradesTo`, `accepts`, `onDeposit`, `depositMin`, `path`, `crop`, `exclusiveOutputs`, `sowWork`,
+  `harvestWork`, `tendWork`, `irrigationRadius`, `cropStages` (`name`, `material`, `height`, `materials` per crop),
+  `waterRadius`, `faithRadius`, `healChance`, `healDamage`, `orderPower`, `enablesLaws`.
+- `ResourceDef`: `value`, `traded`, `carry`, `unlockedBy`.
+- `Balance`: `needs` (`id`, `name`, `age`, `research`, `unmet`), `goodsResource`, `goodsWearDays`,
+  `riverWaterRadius`, `noWaterSick`, `noWaterWorkSpeed`, `pathSpeed`, `famineLeaveDays`, `famineLeaveChance`,
+  `growthSpring`, `growthSummer`, `untendedGrowth`, `planFoodAge`, `migrantWinterShare`, `birthWinterShare`,
+  `unrestAge`, `unrestPopScale`, `unrestUnhappy`, `unrestCrowding`, `unrestFaithless`, `unrestSmoothing`,
+  `unrestWarn`, `disputeAt`, `theftAt`, `disputeChance`, `theftChance`, `outbreakBase`, `outbreakMinPop`,
+  `outbreakWarn`, `outbreakRadius`, `outbreakCatch`, `traderValue`, `traderRate`, `lawCooldownDays`.
+- `laws.json` (`LawDef`: `id`, `name`, `description`, `research`, `effects`).
+- Effect stats read by code: `yield.irrigated`, `storage`, `water.radius`, `traders`, `migrants`, `knowledge.elders`,
+  `unrest`, `food.eaten`, `law.foodsharing`, `sickness` (plus the phase 1 ones).
+
+### `-uishots`
+Goes on through the Agricultural Age (`GameController.AgriShots.cs`, `-noagri` skips it): fields in spring, summer,
+autumn (mid-harvest) and winter with the field panel, a citizen with the new needs, a well and its reach, a rebuild,
+the laws screen, revealed ore and a copper mine, the smelter, the end screen, the grown town close and wide. Every
+wait is bounded (a missing scene is skipped). The windowed run takes about 10 minutes.
+
+### Known gaps and simplifications
+- **Cut**: the optional spring flood (`GameController.StartFlood`) does not damage or pause floodplain buildings.
+- Bronze comes in years 10-12 on most seeds (the brief said roughly 12-25); the hard maps take 18-20.
+- With the auto-player the age is comfortable once the fields work: deaths are mostly old age, thefts are rare
+  (the council is staffed early), 6-16 outbreaks in 30 years. A careless player still starves and freezes.
+- The town stops at ~160 because the auto-player stops building homes at 150; nothing in the sim caps it.
+- Deposits never run out; mines work at their door; ore outcrops are hidden under trees where the deposit is wooded
+  (the stained ground shows through gaps).
+- Farmers step between spots in their field (the view walks them there); harvest goes straight into loads (no stooks).
+- Path drag-placement was written for the mouse and is not in the screenshots (the auto-player lays paths through
+  `PlacePath`); paths are free.
+- Traders are automatic (no offer screen).
+- The top bar is tight at 1920 wide: with the needs strip it shows only two key stocks (T lists all).
+- The normal game commits walking-cost changes every frame (GameController), so the parallel re-pathing batch only
+  helps the headless runs; the lazy per-target rebuild still works in the game.
+
+### Notes for phase 4 (save/load)
+State added in phase 3 that must be saved (everything else is derived and refreshed hourly or daily):
+- `Building`: `UpgradeTo` (def id; with `Delivered`/`InTransit` sized to the upgrade's cost while it runs; `CostRes`
+  is derived), `Sown`, `Growth`, `Harvested`, `CropOut`, `TendedToday`, `GoodsLife`, `Focus` (now also the crop
+  choice). Derived: `Irrigated`, `HasWater`, `HasFaith` (refresh after load: `RefreshFullness`, `RefreshHomes`).
+- `Citizen`: `DisputeDays`, `HungryDays`, `Ate` (derived daily but used by today's damage), errand state for the new
+  `Task.MoveStock` (`TaskB`, `TaskB2`, `TaskIdx`, `TaskAmt`). Derived daily: `NoWater`, `NoGoods`, `NoFaith`.
+- `Settlement`: the laws in force (`_laws`) and when each last changed (`_lawChanged`), `Unrest`, `UnrestTarget`,
+  counters `Disputes`, `Thefts`, `Outbreaks`, `Trades`, `Upgrades`, `ToolSwaps`. Derived: `OutbreakRisk`, the need
+  flags, `PathCount` (count `Map.Path`).
+- `GameMap`: `Path[]` (path tiles). Derived: `Open[]` (from crop buildings), `OreRevealed` (from research effects, set
+  in `RebuildEffects`); after loading paths call `RefreshCost` on every cell and `CommitCostChanges`.
+- HUD: `EndShown` (or treat a save already in the last age as shown), `LawsOpen` is UI only.
+- Auto-player (only if it should resume): `_grainShare`, `_lastHungryYear`, `_lastFullYear`, `_harvestPerField`,
+  `_grainAtAutumn`, `_pathed`, `_replacing`.
+- RNG: `Settlement._rng` (System.Random) now also drives farmers' spots in fields, disputes, thefts, outbreaks and
+  famine leaving; it is still not serialisable (save a seed + draw count or swap in a small serialisable RNG).
+  `GameMap.DailyRegrowth` still draws from it.
+- The view rebuilds its caches from the sim (`SettlementView` path and ore layers resync when `Map.PathsDirty` /
+  building count change; set `Map.PathsDirty = true` after a load).
