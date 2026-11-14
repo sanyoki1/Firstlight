@@ -197,6 +197,7 @@ namespace Firstlight.Game.UI
         }
 
         public void ShowBanner(string text) { _banner = text; _bannerTime = 0; }
+        public void ClearBanner() => _bannerTime = -1;
 
         void Keys()
         {

@@ -126,6 +126,7 @@ namespace Firstlight.Game
                 _bannerPending = false;
                 yield return Settle(15);
                 yield return Shot("age_up");
+                Hud.ClearBanner();
                 yield return Advance(() => Sim.Population >= 40 || Sim.Year >= 8, 40000, 24);
             }
             Debug.Log($"[UiShots] town: day {Sim.Day} (year {Sim.Year + 1} {Sim.SeasonName}), {Sim.Population} people, {Sim.Buildings.Count(b => b.Alive)} buildings, age {Sim.Age.name}");

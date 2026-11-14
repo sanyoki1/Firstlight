@@ -416,7 +416,10 @@ namespace Firstlight.Game
             return yaw + math.clamp(diff, -maxStep, maxStep);
         }
 
-        /// <summary>An animal taken by the hunters lies where the deer stood; the herd bolts.</summary>
+        /// <summary>
+        /// An animal taken by the hunters lies in front of the hunter at that herd, and the herd bolts. Only the last
+        /// few stay (scavengers take the rest), so fast-forwarding does not leave a heap.
+        /// </summary>
         void DrawKills()
         {
             if (_wild == null) { _killsSeen = S.Kills.Count; return; }
@@ -424,14 +427,26 @@ namespace Firstlight.Game
             {
                 var (h, _) = S.Kills[_killsSeen++];
                 if (h < 0 || h >= _wild.Herds.Length) continue;
-                int n = Wildlife.ActiveCount(M.Herds[h], _wild.Herds[h]);
-                if (n >= _wild.Herds[h].Length) continue;
-                var d = _wild.Herds[h][n];
-                _wild.AddCarcass(d.Pos, d.Yaw, d.Stag, d.Tint);
-                _wild.Alarm(h, d.Pos);
+                float2 at = M.Herds[h].Pos; float yaw = 0; bool found = false;
+                foreach (var (c, pos) in Drawn)
+                    if (c.AtField && c.FieldFeature == h && c.Job != null && c.Job.Def.nearby?.feature == "wildlife")
+                    {
+                        float2 fwd = new(math.sin(c.Facing), math.cos(c.Facing));
+                        at = pos + fwd * 0.9f; yaw = c.Facing + 1.4f; found = true;
+                        break;
+                    }
+                if (!found) continue;                     // nobody there to see it (fast-forward): no carcass
+                var d = _wild.Herds[h][0];
+                var carcass = new Carcass { Pos = at, Yaw = yaw, Stag = false, Tint = d.Tint };
+                _wild.Carcasses.Add(carcass);
+                _ours.Add(carcass);
+                if (_ours.Count > 3) { _wild.Carcasses.Remove(_ours[0]); _ours.RemoveAt(0); }
+                _wild.Alarm(h, at);
             }
             if (S.Kills.Count > 256) { S.Kills.RemoveRange(0, 128); _killsSeen -= 128; }
         }
+
+        readonly List<Carcass> _ours = new();
 
         // ------------------------------------------------------------------ selection, ghost, radii
 

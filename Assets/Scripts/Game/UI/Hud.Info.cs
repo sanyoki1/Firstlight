@@ -207,7 +207,9 @@ namespace Firstlight.Game.UI
         {
             switch (c.Activity)
             {
-                case Activity.Working: return c.AtField ? $"Working out at the {(c.Job?.Def.nearby?.feature ?? "site")}" : "Working";
+                case Activity.Working:
+                    if (!c.AtField) return "Working";
+                    return c.Job?.Def.nearby?.feature switch { "wildlife" => "Out hunting", "rocks" => "Working at the rocks", "trees" => "Working in the woods", _ => "Working out" };
                 case Activity.Building: return "Building";
                 case Activity.Carrying: return "Carrying goods";
                 case Activity.Fetching: return "Fetching materials";

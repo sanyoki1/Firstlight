@@ -198,13 +198,133 @@ Perf probe: `-autotest -crowd 400` adds 400 adults and times a season: 413 citiz
 
 ## Phase 2: 3D view of the settlement and the HUD
 
-Status: in progress (this section is updated at each commit).
+Status: working. The game opens on campfire placement and is playable with mouse and keyboard; the settlement is
+drawn from the sim; the auto-player (F9) can still run it. Screenshots (windowed `-uishots -seed 7`) in
+`docs/art/quarter/`: campfire site, build menu with ghost, a rising site with builders and a citizen panel, a
+building panel, the research tree, the town at the age-up, night, winter.
 
-### What exists so far
-- Settlement drawn from the sim (`Game/View/`): buildings from their data parts, each part with a material; sites
-  marked out, piled with delivered materials, rising inside scaffolding; citizens in poses with what they carry;
-  fires that burn while fuelled; day/night and seasons (tints, snow); selection ring, placement ghost, radius studs.
-- IMGUI HUD (`Game/UI/`): campfire start flow, top bar, build menu, building/citizen panels, research tree, goals,
-  feed of events and warnings, jobs, stocks, help.
-- Field work in the sim (gatherers, woodcutters, stone gatherers, hunters walk out and carry loads back).
-- `-uishots` screenshot mode (see below).
+### What exists
+
+**World view** (`Assets/Scripts/Game/View/`: no GameObject per object, no per-frame garbage once buffers have grown)
+- Buildings: one mesh per building type, built once from the data `parts`. Every part has a `material` (new
+  `PartDef.material`; `color` is now an optional tint over it). Parts whose material is `flame` go into a separate
+  glowing mesh, drawn only while the fire burns (the campfire while it has firewood; work fires while staffed), with
+  a flicker. Extra data prims: `log`, `logs` (a stack), `stonering`. An earth pad under each footprint shows as a
+  levelled platform on slopes; the footprint and door cell turn to trodden dirt in the terrain material map (and go
+  back when the building is removed). One instanced batch per building type, so hundreds of buildings are a few draws.
+- Construction sites: corner stakes and a cord; delivered materials as piles by the footprint (log stack, split wood,
+  stones, hides, tools...); from 30% progress the building rises inside lashed scaffolding (the instance shader clips
+  everything above progress x height; instance colour alpha 1..254 = cut height, 0 = placement ghost); the piles
+  shrink as it rises.
+- Storage piles show their biggest stocks as goods piles on the platform.
+- Citizens: `PersonModel` pose meshes, one GPU batch per pose x sex (new `Sit` pose). Drawn positions follow the sim
+  smoothly (sim steps are 0.25 s); the walk cycle follows distance moved; a load = carry pose plus the goods bundle
+  on the shoulders (errands and field loads); work pose from the new `workPose` data field (`chop` = windup/release
+  loop, `dig`, `bend`, `sit` round the fire, `stalk` with occasional throws, `stand`); builders hammer round the
+  site; idle and homeless people sit round the campfire; children play in small circles and are drawn smaller by
+  age; people resting at home are hidden indoors; leavers walk off the map. Hunters carry spears.
+- Wildlife: settlement people go into `Wildlife.Threats`, so deer notice and flee walking people and stalking
+  hunters; a hunter's kill (`Settlement.Kills`) leaves a carcass in front of that hunter and the herd bolts (the last
+  3 are kept). The free-running animated `Band` is no longer created in the normal game (only the `-shots`,
+  `-watershots`, `-deershots`, `-deerpair` clip modes get one; `-huntshots` builds its own), so nothing hunts twice.
+- Day/night and seasons (`Atmosphere.cs`): sun angle and colour over the day (warm low sun; a dim blue moonlight at
+  night, never black), sky/fog colour, ambient, fires glow brighter at night (`_FL_Glow`); grass/leaf/needle tints
+  by season, blended over the last days of each; snow settles over the first 2.5 days of winter and melts early in
+  spring, drawn in 2x2-texel clumps on upward faces (terrain, roofs, trees, rocks; not people); bushes, tufts and
+  flowers are hidden under snow.
+- Trees and rocks: felled trees, emptied rocks and regrowth show (the batches are re-uploaded when the map changes;
+  that path no longer allocates).
+
+**HUD** (`Assets/Scripts/Game/UI/`, IMGUI laid out on a 1080-high virtual screen and scaled to the resolution; one
+dark neutral style in `UiTheme.cs`)
+
+| File | Contents |
+|---|---|
+| `Hud.cs` | state; the action methods every click goes through (and `-uishots` calls); world input (hover ray over the height field, place / demolish / select, right-click cancel vs camera drag); click-through rectangles; banner; tooltips; campfire prompt; placement tip |
+| `Hud.TopBar.cs` | age, date and time, speed buttons, people (adults/children/elders, beds or homeless), food days, key stocks with daily trend arrows, research progress and knowledge per day, panel buttons |
+| `Hud.BuildMenu.cs` | category bar, demolish, builders -/+; category list (current-age buildings, locked ones greyed with "Needs <research>"), cost, full tooltip |
+| `Hud.Info.cs` | building panel (status, description, workers, priority Low/Normal/High, pause, output focus, output per day and the factors behind it, inputs, residents and warmth, store contents, site progress per material, demolish with confirm); citizen panel (age, job, home, activity, load, health/happiness/warmth bars, needs, tool, clothing, buttons to workplace/home) |
+| `Hud.Research.cs` | research screen (R): a column group per age, each topic one column right of its deepest same-age prerequisite, elbow prerequisite lines, states known / current / queued with order number / available / locked / age-locked, progress bars, key-research marker, unlocks line, tooltip with effects; click queues (prerequisites first), right-click dequeues |
+| `Hud.Panels.cs` | goals (G: key research and milestones with ticks, "Queue the key research", Advance button or the reason), jobs (J), goods in store (T), help (F1, with Quit), warning chips and the event feed (click an event that has a place to go there) |
+
+The age-up shows a banner and moves the camera to the campfire. Selection is a glowing ring; radius previews (work
+reach, warmth, health) are glowing studs on the ground, for the ghost and for the selected building.
+
+**Sim changes** (`Game/Sim/`, still deterministic: the same seed twice gives identical reports)
+- Field work (`fieldWork` data flag on the gatherers' camp, woodcutter, stone gatherer and hunters' camp): a worker
+  walks to a cell next to one of the 6 trees/rocks nearest its workplace door (random among them), or to a spot about
+  3 cells short of the nearest herd, works there into its own load, fells / takes from that exact tree or rock
+  (`ConsumeFeature(b, at)`), and carries the load back when it reaches `carryCapacity` or the shift ends: to its own
+  workplace if that is nearer than a store with room (idle people haul it on, as for every workplace), else to the
+  store.
+- `commuteLead` (balance, 0.06 of a day): people with a job leave home that much before the shift and wait at work.
+- Trees in a one-cell ring round a new building are cleared (crowns hid buildings; the yard is trodden).
+- `SimEvent.HasPlace` / `Place` for events with a location; `Settlement.Kills`; warning grammar ("1 day", "1 worker").
+- Yields retuned for the walking: woodcutter wood/firewood 2.4/2.0 -> 3.0/2.6, stone gatherer 1.6 -> 1.8. Walking out
+  first cost woodcutters ~45% of the workday (measured); raising the yield alone barely helped because output was
+  bound by time at work, hence the commute lead.
+
+### Controls
+WASD/arrows pan (also the screen edge, in a focused window only), Q/E and right-drag turn/tilt, wheel zoom,
+middle-drag pan; left-click select / place (Shift: keep placing); right-click (without dragging) or Esc: stop the
+tool, close a panel, clear the selection; B build menu, X/Delete demolish, Space pause, 1/2/3 speed 1x/2x/4x, R
+research, G goals, J jobs, T goods, F1 help, F8 show a good campfire site, F9 auto-player, F11 hide the HUD, F6 flood
+(debug). World keys are ignored while the research screen is open (it also releases WASD); clicks and the wheel over
+panels never reach the world.
+
+### `-uishots`
+`tools/uishots.sh [outdir] [seed] [extra args]` runs `Build/Firstlight.exe -batchmode -screen-width 1920
+-screen-height 1080 -uishots -seed N -outdir DIR`. It places the campfire through `Hud.ClickWorld`, lets the
+auto-player run (moving the sim on by hand, whole hours per frame), and saves PNGs: campfire site, early camp, build
+menu with ghost and radius, invalid placement, construction site, building panel, citizen panel, research tree with a
+tooltip, goals, age-up banner, town close and wide (~40 people), jobs, goods, help, hunters, night, winter; then a
+frame-time probe (with `-crowd N` extra people, default 400; `-perfsplit` adds people-hidden / no-shadow / paused
+probes).
+
+Found the hard way:
+- In batch mode the player neither renders cameras nor calls OnGUI, so `ScreenCapture` saves black frames. Shots go
+  through a 1920x1080 RenderTexture: in batch mode the camera is rendered explicitly with
+  `RenderPipeline.SubmitRenderRequest` (world only, no HUD); windowed, the camera targets the texture for that frame
+  and OnGUI draws the HUD into it, read back at the end of the frame.
+- So screenshots with the HUD need a windowed player: `Build/Firstlight.exe -popupwindow -screen-width 1920
+  -screen-height 1080 -uishots -seed 7 -outdir DIR` (about 4-5 minutes: a windowed player nobody watches runs at
+  ~1.5 fps, so the mode uses few, large frames on a fixed 10 fps game clock). Batch and windowed runs of a seed take
+  the same path. Seed 2026's -uishots path starves out in year 8 (see known gaps), so the docs shots use seed 7.
+
+### Performance
+Batch mode, rendering into a 1920x1080 target every frame (Ryzen 5700X + RX 7800 XT): town of ~40 people about
+4.2 ms per frame; the same plus 400 people about 6.0 ms; drawing 400 extra people costs ~1.9 ms CPU (pose choice,
+smoothing, packing); no gen-0 collections during the probes. A first probe read 150 ms: that was the GPU throttled
+while nobody is at the PC, so numbers vary between runs.
+
+### Auto-test after phase 2
+`tools/autotest.sh 12 2026 7 1234` PASS (also 99, 5, 42, 3, 100, 777); the same seed twice gives byte-identical
+reports. The Agricultural Age now comes in years 3-5 (was 4-5). Seed 11 (the hard map: year 9 in phase 1) now dies
+out in its second or third winter; it is labour- and wood-starved and the extra walking tips it over.
+
+### Known gaps and simplifications
+- Hunting is the simple version: hunters walk out to a spot short of the herd, stalk and throw in place, and carry
+  meat home; a kill leaves a carcass in front of them. The animated `Band` hunt (stalk, real spear flight, two-man
+  pole carry) is not driven by the Hunters' Camp.
+- No building rotation (the door is always on the -y side; rotation needs the sim's door rule to change).
+- Tree canopies hide people working in thick forest (gatherers, woodcutters); there is no cut-away or outline.
+- Workers at a workplace door stand in a short row; elders sit round their fire; nobody goes inside buildings.
+- The auto-player's Agricultural Age is fragile: small timing differences (as in -uishots) can end in a starving
+  collapse in years 7-9 (seed 2026). Phase 3's farming and granary content should be checked against this.
+- No point lights: night is moonlight plus glowing flames (no pool of light on the ground).
+- The default IMGUI font (14-24 px at 1080p): fine at 1080p, tight at 720p.
+- Save/load and a main menu are phase 4. Esc no longer quits the game (Help > Quit).
+
+### Notes for phase 3 (Agricultural Age content)
+- A new building is data: add it to `buildings.json` with `parts` (each with a `material`), a `category` (an existing
+  one, or a new one: the build bar picks it up), a `workPose`, and `fieldWork: true` if its workers should walk to a
+  nearby feature (`FieldSpot` handles trees, rocks and wildlife; fields would want a "work inside the footprint"
+  variant). Flames: material `flame`. New primitive shapes go in `BuildingMeshes.Prim`.
+- New materials: a painter function plus a `MATERIALS` entry in `tools/textures/make_textures.py`, run with
+  PixelForge's venv; it writes the PNGs and `materials.json`; the import settings are automatic.
+- Buildings whose look changes with state (a field's crop by season, a well's water) can add a per-instance choice in
+  `SettlementView.DrawBuildings`, the way fires add their glow mesh (e.g. one mesh per growth stage).
+- Panels: `Hud.Info.DrawBuilding` dispatches on what a building has (workplace / home / store); add a section the same
+  way for new mechanics (laws, faith, disease), and a new screen as another `Hud.*.cs` partial file.
+- New sim warnings show as chips automatically; events logged with `Log(severity, text, at)` are clickable.
+- Research effect text: `Hud.Research.EffectText` formats the known stat prefixes; add new prefixes there.
