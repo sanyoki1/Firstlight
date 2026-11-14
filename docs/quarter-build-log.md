@@ -150,6 +150,48 @@ Perf probe: `-autotest -crowd 400` adds 400 adults and times a season: 413 citiz
   `workHaulMin`, `demolishRefund`, `focusShare`, `homelessShelter`, `happinessSmoothing`, `happinessWorstWeight`, `buildersUseTools`,
   `fuelResource`/`clothingResource`/`herbsResource` (the only resource ids the code needs), name lists.
 
-### Known gaps
+### Tools
 
-(see the end of this section)
+- `tools/compile-check.py` + `dotnet build _check.csproj -nologo -v q`: compiles all scripts in about 10 s without
+  Unity (catches C# errors before a 45 s player build).
+- `tools/autotest.sh [years] [seeds...]`: copies the data JSON into the built player and runs the auto-test per seed
+  (balance edits can be tried without rebuilding). Reports go to `runs/autotest-<seed>/`.
+- Smoke test of the drawn game: `Build/Firstlight.exe -seed 2026 -autoplay -simspeed 4 -quitafter 60` (auto-player
+  plays from the start; logs a `[Smoke]` line and quits). On this PC, while nobody is at the screen, a windowed player
+  only gets ~1.5 fps (also without the sim); with `-batchmode` (still rendering offscreen) it runs at ~125 fps.
+
+### Known gaps and simplifications
+
+- Nothing settlement-related is drawn yet (phase 2): buildings, sites, people, carried goods. The status lines in the
+  old IMGUI box are the only view. Keys: F8 campfire at the suggested site, F9 auto-player, space/1/2/3 speed.
+- People walk between building doors (the cell below a footprint's middle, `Building.Door`). Workers stand at the
+  door while working; gatherers, woodcutters and hunters do not walk out to the trees/herds they use (the nearest
+  tree / rock / herd animal simply goes). Eating, firewood, clothing and herbs are drawn from stores without walking.
+- The old animated `Band` (People.cs) still runs on its own in the normal game with `AutoHunt` and kills deer through
+  `Wildlife.Kill`, on top of the sim's hunters. Phase 2 should drive its visuals from the Hunters' Camp workers (or
+  turn `AutoHunt` off) so herds are not hunted twice. The `-huntshots` etc. demo modes are untouched.
+- Tools: a worker swaps to a better tier only when the old tool wears out; tools held by people who die or leave are lost.
+- Floods do not damage buildings; buildings can't be placed on wet cells, and people route around deep water via the
+  existing flow-field costs.
+- No disease outbreaks, disasters, crime, laws, water/faith needs (Agricultural Age design, phase 3). Agricultural
+  buildings already in buildings.json (Field, Clay Pit, Copper Mine, Smelter, Coppersmith) work through the generic
+  systems: the auto-player builds Fields after the age-up and they make grain in autumn.
+- Save/load (phase 4): all sim state is plain classes and lists, but the `System.Random` inside `Settlement` (and the
+  map's tree regrowth draws from it) is not serialisable; phase 4 needs to save a seed + draw count or swap in a
+  small serialisable RNG. `Citizen.Task*` fields are internal errand state that would need saving too.
+- The auto-player is a heuristic strategy, not an optimiser. Hard maps (seed 11) take 9 years to age up.
+
+### Notes for phase 2 (view + HUD)
+
+- Coordinates: cell units, x = map x, y = map y (world z). `GameMap.HeightAt(x, y)` gives ground height.
+  `Building.Origin` is the lower-left footprint cell, `Def.sizeX/sizeY` the footprint, `Center` its middle;
+  `Def.parts` are the drafted primitive parts for the model.
+- Draw a site rising with `Building.Progress` (materials 30%, work 70%); `Delivered[i]` per `Def.cost[i]` for piles.
+- Citizens: `Pos`, `Facing` (atan2(dx, dy), same convention as `Band`), `Activity`, `CarryRes`/`CarryAmt` (draw a
+  bundle), `Departing` for leavers walking off. Resting people stand at their home's door: hide them at night or put
+  them inside.
+- The HUD's placement ghost should call `CanPlace(def, origin, out reason)` every frame (cheap) and show the reason.
+  `CountFeature` around the cursor can preview fullness for producers (see `AutoPlayer.FindSite`).
+- `Settlement.Update(Time.deltaTime)` is already called from `GameController.Update`; `SetSpeed` drives it.
+- `Warnings` are refreshed hourly and are the "current problems" list; `Events` is the log (new entries are appended;
+  remember the last count you showed).
