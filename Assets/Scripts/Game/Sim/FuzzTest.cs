@@ -521,7 +521,9 @@ namespace Firstlight.Game
                 ("header only", bytes.Take(headerLen).ToArray(), false),
                 ("cut at 10%", bytes.Take(headerLen + (bytes.Length - headerLen) / 10).ToArray(), false),
                 ("cut at 50%", bytes.Take(headerLen + (bytes.Length - headerLen) / 2).ToArray(), false),
-                ("cut 8 bytes short", bytes.Take(bytes.Length - 8).ToArray(), false),
+                ("cut 40 bytes short", bytes.Take(bytes.Length - 40).ToArray(), false),
+                // Only gzip's trailer (CRC and length) missing: every byte of the save is there, so loading it is right.
+                ("trailer missing", bytes.Take(bytes.Length - 8).ToArray(), true),
             };
             var flipped = (byte[])bytes.Clone(); flipped[headerLen + (bytes.Length - headerLen) / 3] ^= 0x5a; cases.Add(("flipped byte", flipped, false));
             var newer = (byte[])bytes.Clone(); BitConverter.GetBytes(SaveGame.Version + 98).CopyTo(newer, 4); cases.Add(("newer version", newer, false));

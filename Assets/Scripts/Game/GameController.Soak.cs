@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.IO;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -48,6 +49,20 @@ namespace Firstlight.Game
             }
             rt.Release();
             Debug.Log("[Soak] done");
+            Application.Quit();
+        }
+
+        /// <summary>
+        /// -load SAVE -shot NAME [-outdir DIR] [-shotscale S]: a still of the loaded game with the HUD after a few seconds
+        /// (windowed: -popupwindow -screen-width W -screen-height H), e.g. the empty-settlement screen from a dead save.
+        /// </summary>
+        IEnumerator OneShot(string name)
+        {
+            _shotDir = Path.GetFullPath(Arg("-outdir") ?? Path.Combine(Application.dataPath, "..", "..", "runs", "shots"));
+            Directory.CreateDirectory(_shotDir);
+            if (float.TryParse(Arg("-shotscale"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float sc)) UI.UiTheme.UserScale = sc;
+            for (int i = 0; i < 40; i++) yield return null;
+            yield return Shot(name);
             Application.Quit();
         }
 

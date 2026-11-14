@@ -121,6 +121,7 @@ namespace Firstlight.Game
             if (_smoke > 0 || HasArg("-smoketest")) StartCoroutine(SmokeTest());
             if (HasArg("-soak")) StartCoroutine(Soak(ArgInt("-soak", 10)));
             if (HasArg("-reloadtest")) StartCoroutine(ReloadTest());
+            if (Arg("-shot") != null) StartCoroutine(OneShot(Arg("-shot")));
         }
 
         public void ToggleAuto()
