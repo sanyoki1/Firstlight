@@ -449,7 +449,7 @@ namespace Firstlight.Game
             if (sick >= math.max(3, Population / 6)) Warnings.Add($"{sick} people are sick.");
             int unhappy = 0;
             foreach (var c in Citizens) if (c.UnhappyDays > 0) unhappy++;
-            if (unhappy > 0 && unhappy >= Population / 4) Warnings.Add($"{unhappy} people are unhappy and may leave.");
+            if (unhappy > 0 && unhappy >= Population / 4) Warnings.Add(unhappy == 1 ? "1 person is unhappy and may leave." : $"{unhappy} people are unhappy and may leave.");
             // Heading into winter without the food to get through it (and the lean spring after).
             if (Season == 3 || Season == 2 && DayOfSeason >= B.daysPerSeason / 2)
             {
@@ -462,7 +462,7 @@ namespace Firstlight.Game
             {
                 int dry = 0;
                 foreach (var c in Citizens) if (!c.Gone && c.NoWater) dry++;
-                if (dry > 0 && dry >= Population / 5) Warnings.Add($"{dry} people have no clean water nearby.");
+                if (dry > 0 && dry >= Population / 5) Warnings.Add(dry == 1 ? "1 person has no clean water nearby." : $"{dry} people have no clean water nearby.");
             }
 
             // Log a warning when it appears, but not again while it keeps flickering on and off within a few days

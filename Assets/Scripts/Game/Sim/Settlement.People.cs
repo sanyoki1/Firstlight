@@ -155,18 +155,25 @@ namespace Firstlight.Game
                     // At the open store: take the food and carry it on to the granary.
                     var to = c.TaskB2;
                     to.HaulReserved = math.max(0, to.HaulReserved - c.TaskAmt);
-                    float got = c.TaskB.Active ? TakeFrom(c.TaskB, c.TaskIdx, c.TaskAmt) : 0;
+                    // Only what still fits: others may have filled the granary meanwhile. (Taking a full sack anyway
+                    // sent haulers round in circles: granary full, back to the open pile, picked up again for the granary.)
+                    float fit = to.Active ? Free(to) - to.HaulReserved : 0;
+                    float got = c.TaskB.Active && fit >= 0.5f ? TakeFrom(c.TaskB, c.TaskIdx, math.min(c.TaskAmt, fit)) : 0;
                     c.Task = Task.None;
+                    c.TaskAmt = 0;
                     if (got > 0)
                     {
                         c.CarryRes = c.TaskIdx; c.CarryAmt = got;
-                        if (to.Active) { c.Task = Task.DeliverOutput; c.TaskB = to; c.TaskB2 = null; Walk(c, to.Door, Activity.Carrying); }
+                        // The room stays promised on the way there.
+                        if (to.Active) { c.Task = Task.DeliverOutput; c.TaskB = to; c.TaskB2 = null; c.TaskAmt = got; to.HaulReserved += got; Walk(c, to.Door, Activity.Carrying); }
                     }
                     break;
                 }
                 case Task.DeliverOutput:
                 {
                     var s = c.TaskB;
+                    if (s != null && c.TaskAmt > 0) s.HaulReserved = math.max(0, s.HaulReserved - c.TaskAmt);
+                    c.TaskAmt = 0;
                     if (s != null && s.Active && s.Store != null && Accepts(s, c.CarryRes)) c.CarryAmt -= PutInto(s, c.CarryRes, c.CarryAmt);
                     if (!c.Carrying) c.CarryRes = -1;
                     c.Task = Task.None;     // anything left over: Decide finds another store
@@ -261,6 +268,7 @@ namespace Firstlight.Game
                 case Task.DeliverMaterial: if (c.TaskB2 != null && c.TaskIdx < c.TaskB2.InTransit.Length) c.TaskB2.InTransit[c.TaskIdx] -= c.CarryAmt; break;
                 case Task.HaulPickup: if (c.TaskB != null) c.TaskB.HaulReserved = math.max(0, c.TaskB.HaulReserved - c.TaskAmt); break;
                 case Task.MoveStock: if (c.TaskB2 != null) c.TaskB2.HaulReserved = math.max(0, c.TaskB2.HaulReserved - c.TaskAmt); break;
+                case Task.DeliverOutput: if (c.TaskB != null && c.TaskAmt > 0) { c.TaskB.HaulReserved = math.max(0, c.TaskB.HaulReserved - c.TaskAmt); c.TaskAmt = 0; } break;
             }
             if (c.Task == Task.Leave || c.Task == Task.Arrive) return;
             c.AtField = false;
@@ -335,19 +343,76 @@ namespace Firstlight.Game
 
         void GoDeliver(Citizen c)
         {
-            var s = NearestStorageFor(c.Pos, c.CarryRes, 0.5f);
-            if (s == null) { c.Task = Task.Idle; c.TaskAmt = 0; c.Activity = Activity.Idle; return; }   // hold it until there is room
+            // Room others are already carrying goods to doesn't count: a crowd of carriers all heading for the same last
+            // gap used to find it gone on arrival, again and again, for days.
+            var s = NearestStorageFor(c.Pos, c.CarryRes, 0.5f, true);
+            if (s == null && NearestStorageFor(c.Pos, c.CarryRes, 0.5f) != null) { c.Task = Task.Idle; c.TaskAmt = 0; c.Activity = Activity.Idle; return; }   // wait: it is all promised
+            if (s == null)
+            {
+                // No store will take it: put it down on a workplace's pile (it can be fetched from there) rather than
+                // stand holding it, unable to do anything else (builders holding goods could never build the store
+                // that would end the jam). With no workplace to leave it at, it is lost.
+                DropCarried(c);
+                c.Task = Task.Idle; c.TaskAmt = 0; c.Activity = Activity.Idle;
+                return;
+            }
             c.Task = Task.DeliverOutput;
             c.TaskB = s;
+            c.TaskAmt = math.min(c.CarryAmt, Free(s) - s.HaulReserved);     // the room is promised on the way
+            s.HaulReserved += c.TaskAmt;
             Walk(c, s.Door, Activity.Carrying);
+        }
+
+        void DropCarried(Citizen c)
+        {
+            int r = c.CarryRes;
+            Building best = null; float bd = float.MaxValue;
+            foreach (var b in Buildings)
+            {
+                if (!b.Active || b.Store != null || !b.Def.IsWorkplace || Array.IndexOf(b.OutRes, r) < 0 && b != c.Job) continue;
+                float d = math.distancesq(b.DoorPos, c.Pos);
+                if (d < bd) { bd = d; best = b; }
+            }
+            if (best != null) { best.Out[r] += c.CarryAmt; best.OutTotal += c.CarryAmt; }
+            else Consumed[r] += c.CarryAmt;
+            c.CarryAmt = 0; c.CarryRes = -1;
         }
 
         bool HasStorageRoom() => NearestStorageFor(TownCenter.Center, -1, 1f) != null;
 
+        bool[] _room; float _roomStamp = -1f;
+
+        /// <summary>
+        /// Whether some store would take this good (refreshed once per step). Room in a granary is no use for wood: a
+        /// hauler who picked up a good no store takes stood holding it, doing nothing else, until a store had room.
+        /// </summary>
+        bool RoomFor(int r)
+        {
+            if (_room == null || _roomStamp != Time)
+            {
+                _room ??= new bool[ResCount];
+                _roomStamp = Time;
+                for (int k = 0; k < ResCount; k++) _room[k] = false;
+                foreach (var s in Buildings)
+                {
+                    if (!s.Active || s.Store == null || s.Flooded || Free(s) - s.HaulReserved < 1f) continue;
+                    for (int k = 0; k < ResCount; k++) if (!_room[k] && Accepts(s, k)) _room[k] = true;
+                }
+            }
+            return r >= 0 && r < ResCount && _room[r];
+        }
+
+        /// <summary>A workplace has finished goods waiting that some store would take.</summary>
+        bool HasRoomFor(Building b)
+        {
+            for (int r = 0; r < ResCount; r++) if (b.Out[r] >= 0.05f && RoomFor(r)) return true;
+            return false;
+        }
+
         void TakeOutput(Citizen c, Building b)
         {
             int best = -1; float most = 0;
-            for (int r = 0; r < ResCount; r++) if (b.Out[r] > most) { most = b.Out[r]; best = r; }
+            for (int r = 0; r < ResCount; r++) if (b.Out[r] > most && RoomFor(r)) { most = b.Out[r]; best = r; }
             if (best < 0 || most < 0.05f) return;
             float amt = math.min(CarryCap(best), most);
             b.Out[best] -= amt; b.OutTotal -= amt;
@@ -537,7 +602,7 @@ namespace Firstlight.Game
             if (!work)
             {
                 // End of the shift: take finished goods along on the way home, once a day.
-                if (c.ShiftDay != Day && b.OutTotal >= B.workHaulMin && HasStorageRoom()) { c.ShiftDay = Day; TakeOutput(c, b); return; }
+                if (c.ShiftDay != Day && b.OutTotal >= B.workHaulMin && HasRoomFor(b)) { c.ShiftDay = Day; TakeOutput(c, b); return; }
                 Decide(c, work);
                 return;
             }
@@ -546,7 +611,7 @@ namespace Firstlight.Game
             if (field && FieldGone(c)) { Decide(c, work); return; }   // on to another tree / rock / herd
             // Farmers move along the rows now and then.
             if (field && b.Def.crop && (c.TaskAmt += Step) > 6f) { c.TaskAmt = 0; StepIntoField(c, b); }
-            if (!field && b.OutTotal >= B.carryCapacity && HasStorageRoom()) { TakeOutput(c, b); return; }
+            if (!field && b.OutTotal >= B.carryCapacity && HasRoomFor(b)) { TakeOutput(c, b); return; }
             ProductiveSeconds += Step;
             if (b.Def.usesTools && c.Tool < 0) EnsureTool(c, true);   // tools may have come in since the shift began
             float speed = WorkSpeed(c, b.Def.usesTools, b.Def.requiresTools);
@@ -619,6 +684,7 @@ namespace Firstlight.Game
                 else if (c.Task == Task.DeliverMaterial && c.TaskB2 != null) c.TaskB2.InTransit[c.TaskIdx] += c.CarryAmt;
                 else if (c.Task == Task.HaulPickup && c.TaskB != null) c.TaskB.HaulReserved += c.TaskAmt;
                 else if (c.Task == Task.MoveStock && c.TaskB2 != null) c.TaskB2.HaulReserved += c.TaskAmt;
+                else if (c.Task == Task.DeliverOutput && c.TaskB != null && c.TaskAmt > 0) c.TaskB.HaulReserved += c.TaskAmt;
             }
         }
 
@@ -701,6 +767,7 @@ namespace Firstlight.Game
             {
                 if (!b.Active || b.IsStorage) continue;
                 float avail = b.OutTotal - b.HaulReserved;
+                if (avail <= 0 || !HasRoomFor(b)) continue;
                 float min = b.Workers > 0 ? B.carryCapacity : B.workHaulMin;
                 if (avail < min) continue;
                 float score = avail / (1f + math.distance(b.DoorPos, c.Pos) * 0.05f);
@@ -737,6 +804,24 @@ namespace Firstlight.Game
                     if (d < bd) { bd = d; best = b; }
                 }
                 if (best == null) break;
+                c.Home = best;
+                best.Residents++;
+            }
+            // Babies stay with their mothers, so a home can fill past its beds while others stand half empty: adults in
+            // an overfull home move to a free bed elsewhere (crowding breeds sickness and unrest).
+            foreach (var c in Citizens)
+            {
+                var h = c.Home;
+                if (h == null || c.Gone || !IsAdult(c) || h.Residents <= h.Def.housing) continue;
+                Building best = null; float bd = float.MaxValue;
+                foreach (var b in Buildings)
+                {
+                    if (!b.Active || b == h || b.Def.housing <= b.Residents) continue;
+                    float d = math.distancesq(b.Center, h.Center);
+                    if (d < bd) { bd = d; best = b; }
+                }
+                if (best == null) break;
+                h.Residents--;
                 c.Home = best;
                 best.Residents++;
             }
@@ -1025,7 +1110,7 @@ namespace Firstlight.Game
                             Walk(c, TownCenter.Door, Activity.Arriving);
                         }
                         Migrants += n;
-                        Log(Severity.Info, $"{n} migrants arrived.", from);
+                        Log(Severity.Info, n == 1 ? "A migrant arrived." : $"{n} migrants arrived.", from);
                         AssignHomes();
                     }
                 }

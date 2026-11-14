@@ -189,7 +189,17 @@ namespace Firstlight.Game
                 {
                     int n = math.min(workers.Count, 2 + _rng.Next(3));
                     var a = workers[_rng.Next(workers.Count)];
-                    for (int i = 0; i < n; i++) workers[(workers.IndexOf(a) + i * 7) % workers.Count].DisputeDays = 2;
+                    // The quarrel's people: a spread of distinct workers starting from a (a step of 7 can come round to
+                    // the same person when the count divides by it, so step by one past anyone already in it).
+                    int at = workers.IndexOf(a), caught = 0;
+                    for (int i = 0; i < workers.Count && caught < n; i++)
+                    {
+                        var w = workers[(at + i * 7) % workers.Count];
+                        if (w.DisputeDays > 0) w = workers.FirstOrDefault(x => x.DisputeDays == 0);
+                        if (w == null) break;
+                        w.DisputeDays = 2; caught++;
+                    }
+                    n = caught;
                     Disputes++;
                     _jobsDirty = true;
                     Log(Severity.Warning, $"A dispute broke out around {a.Name}'s household: {n} people lost two days of work.", a.Home?.DoorPos ?? a.Pos);

@@ -210,9 +210,10 @@ namespace Firstlight.Game
             Consumed[give] -= took;            // traded away, not used up
             // Short of what was promised (the stores changed while the offer stood): fewer goods in return.
             if (giveAmt > 0 && took < giveAmt) getAmt = math.floor(getAmt * took / giveAmt);
-            Deposit(want, getAmt, TownCenter.Center);
+            float stored = Deposit(want, getAmt, TownCenter.Center);
             Trades++;
-            Log(Severity.Info, $"Traders came by: {took:0} {Data.Resources[give].name.ToLower()} swapped for {getAmt:0} {Data.Resources[want].name.ToLower()}.", TownCenter.Center);
+            Log(Severity.Info, $"Traders came by: {took:0} {Data.Resources[give].name.ToLower()} swapped for {getAmt:0} {Data.Resources[want].name.ToLower()}." +
+                (getAmt - stored >= 1f ? $" {getAmt - stored:0} of it had no room in store and was left behind." : ""), TownCenter.Center);
         }
 
         /// <summary>Daily: an unanswered offer lapses after its second day.</summary>

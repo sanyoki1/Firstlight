@@ -215,7 +215,11 @@ namespace Firstlight.Game
             for (int r = 0; r < ResCount; r++) refund[r] += b.Out[r] + b.In[r];
             if (b.Store != null) for (int r = 0; r < ResCount; r++) refund[r] += b.Store[r];
             b.State = BuildState.Removed;
-            for (int r = 0; r < ResCount; r++) if (refund[r] > 0.01f) Deposit(r, refund[r], b.Center);
+            // What it held is moved out (or lost) below: nothing stays behind in the removed building.
+            if (b.Store != null) { Array.Clear(b.Store, 0, ResCount); b.Stored = 0; }
+            Array.Clear(b.Out, 0, ResCount); Array.Clear(b.In, 0, ResCount); b.OutTotal = 0;
+            float lost = 0;
+            for (int r = 0; r < ResCount; r++) if (refund[r] > 0.01f) lost += refund[r] - Deposit(r, refund[r], b.Center);
             foreach (var c in Citizens)
             {
                 if (c.Home == b) c.Home = null;
@@ -233,7 +237,7 @@ namespace Firstlight.Game
             foreach (var o in Buildings) if (o.Alive && o.Door == b.Door) doorShared = true;
             if (!doorShared) Map.Reserved[b.Door] = false;
             Map.CommitCostChanges();
-            Log(Severity.Info, $"{b.Def.name} removed.", b.Center);
+            Log(lost >= 1f ? Severity.Warning : Severity.Info, lost >= 1f ? $"{b.Def.name} removed. {lost:0} goods were lost: no store had room for them." : $"{b.Def.name} removed.", b.Center);
             if (b.Def.enablesLaws) RebuildEffects();
             _jobsDirty = true;
             RefreshStock();
@@ -414,8 +418,9 @@ namespace Firstlight.Game
             }
         }
 
-        /// <summary>A store's capacity with research (Pottery's jars) applied.</summary>
-        public float Capacity(Building s) => s.Def.storageCapacity * Effect("storage");
+        /// <summary>A store's capacity with research (Pottery's jars) applied. The campfire's store grows with a gentle
+        /// start's extra goods, so they fit (they used to start it overfull).</summary>
+        public float Capacity(Building s) => s.Def.storageCapacity * Effect("storage") * (s.Def.townCenter ? math.max(1f, Diff.startGoods) : 1f);
 
         float Free(Building s) => Capacity(s) - s.Stored;
 
@@ -469,13 +474,13 @@ namespace Firstlight.Game
         /// The store to take a good to: the nearest with room that accepts it; goods that spoil prefer stores that keep
         /// them (a granary up to about twice as far away wins over an open pile). r = -1: any good.
         /// </summary>
-        Building NearestStorageFor(float2 from, int r, float min)
+        Building NearestStorageFor(float2 from, int r, float min, bool unreserved = false)
         {
             Building best = null; float bd = float.MaxValue;
             bool spoils = r >= 0 && Data.Resources[r].spoilPerDay > 0;
             foreach (var s in Buildings)
             {
-                if (!s.Active || s.Store == null || s.Flooded || Free(s) < min || !Accepts(s, r)) continue;
+                if (!s.Active || s.Store == null || s.Flooded || Free(s) - (unreserved ? s.HaulReserved : 0) < min || !Accepts(s, r)) continue;
                 float d = math.distance(s.DoorPos, from) + 4f;
                 if (spoils) d *= 0.4f + s.Def.spoilMultiplier;
                 if (d < bd) { bd = d; best = s; }
