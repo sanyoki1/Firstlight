@@ -91,7 +91,9 @@ namespace Firstlight.Game
             long t = Stamp();
             QueueResearch();
             // Out of food (outside winter, when there is little to gather anyway): hands go to food before building.
-            bool starving = S.FoodDays < 1.5f && S.Season != 3 && !Careless;
+            // (Unless what is being built is food itself: a field left unbuilt all spring means no harvest, and the famine
+            // goes on into winter. Seed 3 starved out that way.)
+            bool starving = S.FoodDays < 1.5f && S.Season != 3 && !Careless && !S.Sites.Any(b => b.BuildDef?.category == "Food");
             S.SetBuilders(starving ? 1 : math.clamp(S.Adults / 4, 2, 6 + S.Adults / 20));
             t = Prof("research", t);
             if (!Careless)
