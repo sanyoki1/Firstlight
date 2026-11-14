@@ -1160,7 +1160,7 @@ namespace Firstlight.Game
             c.CarryAmt = 0; c.CarryRes = -1;
             c.Gone = true;
             Leavers++;
-            var walker = new Citizen { Id = c.Id, Name = c.Name, Female = c.Female, Age = c.Age, Pos = c.Pos, Facing = c.Facing, Task = Task.Leave };
+            var walker = new Citizen { Id = c.Id, Name = c.Name, Female = c.Female, Age = c.Age, Pos = c.Pos, PrevPos = c.Pos, Facing = c.Facing, Task = Task.Leave };
             Walk(walker, edge, Activity.Leaving);
             Departing.Add(walker);
             _jobsDirty = true;

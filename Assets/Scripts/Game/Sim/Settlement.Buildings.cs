@@ -598,13 +598,9 @@ namespace Firstlight.Game
                     if (need <= 0) break;
                 }
             }
-            // A focused workplace makes only one of its outputs, at a share of the combined amount.
-            float total = 0;
-            if (b.Focus >= 0) foreach (var o in d.outputs) total += o.amount;
             for (int i = 0; i < d.outputs.Length; i++)
             {
-                float per = d.exclusiveOutputs ? (i == math.max(0, b.Focus) ? d.outputs[i].amount : 0f)
-                          : b.Focus < 0 ? d.outputs[i].amount : i == b.Focus ? total * B.focusShare : 0f;
+                float per = OutputPerWorkday(b, i);
                 float amt = per * work * scale;
                 if (amt <= 0) continue;
                 if (field)
@@ -685,6 +681,20 @@ namespace Firstlight.Game
                     if (StockTotals[r] > 0.05f) { amount = math.min(B.carryCapacity, want - have); return r; }
             }
             return -1;
+        }
+
+        /// <summary>Base amount of output i one worker makes in a workday, before season, tools, mood etc. A focused
+        /// workplace makes only its chosen output: its own amount plus the time saved on the others, at focusShare
+        /// (so focusing never makes less of the chosen good than the usual mix, even when it is the main one).</summary>
+        public float OutputPerWorkday(Building b, int i)
+        {
+            var d = b.Def;
+            if (d.exclusiveOutputs) return i == math.max(0, b.Focus) ? d.outputs[i].amount : 0f;
+            if (b.Focus < 0) return d.outputs[i].amount;
+            if (i != b.Focus) return 0f;
+            float others = 0;
+            for (int j = 0; j < d.outputs.Length; j++) if (j != i) others += d.outputs[j].amount;
+            return d.outputs[i].amount + others * B.focusShare;
         }
     }
 }

@@ -119,9 +119,10 @@ namespace Firstlight.Game
         public int Children => Population - Adults;
         public float DailyFoodNeed { get { float f = 0; foreach (var c in Citizens) if (!c.Gone) f += c.Age >= B.adultAge ? B.foodPerAdult : B.foodPerChild; return f; } }
         public float FoodDays => DailyFoodNeed <= 0 ? 99f : FoodStock / DailyFoodNeed;
-        public float AverageHappiness { get { if (Citizens.Count == 0) return 0; float h = 0; foreach (var c in Citizens) h += c.Happiness; return h / Citizens.Count; } }
+        public float AverageHappiness { get { float h = 0; int n = 0; foreach (var c in Citizens) if (!c.Gone) { h += c.Happiness; n++; } return n == 0 ? 0 : h / n; } }
         public int HousingCapacity { get { int n = 0; foreach (var b in Buildings) if (b.Active) n += b.Def.housing; return n; } }
-        public int Homeless { get { int n = 0; foreach (var c in Citizens) if (c.Home == null) n++; return n; } }
+        // The dead and the leavers stay in Citizens (Gone, with no home) until the end of the step; they aren't homeless.
+        public int Homeless { get { int n = 0; foreach (var c in Citizens) if (!c.Gone && c.Home == null) n++; return n; } }
         public int StorageCapacity { get { float n = 0; foreach (var b in Buildings) if (b.Active && b.IsStorage) n += Capacity(b); return (int)n; } }
         public float StorageUsed { get { float n = 0; foreach (var b in Buildings) if (b.Active && b.IsStorage) n += b.Stored; return n; } }
         public int CountBuildings(string id, bool includeSites = false)
@@ -149,8 +150,22 @@ namespace Firstlight.Game
             while (_acc >= Step)
             {
                 _acc -= Step;
+                foreach (var c in Citizens) c.PrevPos = c.Pos;
+                foreach (var c in Departing) c.PrevPos = c.Pos;
                 StepOnce();
             }
+        }
+
+        /// <summary>How far the clock is into the next fixed step (0..1). The view draws walkers between PrevPos and
+        /// Pos by this, so they glide instead of hopping 4 times a game second (what made walking choppy at 1x).</summary>
+        public float StepAlpha => math.saturate(_acc / Step);
+
+        /// <summary>Where to draw a citizen this frame: between its last two step positions. A new person (no last
+        /// position yet) or one that jumped further than a step's walk is drawn where it is.</summary>
+        public float2 DrawPos(Citizen c)
+        {
+            if (math.distancesq(c.PrevPos, c.Pos) > 2.25f) return c.Pos;
+            return math.lerp(c.PrevPos, c.Pos, StepAlpha);
         }
 
         /// <summary>Perf probe only: when set, time spent per part of the step is added up (ms).</summary>
@@ -445,10 +460,10 @@ namespace Firstlight.Game
             foreach (var c in Citizens) if (c.Job != null && c.Job.Def.usesTools && c.Tool < 0) noTools++;
             if (noTools > 0) Warnings.Add(noTools == 1 ? "1 worker has no tools." : $"{noTools} workers have no tools.");
             int sick = 0;
-            foreach (var c in Citizens) if (c.Sick) sick++;
+            foreach (var c in Citizens) if (!c.Gone && c.Sick) sick++;
             if (sick >= math.max(3, Population / 6)) Warnings.Add($"{sick} people are sick.");
             int unhappy = 0;
-            foreach (var c in Citizens) if (c.UnhappyDays > 0) unhappy++;
+            foreach (var c in Citizens) if (!c.Gone && c.UnhappyDays > 0) unhappy++;
             if (unhappy > 0 && unhappy >= Population / 4) Warnings.Add(unhappy == 1 ? "1 person is unhappy and may leave." : $"{unhappy} people are unhappy and may leave.");
             // Heading into winter without the food to get through it (and the lean spring after).
             if (Season == 3 || Season == 2 && DayOfSeason >= B.daysPerSeason / 2)

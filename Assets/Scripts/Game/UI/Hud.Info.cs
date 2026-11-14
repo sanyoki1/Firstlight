@@ -148,7 +148,7 @@ namespace Firstlight.Game.UI
                     string n = i < 0 ? "Both" : ResName(d.outputs[i].id);
                     var fr = new Rect(x, _ly, 100, 28);
                     if (GUI.Button(fr, n, b.Focus == i ? ButtonOn : Button)) S.SetFocus(b, i);
-                    Tip(fr, i < 0 ? "Make the usual mix." : $"Make only {n.ToLower()}, at {D.Balance.focusShare:P0} of the combined amount.");
+                    Tip(fr, i < 0 ? "Make the usual mix." : $"Make only {n.ToLower()}: the time spent on the rest goes into it, at {D.Balance.focusShare:P0}.");
                     x += 104;
                 }
                 _ly += 34;
@@ -174,12 +174,11 @@ namespace Firstlight.Game.UI
             }
             if (d.outputs.Length > 0 && !d.crop)
             {
-                float total = d.outputs.Sum(o => o.amount);
                 float common = season * near * research * toolF * moodF * workers;
                 var outs = new List<string>();
                 for (int i = 0; i < d.outputs.Length; i++)
                 {
-                    float per = b.Focus < 0 ? d.outputs[i].amount : i == b.Focus ? total * D.Balance.focusShare : 0;
+                    float per = S.OutputPerWorkday(b, i);
                     if (per > 0) outs.Add($"{per * common:0.#} {ResName(d.outputs[i].id).ToLower()}");
                 }
                 Row("Makes  <b>about " + string.Join(", ", outs) + "</b> a day", Label);

@@ -401,7 +401,7 @@ namespace Firstlight.Game
             var job = c.Job;
             bool resting = c.Activity is Activity.Resting or Activity.Sick && !c.Walking;
             if (resting && c.Home != null) return;                         // indoors
-            float2 target = c.Pos;
+            float2 target = S.DrawPos(c);
             float faceTo = c.Facing;
             bool faceSet = false;
             int pose = (int)PersonModel.Pose.Stand;

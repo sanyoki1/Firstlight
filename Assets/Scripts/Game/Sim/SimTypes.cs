@@ -157,6 +157,7 @@ namespace Firstlight.Game
         public Building Home, Job;
         public bool IsBuilder;
         public float2 Pos;
+        public float2 PrevPos;               // Pos at the start of the last step (view only, not saved)
         public float Facing;
         public Activity Activity;
         public float Health = 1f, Happiness = 0.7f, Warmth = 1f;
