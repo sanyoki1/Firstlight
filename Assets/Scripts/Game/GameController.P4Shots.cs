@@ -106,7 +106,7 @@ namespace Firstlight.Game
             Auto = null;
             Hud.GuideHidden = true;
             Hud.EndShown = true; Hud.EndOpen = false;     // the save is past the Bronze age-up (no end screen here)
-            Hud.ShowHint(null); Hud.ClearBanner();
+            Hud.ShowHint(null); Hud.ClearBanner(); Hud.Toast(null);
             yield return Advance(() => Sim.DayFraction > 0.42f && Sim.DayFraction < 0.5f, 400, 1);
             var mid = TownMiddle();
             LookAt(World(mid), 34f, 50f, 25f);

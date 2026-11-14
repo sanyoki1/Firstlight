@@ -540,7 +540,7 @@ State added in phase 3 that must be saved (everything else is derived and refres
 
 ## Phase 4: save/load, menus, onboarding, polish, performance
 
-Status: in progress (this section is updated at each commit). How to play: `docs/how-to-play.md`.
+Status: working. A stranger can launch it from the title menu, save and load, and is walked through the first steps. How to play: `docs/how-to-play.md`.
 
 ### What exists
 - **Save / load** (`Game/Save/SaveIO.cs`, `SaveGame.cs`, `Sim/Settlement.Save.cs`, `GameMap.Write/Read`,
@@ -561,3 +561,124 @@ Status: in progress (this section is updated at each commit). How to play: `docs
 - **Save/load check**: `-autotest -saveloadcheck -seed N -years Y -outdir D` runs A (saves at day Y*32/2+3) and B
   (loads that save) and compares `autotest-report.md/json` line by line. `-savemid FILE [-saveday D]` on a normal
   auto-test also writes a save (used for the screenshot run).
+- **Flow** (`GameController.Flow.cs`): starting a game or loading one reloads the scene with the request in a static
+  (`Launch`: Menu / New / Load), so every view is built fresh exactly as at a normal start. No arguments: the title
+  menu over seed 7's land turning slowly (late-afternoon light). Command-line modes (`-autotest`, `-uishots`,
+  `-p4shots`, `-seed`, `-autoplay`, `-load FILE`, the clip modes, `-benchmark`) skip the menu and the window settings.
+  `-difficulty 0|1|2` with `-seed`.
+- **Menus** (`UI/Hud.Menus.cs`, IMGUI like the HUD): title (Continue = newest save, New game, Load, Settings, Quit),
+  new game (seed field + Random, Gentle/Standard/Harsh with their numbers shown), load/save screens (name, kind,
+  age, year, season, population, difficulty, real date; delete with confirm; overwrite confirm), settings, in-game
+  menu on Esc when nothing else is open (Resume, Save, Load, Settings, Main menu, Quit to desktop; leaving with unsaved
+  play asks first). The settlement is paused while it is open. Toasts for saves.
+- **Settings** (`UI/GameSettings.cs`, `persistentDataPath/settings.json`): fullscreen/windowed, resolution (desktop,
+  1280x720 ... 3840x2160), vsync, frame cap (none/30/60/120/144), interface size (70-160%, on top of the 1080-high
+  layout; the layout scale never drops below 0.75, so 1280x720 is laid out 1707 wide), edge scrolling, camera
+  speed, autosave, first-game guide, hints, volumes.
+- **Difficulty** (`balance.json` `difficulties`, `Settlement.SetDifficulty` before the campfire, saved): Gentle x1.5
+  starting goods, winter +0.08 warmth, x0.85 firewood, x1.15 yields; Standard = the old balance; Harsh x0.7 goods,
+  winter -0.05, x1.15 firewood, x0.9 yields. Yields apply to workplaces and fields.
+- **Onboarding** (`UI/Hud.Guide.cs`): a "First steps" card (bottom left, never blocks input, can be hidden) with nine
+  steps that tick themselves off by watching the settlement: campfire, lean-to, gatherers' camp, woodcutter, storage
+  pile, Elders' Fire + Basic Tools queued, winter stocks (firewood to spring and 10 days of food, shown as
+  progress), toolmaker, open the goals. Each has one sentence of why and, where it asks for a building, a "Place"
+  button. One-time hints (first winter, first death, water/pottery/faith needs, first outbreak, laws, ore revealed,
+  river rising, first traders), with "Show me" where there is a place and "No more hints". Guide step, hints seen
+  and the end-screen flag are saved; a save without them (an auto-test save) starts with past hints seen.
+- **Top bar** (`UI/Hud.TopBar.cs`) is two rows: age/calendar, speed, people, food, research, panel buttons; then the
+  key goods (wood, firewood, stone, tools of every tier, hides, clothing, herbs, and grain/clay/pottery/copper/bronze
+  once made) with trends, then happiness, the needs that apply and unrest, right-aligned; goods drop from the right
+  when narrow. Every figure has a tooltip saying what it is and what moves it. Panels and the feed start below it.
+- **Event feed**: a warning standing as a chip is not repeated in the feed; repeats of a line collapse to "x3";
+  long lines wrap to two lines.
+- **Floods** (`Sim/Settlement.Flood.cs`, balance `flood*`): on the first day of each spring from year 2, 40% chance
+  of a flood 2-4 days later, rise 0.3-0.55; warned the day before (event + hint), lasts 2 days. Flooded cells = dry
+  cells joined to the river through ground lower than the raised water (`ComputeFloodCells`). A building with half
+  its footprint flooded: no work, no storing, its home unheated; stored and waiting goods lose 15% (40% of goods that
+  spoil). Flooded fields get x1.25 harvest that year. In the game the water simulation's surge follows
+  `Settlement.FloodLevel` and is led over exactly the sim's flooded cells (`GameController.FillFlood`), so what looks
+  under water is what stopped. Placement says when a site is on the floodplain; the auto-player keeps everything but
+  fields off it. Saved: due day, strength, end day, per-building flag and silt bonus.
+- **Traders** now make an offer (`Settlement.PendingTrade`): a popup with Accept / Decline and "Always accept"
+  (`Settlement.AutoTrade`, which the auto-player sets). It lapses after its second day.
+- **Building rotation**: `,` and `.` while placing; `Building.Rot`, `Settlement.Size/DoorCell/FootprintCenter(def,
+  origin, rot)`; the door turns with the model (front -y, then -x, +y, +x). Saved.
+- **Paths** cost half a stone per tile (`dirt_path` cost, checked and taken by `PlacePath`). The drag handler is
+  `Hud.PathDrag(pressed, released)`, which the mouse and `-p4shots` both drive.
+- **View**: fires light a warm pool round them at night (`_FL_Fires`: the 16 lit fires nearest the focus, per-texel
+  in 8 steps, in `FlatShade`, so ground, buildings and people all take it). Tree foliage near the camera focus (or
+  the selected person) is cut away when zoomed in (`_FL_Cut`: leaves/needles layers dropped inside a radius that
+  grows as the camera comes in, a 1.6-unit dithered edge; shadows kept). People drawn 12% larger. A faint ring and a
+  name tag (name and job) on the person under the pointer. Flooded buildings tinted.
+- **Sound** (`View/SoundScape.cs`): made in code at start: wind (brown noise, swelling; louder zoomed out and in
+  winter), river (band-limited noise) by distance to deep water, fire crackle near a lit fire, a soft click on any
+  panel press, a low fifth for an age-up. Volumes from the settings; off in batch mode.
+
+### Performance
+The slowdown was the auto-player, not the sim: per-subsystem timing (`AutoPlayer.Profile`, logged per year by the
+auto-test) showed `Relocate` taking 82 s of seed 2026's 148 s, growing every year. Late in the game, with the woods
+round town cut back, every worn-out producer ran a 97x97 site search (`FindSite` with the 18-cell extension) every
+game hour and found nothing. A failed search is now not repeated for 3 days (`_relocateFailed`, saved).
+After the fix (`tools/autotest.sh 30 2026 7 1234 99 5 11 42 3 100 777`, run alone, Ryzen 5700X), the whole 30-year run
+with the auto-player thinking hourly: seed 2026 70.7 s at 0.46 ms per step (was 229 s at 1.49 ms); the sim alone on the
+final ~160-person towns is 0.31-0.48 ms per step. The auto-test log now has a per-year line with the time split
+between the sim's parts and the auto-player's.
+
+### Auto-test (phase 4 build, 30 years, all PASS, no errors or exceptions)
+
+| Seed | Agricultural Age | Bronze Age | Final pop (min, max) | Deaths | Run | ms/step | Result |
+|---|---|---|---|---|---|---|---|
+| 2026 | year 5, Spring | year 12, Autumn | 155 (12, 156) | old age 156, sickness 1 | 70.7 s | 0.460 | PASS |
+| 7 | year 4, Winter | year 11, Summer | 155 (12, 156) | cold 1, old age 145 | 75.8 s | 0.493 | PASS |
+| 1234 | year 4, Spring | year 11, Summer | 164 (11, 164) | cold 5, old age 156, sickness 5 | 73.1 s | 0.476 | PASS |
+| 99 | year 6, Winter | year 13, Summer | 162 (12, 162) | old age 141, sickness 1 | 73.1 s | 0.476 | PASS |
+| 5 | year 4, Spring | year 10, Winter | 164 (12, 164) | cold 1, old age 176, sickness 1 | 83.4 s | 0.543 | PASS |
+| 11 | year 4, Spring | year 11, Summer | 159 (12, 160) | cold 2, old age 157, sickness 4 | 73.5 s | 0.478 | PASS |
+| 42 | year 5, Summer | year 11, Winter | 156 (12, 156) | old age 147, sickness 1 | 70.1 s | 0.456 | PASS |
+| 3 | year 3, Winter | year 10, Winter | 160 (12, 160) | old age 167 | 82.2 s | 0.535 | PASS |
+| 100 | year 4, Summer | year 11, Winter | 164 (12, 164) | cold 1, old age 145, sickness 2 | 68.1 s | 0.443 | PASS |
+| 777 | year 4, Autumn | year 11, Winter | 156 (12, 156) | old age 161, sickness 1 | 75.0 s | 0.488 | PASS |
+
+Same seed twice: byte-identical md and json (seed 2026 checked). Save/load check (`-saveloadcheck`, save at day 483):
+seeds 2026, 7 and 11 IDENTICAL, both runs PASS; seed 42 saved at day 301 (mid-day of a season, not a boundary) also
+IDENTICAL. The hard maps (11, 42) are no longer slow: the floodplain/river rules and the wood focus got them going
+early. Bronze now comes in years 10-13 (was 11-20; the brief's 12-25 is still not met on most seeds).
+
+Changing the random numbers (SplitMix64) changed every run's details, and the auto-player turned out to be fragile on
+two hard maps; along the way these strategy fixes came in (the game's rules did not change for them):
+- a woodcutter goes all-wood while sites wait for wood and the firewood pile covers the cold (seed 11 starved of wood);
+- the first age-up (into farming) waits in summer and autumn unless there are 6 days of food, for at most a year;
+- builders drop to one while out of food outside winter;
+- no sites across the river from the campfire (`CrossesRiver`: a gatherers' camp across the river kept builders
+  walking all year, and the band froze), none but fields on the floodplain.
+
+### Tests and screenshots
+- `-p4shots -load SAVE -outdir DIR`, windowed (`-popupwindow -screen-width 1920 -screen-height 1080`, ~6 minutes): the
+  title menu, new game, settings; a new game (campfire placement with the guide, the guide at the lean-to step, a
+  lean-to ghost turned a quarter, the guide at the Elders' Fire and winter steps, the winter hint); then the given save
+  (seed 7, day 452, made with `-autotest -seed 7 -years 15 -savemid FILE -saveday 452`): the top bar, a path dragged
+  through the real drag handler (9 tiles laid, 4.5 stone taken), a trader offer, the game menu, save and load screens,
+  night firelight, canopy cut-away and the same view without it, a flood warning with its hint and the flooded
+  buildings with a flooded building's panel, and the top bar at 1280x720. In `docs/art/quarter/p4-*.png`.
+- `-smoketest` (title menu, New game through the menu's action, campfire by a click at the suggested site, a minute
+  at 4x, Save from the game menu into "Smoke test", quit) then `-smoketest -smokecontinue` (title menu, Continue, the
+  state fingerprint of the loaded game compared with the one taken when saving): MATCH; no exceptions in either log.
+  It also autosaved at the next season start.
+
+### Controls added
+`,` / `.` turn the building being placed; Esc with nothing open = game menu; F5 quicksave, F8 quickload (the
+"show a good campfire site" key moved to Tab); hover a person for a name tag.
+
+### Known gaps and simplifications
+- Deer, carcasses and the hunting band are not saved (herd sizes are); after a load the deer start round their herds.
+- In the game the water simulation (and so where people can wade) runs on frame time, not sim time, as before; only
+  the head-less auto-test is bit-for-bit through a save. The in-game state fingerprint matches across save and load.
+- Hints and the guide are per game (saved with it); finishing or hiding the guide once turns it off for new games.
+- The canopy cut-away shows tree trunks as dark posts round the focus; there is no outline for people behind
+  buildings. Firelight is a flat warm pool in steps (no shadows from it).
+- Sound could not be listened to here (nobody at the PC): the clips are generated quietly and mixed by distance, but
+  their character is unverified by ear. Volume sliders are in Settings.
+- The title backdrop always shows seed 7. The settings screen applies resolution changes at once (no confirm/revert).
+- Not done from the rough-edges list: deposits still never run out, the auto-player still stops at ~150 people, and
+  the Hunters' Camp still does not use the animated two-man hunt (`Band`).
+- Bronze comes in years 10-13 on all seeds (earlier than the 12-25 asked for).

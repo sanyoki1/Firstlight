@@ -187,7 +187,7 @@ namespace Firstlight.Game.UI
             int n = 0;
             foreach (var need in D.Balance.needs) if (S.NeedMet(need.id) >= 0) n++;
             if (S.Age.order >= 1) n++;
-            return (n + 1) * 112;                  // + happiness, always shown
+            return (n + 1) * 120;                  // + happiness, always shown
         }
     }
 }

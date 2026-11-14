@@ -291,30 +291,30 @@ namespace Firstlight.Game.UI
         {
             {
                 float hp = S.AverageHappiness;
-                var r = new Rect(x, y, 108, 26);
-                GUI.Label(new Rect(x, y + 3, 60, 20), "Happy", Small);
-                GUI.Label(new Rect(x + 60, y + 2, 48, 22), Col($"<b>{hp:P0}</b>", hp >= 0.6f ? Good : hp >= D.Balance.leaveHappiness + 0.05f ? Warn : Bad), Label);
+                var r = new Rect(x, y, 116, 26);
+                GUI.Label(new Rect(x, y + 3, 56, 20), "Happy", Small);
+                GUI.Label(new Rect(x + 56, y + 2, 56, 22), Col($"<b>{hp:P0}</b>", hp >= 0.6f ? Good : hp >= D.Balance.leaveHappiness + 0.05f ? Warn : Bad), Label);
                 Tip(r, $"Average happiness {hp:P0}: a blend of the average and the worst of each person's needs (food, warmth, shelter, health, and later water, pottery and faith). Happy people work faster; below {D.Balance.leaveHappiness:P0} for {D.Balance.leaveAfterDays:0} days they leave.");
-                x += 112;
+                x += 120;
             }
             foreach (var n in D.Balance.needs)
             {
                 float met = S.NeedMet(n.id);
                 if (met < 0) continue;
-                if (x + 108 > right) return;
-                var r = new Rect(x, y, 108, 26);
-                GUI.Label(new Rect(x, y + 3, 60, 20), n.id == "water" ? "Water" : n.name, Small);
-                GUI.Label(new Rect(x + 60, y + 2, 48, 22), Col($"<b>{met:P0}</b>", met >= 0.9f ? Good : met >= 0.6f ? Warn : Bad), Label);
+                if (x + 116 > right) return;
+                var r = new Rect(x, y, 116, 26);
+                GUI.Label(new Rect(x, y + 3, 56, 20), n.id == "water" ? "Water" : n.name, Small);
+                GUI.Label(new Rect(x + 56, y + 2, 56, 22), Col($"<b>{met:P0}</b>", met >= 0.9f ? Good : met >= 0.6f ? Warn : Bad), Label);
                 Tip(r, $"{n.name}: {met:P0} of people have it. Unmet, it holds their happiness down to about {n.unmet:P0}." +
                        (n.id == "water" ? " Homes near the river or within a well's reach have clean water; without it people also fall sick more." : n.id == "goods" ? " Each household keeps pots in use and they wear out; a clay pit and potters keep them coming." : n.id == "faith" ? " Homes within reach of a staffed Shaman's Hut have it; without it unrest grows." : ""));
-                x += 112;
+                x += 120;
             }
-            if (S.Age.order >= 1 && x + 108 <= right)
+            if (S.Age.order >= 1 && x + 116 <= right)
             {
-                var r = new Rect(x, y, 108, 26);
+                var r = new Rect(x, y, 116, 26);
                 float u = S.Unrest;
-                GUI.Label(new Rect(x, y + 3, 60, 20), "Unrest", Small);
-                GUI.Label(new Rect(x + 60, y + 2, 48, 22), Col($"<b>{u:P0}</b>", u >= D.Balance.disputeAt ? Bad : u >= D.Balance.unrestWarn ? Warn : Good), Label);
+                GUI.Label(new Rect(x, y + 3, 56, 20), "Unrest", Small);
+                GUI.Label(new Rect(x + 56, y + 2, 56, 22), Col($"<b>{u:P0}</b>", u >= D.Balance.disputeAt ? Bad : u >= D.Balance.unrestWarn ? Warn : Good), Label);
                 Tip(r, $"Unrest {u:P0} (heading for {S.UnrestTarget:P0}). It grows with unhappiness, crowding, people without faith and sheer numbers. Above {D.Balance.disputeAt:P0} disputes cost work days; above {D.Balance.theftAt:P0} goods go missing. A staffed council and laws calm it.");
             }
         }

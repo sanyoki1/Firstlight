@@ -200,6 +200,7 @@ namespace Firstlight.Game
             {
                 var sw2 = System.Diagnostics.Stopwatch.StartNew();
                 s.Profile = true;
+                s.ProfCitizens = s.ProfHourly = s.ProfDaily = s.ProfJobs = 0;
                 int built0 = map.Flow.FieldsBuilt;
                 s.Tick(data.Balance.dayLengthSeconds * 2f);
                 float steps = 2f * data.Balance.dayLengthSeconds / Settlement.Step;
