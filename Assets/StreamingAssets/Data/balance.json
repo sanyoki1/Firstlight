@@ -9,6 +9,7 @@
   "ageYearsPerGameYear": 4,
   "workdayStart": 0.22,
   "workdayEnd": 0.8,
+  "commuteLead": 0.06,
   "walkSpeed": 2.2,
   "carryCapacity": 5,
   "builderWorkPerDay": 1.5,

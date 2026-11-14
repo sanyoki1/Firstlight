@@ -38,7 +38,8 @@ namespace Firstlight.Game
         public float[] pos;
         public float[] size;
         public float yaw;
-        public string color;
+        public string color;       // optional tint over the material (sRGB hex); white if empty
+        public string material;    // material layer (MaterialLibrary), e.g. "wood", "branches", "hide"
     }
 
     [Serializable]
@@ -65,6 +66,7 @@ namespace Firstlight.Game
         public float knowledgePerWorker;
         public bool usesTools;       // workers wear tools down; without one they work at Balance.noToolWorkSpeed
         public bool requiresTools;   // no work at all without a tool (implies usesTools)
+        public bool fieldWork;       // workers walk out to the nearby trees / rocks / herd and carry their load back
         public PartDef[] parts = Array.Empty<PartDef>();
 
         public bool HasNearby => nearby != null && !string.IsNullOrEmpty(nearby.feature);
@@ -110,6 +112,7 @@ namespace Firstlight.Game
         public float[] seasonTemperature = { 0.55f, 0.9f, 0.4f, 0.05f };
         public float ageYearsPerGameYear = 4;
         public float workdayStart = 0.22f, workdayEnd = 0.8f;
+        public float commuteLead = 0.1f;               // share of a day before the shift that workers leave home
         public float walkSpeed = 2f;
         public int carryCapacity = 5;
         public float builderWorkPerDay = 1f;

@@ -15,6 +15,7 @@ namespace Firstlight.Game
     {
         None, GoHome, Rest, GoWork, Work, DeliverOutput, FetchInput, DeliverInput,
         FetchMaterial, DeliverMaterial, GoBuild, Build, HaulPickup, Idle, Leave, Arrive,
+        GoField, FieldReturn,      // field workers: walk out to a tree / rock / herd, and carry the load back
     }
 
     /// <summary>An entry in the settlement's event log.</summary>
@@ -126,6 +127,14 @@ namespace Firstlight.Game
         public float ClothingLife;           // days of wear left on clothing (0 = none)
         public int CarryRes = -1;
         public float CarryAmt;
+        /// <summary>Field workers (fieldWork jobs) gather into their own load out at the tree / rock / herd and carry it
+        /// back to storage when it is full or the shift ends. LoadRes = the main good in it (for the view).</summary>
+        public float LoadTotal;
+        public int LoadRes = -1;
+        internal float[] Load;
+        /// <summary>Where a field worker is working: the tree or rock cell, or the herd index for hunters (-1 = none).</summary>
+        public int FieldFeature = -1;
+        public bool AtField;                 // working out at the feature (not at the building's door)
         public int UnhappyDays;
         public float BirthCooldown;
         public bool Gone;                    // dead or left; removed at the end of the step

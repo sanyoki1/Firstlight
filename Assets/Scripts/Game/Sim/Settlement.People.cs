@@ -121,6 +121,26 @@ namespace Firstlight.Game
                 case Task.GoWork:
                     c.Task = Task.Work;
                     break;
+                case Task.GoField:
+                    c.Task = Task.Work;
+                    c.AtField = true;
+                    c.Facing = FacingToFeature(c);
+                    break;
+                case Task.FieldReturn:
+                {
+                    // Into the store if it still has room, else (no room anywhere) onto the workplace's pile.
+                    var s = c.TaskB;
+                    for (int r = 0; r < ResCount && c.Load != null; r++)
+                    {
+                        if (c.Load[r] <= 0) continue;
+                        if (s != null && s.Active && s.Store != null) c.Load[r] -= PutInto(s, r, c.Load[r]);
+                        else if (s == null && c.TaskB2 != null && c.TaskB2.Active) { c.TaskB2.Out[r] += c.Load[r]; c.TaskB2.OutTotal += c.Load[r]; c.Load[r] = 0; }
+                    }
+                    RecountLoad(c);
+                    c.Task = Task.None;
+                    c.TaskB = c.TaskB2 = null;
+                    break;
+                }
                 case Task.GoBuild:
                     c.Task = Task.Build;
                     break;
@@ -220,6 +240,7 @@ namespace Firstlight.Game
                 case Task.HaulPickup: if (c.TaskB != null) c.TaskB.HaulReserved = math.max(0, c.TaskB.HaulReserved - c.TaskAmt); break;
             }
             if (c.Task == Task.Leave || c.Task == Task.Arrive) return;
+            c.AtField = false;
             c.Task = Task.None;
             c.TaskB = c.TaskB2 = null;
             c.Target = -1;
@@ -228,7 +249,7 @@ namespace Firstlight.Game
         /// <summary>The steady part of an errand (resting, working, building, idling); re-decides when it no longer fits.</summary>
         void Act(Citizen c, bool work)
         {
-            if (work && c.Job != null) WorkerSeconds += Step;
+            if (work && c.Job != null && IsWorkTime) WorkerSeconds += Step;
             switch (c.Task)
             {
                 case Task.Rest:
@@ -255,6 +276,11 @@ namespace Firstlight.Game
         {
             CancelTask(c);
             if (c.Carrying) { GoDeliver(c); return; }
+            // A field worker carries a full load (or whatever it has at the end of the shift) back to storage.
+            if (c.LoadTotal > 0.01f && (!work || c.Sick || c.Job == null || !c.Job.Def.fieldWork || c.Job.Paused || c.LoadTotal >= B.carryCapacity - 0.01f))
+            {
+                if (ReturnLoad(c)) return;
+            }
             bool adult = IsAdult(c);
             if (c.Sick || !work) { GoHome(c); return; }
             if (!adult) { GoIdle(c, Activity.Playing); return; }
@@ -322,9 +348,160 @@ namespace Firstlight.Game
                     return;
                 }
             }
+            if (b.Def.fieldWork)
+            {
+                int spot = FieldSpot(b, out int feature);
+                if (spot >= 0)
+                {
+                    c.Task = Task.GoField;
+                    c.TaskB = b;
+                    c.FieldFeature = feature;
+                    Walk(c, spot, Activity.Walking);
+                    return;
+                }
+            }
             c.Task = Task.GoWork;
             c.TaskB = b;
             Walk(c, b.Door, Activity.Walking);
+        }
+
+        // ------------------------------------------------------------------ field work
+
+        readonly int[] _spotCells = new int[6];
+        readonly float[] _spotDist = new float[6];
+
+        /// <summary>
+        /// Where a field worker goes: a walkable cell next to one of the few trees / rocks nearest the workplace door
+        /// (chosen at random so the crew spreads out), or a spot a few cells short of the nearest herd for hunters.
+        /// -1 if there is nothing left in reach. <paramref name="feature"/> = the tree/rock cell or the herd index.
+        /// </summary>
+        int FieldSpot(Building b, out int feature)
+        {
+            feature = -1;
+            var n = b.Def.nearby;
+            if (n == null) return -1;
+            if (n.feature == "wildlife")
+            {
+                float bd = float.MaxValue;
+                for (int h = 0; h < Map.Herds.Count; h++)
+                {
+                    float d = math.distance(Map.Herds[h].Pos, b.Center);
+                    if (Map.Herds[h].Pop >= 1f && d <= n.radius && d < bd) { bd = d; feature = h; }
+                }
+                if (feature < 0) return -1;
+                var hp = Map.Herds[feature].Pos;
+                var at = hp + math.normalizesafe(b.DoorPos - hp) * 3f + new float2(R(-1.5f, 1.5f), R(-1.5f, 1.5f));
+                return WalkableNear(Map.CellAt(at), 3);
+            }
+            if (n.feature != "trees" && n.feature != "rocks") return -1;
+            bool trees = n.feature == "trees";
+            int count = 0;
+            int x0 = math.max(1, (int)(b.Center.x - n.radius)), x1 = math.min(Map.W - 2, (int)(b.Center.x + n.radius));
+            int y0 = math.max(1, (int)(b.Center.y - n.radius)), y1 = math.min(Map.H - 2, (int)(b.Center.y + n.radius));
+            float r2 = n.radius * n.radius;
+            for (int y = y0; y <= y1; y++)
+                for (int x = x0; x <= x1; x++)
+                {
+                    int c = Map.Cell(x, y);
+                    if (trees ? !Map.Tree[c] : Map.Rock[c] <= 0) continue;
+                    var p = new float2(x + 0.5f, y + 0.5f);
+                    if (math.distancesq(p, b.Center) > r2) continue;
+                    // Keep the nearest few (by distance from the door: that is the walk).
+                    float d = math.distancesq(p, b.DoorPos);
+                    int k;
+                    if (count < _spotCells.Length) k = count++;
+                    else if (d >= _spotDist[count - 1]) continue;
+                    else k = count - 1;
+                    while (k > 0 && _spotDist[k - 1] > d) { _spotCells[k] = _spotCells[k - 1]; _spotDist[k] = _spotDist[k - 1]; k--; }
+                    _spotCells[k] = c; _spotDist[k] = d;
+                }
+            if (count == 0) return -1;
+            feature = _spotCells[_rng.Next(count)];
+            // Stand beside it, on the side nearest the workplace.
+            int2 fxy = Map.XY(feature);
+            int best = -1; float bestD = float.MaxValue;
+            for (int dy = -1; dy <= 1; dy++)
+                for (int dx = -1; dx <= 1; dx++)
+                {
+                    if (dx == 0 && dy == 0) continue;
+                    int nx = fxy.x + dx, ny = fxy.y + dy;
+                    if (!Map.InBounds(nx, ny)) continue;
+                    int c = Map.Cell(nx, ny);
+                    if (Map.Flow.Cost[c] == 0 || Map.Tree[c] || Map.Reserved[c]) continue;
+                    float d = math.distancesq(new float2(nx + 0.5f, ny + 0.5f), b.DoorPos);
+                    if (d < bestD) { bestD = d; best = c; }
+                }
+            // In thick forest every neighbour may be a tree: stand on the tree's own cell (trees are walkable).
+            if (best < 0) best = trees ? feature : WalkableNear(feature, 2);
+            return best;
+        }
+
+        /// <summary>Nearest walkable cell to a cell, searching outwards up to <paramref name="reach"/> rings (-1 if none).</summary>
+        int WalkableNear(int cell, int reach)
+        {
+            int2 xy = Map.XY(cell);
+            for (int r = 0; r <= reach; r++)
+                for (int dy = -r; dy <= r; dy++)
+                    for (int dx = -r; dx <= r; dx++)
+                    {
+                        if (math.max(math.abs(dx), math.abs(dy)) != r) continue;
+                        int x = xy.x + dx, y = xy.y + dy;
+                        if (!Map.InBounds(x, y)) continue;
+                        int c = Map.Cell(x, y);
+                        if (Map.Flow.Cost[c] != 0 && !Map.Reserved[c]) return c;
+                    }
+            return -1;
+        }
+
+        /// <summary>Yaw from a field worker towards what it works on.</summary>
+        float FacingToFeature(Citizen c)
+        {
+            float2 at;
+            if (c.Job != null && c.Job.Def.nearby?.feature == "wildlife") at = c.FieldFeature >= 0 && c.FieldFeature < Map.Herds.Count ? Map.Herds[c.FieldFeature].Pos : c.Pos;
+            else if (c.FieldFeature >= 0) at = new float2(c.FieldFeature % Map.W + 0.5f, c.FieldFeature / Map.W + 0.5f);
+            else return c.Facing;
+            var d = at - c.Pos;
+            return math.lengthsq(d) > 1e-4f ? math.atan2(d.x, d.y) : c.Facing;
+        }
+
+        /// <summary>The tree or rock a field worker was at has gone (felled or emptied by someone else).</summary>
+        bool FieldGone(Citizen c)
+        {
+            if (c.FieldFeature < 0 || c.Job == null) return false;
+            string f = c.Job.Def.nearby?.feature;
+            if (f == "trees") return !Map.Tree[c.FieldFeature];
+            if (f == "rocks") return Map.Rock[c.FieldFeature] <= 0;
+            if (f == "wildlife") return c.FieldFeature >= Map.Herds.Count || Map.Herds[c.FieldFeature].Pop < 1f;
+            return false;
+        }
+
+        /// <summary>
+        /// Sends a field worker with a load back: to its own workplace if that is nearer than any store with room
+        /// (idle people haul it on from there, as with every workplace's goods), else to the store.
+        /// </summary>
+        bool ReturnLoad(Citizen c)
+        {
+            var s = NearestStorageWithSpace(c.Pos, 0.5f);
+            var job = c.Job != null && c.Job.Active ? c.Job : null;
+            if (s == null && job == null) return false;
+            if (s != null && job != null && math.distancesq(job.DoorPos, c.Pos) < math.distancesq(s.DoorPos, c.Pos)) s = null;
+            c.Task = Task.FieldReturn;
+            c.TaskB = s; c.TaskB2 = s == null ? job : null;
+            Walk(c, s != null ? s.Door : job.Door, Activity.Carrying);
+            return true;
+        }
+
+        void RecountLoad(Citizen c)
+        {
+            float total = 0, most = 0; int main = -1;
+            if (c.Load != null)
+                for (int r = 0; r < ResCount; r++)
+                {
+                    if (c.Load[r] < 1e-4f) { c.Load[r] = 0; continue; }
+                    total += c.Load[r];
+                    if (c.Load[r] > most) { most = c.Load[r]; main = r; }
+                }
+            c.LoadTotal = total; c.LoadRes = main;
         }
 
         void WorkAct(Citizen c, bool work)
@@ -338,14 +515,18 @@ namespace Firstlight.Game
                 Decide(c, work);
                 return;
             }
-            if (b.OutTotal >= B.carryCapacity && HasStorageRoom()) { TakeOutput(c, b); return; }
+            if (!IsWorkTime) { c.Activity = Activity.Idle; return; }      // came early: wait for the shift to start
+            bool field = c.AtField && b.Def.fieldWork;
+            if (field && FieldGone(c)) { Decide(c, work); return; }   // on to another tree / rock / herd
+            if (!field && b.OutTotal >= B.carryCapacity && HasStorageRoom()) { TakeOutput(c, b); return; }
             ProductiveSeconds += Step;
             if (b.Def.usesTools && c.Tool < 0) EnsureTool(c, true);   // tools may have come in since the shift began
             float speed = WorkSpeed(c, b.Def.usesTools, b.Def.requiresTools);
             if (speed <= 0) { b.Status = "Needs tools"; c.Activity = Activity.Idle; return; }
-            bool did = WorkStep(c, b, speed);
+            bool did = WorkStep(c, b, speed, field);
             c.Activity = did ? Activity.Working : Activity.Idle;
             if (did && b.Def.usesTools) WearTool(c);
+            if (field && c.LoadTotal >= B.carryCapacity - 0.01f) { Decide(c, work); return; }
             if (!did && b.Def.inputs.Length > 0 && InputToFetch(b, out _) >= 0) Decide(c, work);
         }
 

@@ -345,7 +345,7 @@ namespace Firstlight.Game
         /// times season yield, nearby fullness, research yield effects and the worker's speed (tool, happiness).
         /// Returns false if nothing could be made (no inputs, nothing nearby, out of season, workplace full).
         /// </summary>
-        bool WorkStep(Citizen c, Building b, float speed)
+        bool WorkStep(Citizen c, Building b, float speed, bool field = false)
         {
             var d = b.Def;
             float frac = Step / WorkdaySeconds * speed;
@@ -357,7 +357,7 @@ namespace Firstlight.Game
                 did = true;
             }
             if (d.outputs.Length == 0) return did;
-            if (b.OutTotal >= OutCap(b)) { b.Status = "Waiting for goods to be carried off"; return did; }
+            if (!field && b.OutTotal >= OutCap(b)) { b.Status = "Waiting for goods to be carried off"; return did; }
             float yield = d.SeasonYield(Season) * b.Fullness * (string.IsNullOrEmpty(d.yieldTag) ? 1f : Effect(b.YieldKey));
             if (yield <= 0)
             {
@@ -393,22 +393,33 @@ namespace Firstlight.Game
                 float per = b.Focus < 0 ? d.outputs[i].amount : i == b.Focus ? total * B.focusShare : 0f;
                 float amt = per * work * scale;
                 if (amt <= 0) continue;
-                b.Out[b.OutRes[i]] += amt;
-                b.OutTotal += amt;
+                if (field)
+                {
+                    // Out at the tree / rock / herd: into the worker's own load.
+                    c.Load ??= new float[ResCount];
+                    c.Load[b.OutRes[i]] += amt;
+                }
+                else
+                {
+                    b.Out[b.OutRes[i]] += amt;
+                    b.OutTotal += amt;
+                }
                 Produced[b.OutRes[i]] += amt;
             }
+            if (field) RecountLoad(c);
             if (d.consumesFeaturePer > 0)
             {
                 // The feature is used up by the work done, whatever the output mix.
                 b.FeatureAcc += d.outputs[0].amount * work * scale;
-                while (b.FeatureAcc >= d.consumesFeaturePer) { b.FeatureAcc -= d.consumesFeaturePer; ConsumeFeature(b); }
+                while (b.FeatureAcc >= d.consumesFeaturePer) { b.FeatureAcc -= d.consumesFeaturePer; ConsumeFeature(b, field ? c.FieldFeature : -1); }
             }
             b.Status = "";
             return true;
         }
 
-        /// <summary>Workers use up what they work: one tree felled, one stone off a rock, one animal from a herd.</summary>
-        void ConsumeFeature(Building b)
+        /// <summary>Workers use up what they work: one tree felled, one stone off a rock, one animal from a herd.
+        /// <paramref name="at"/> = the tree / rock cell or herd a field worker is at (-1 = the nearest).</summary>
+        void ConsumeFeature(Building b, int at = -1)
         {
             var n = b.Def.nearby;
             if (n == null) return;
@@ -416,30 +427,34 @@ namespace Firstlight.Game
             {
                 case "trees":
                 {
-                    int c = Map.NearestFeatureCell("trees", b.Center, n.radius);
+                    int c = at >= 0 && Map.Tree[at] ? at : Map.NearestFeatureCell("trees", b.Center, n.radius);
                     if (c >= 0) Map.RemoveTree(c);
                     break;
                 }
                 case "rocks":
                 {
-                    int c = Map.NearestFeatureCell("rocks", b.Center, n.radius);
+                    int c = at >= 0 && Map.Rock[at] > 0 ? at : Map.NearestFeatureCell("rocks", b.Center, n.radius);
                     if (c >= 0) Map.TakeStone(c, 1f);
                     break;
                 }
                 case "wildlife":
                 {
+                    if (at >= 0 && at < Map.Herds.Count && Map.Herds[at].Pop >= 1f) { Map.Herds[at].Pop -= 1f; Kills.Add((at, Time)); break; }
                     Herd best = null; float bd = float.MaxValue;
                     foreach (var h in Map.Herds)
                     {
                         float d = math.distance(h.Pos, b.Center);
                         if (h.Pop >= 1f && d <= n.radius && d < bd) { bd = d; best = h; }
                     }
-                    if (best != null) best.Pop = math.max(0f, best.Pop - 1f);
+                    if (best != null) { best.Pop = math.max(0f, best.Pop - 1f); Kills.Add((Map.Herds.IndexOf(best), Time)); }
                     break;
                 }
             }
             RefreshFullness(b);
         }
+
+        /// <summary>Animals taken by hunters (herd index, game time), so the view can show a carcass. Trimmed by the view.</summary>
+        public readonly List<(int herd, float time)> Kills = new();
 
         /// <summary>Which input a workplace is shortest of, for its workers to fetch (-1 = enough for now).</summary>
         int InputToFetch(Building b, out float amount)

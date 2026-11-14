@@ -170,7 +170,13 @@ namespace Firstlight.Game
             }
             if (_jobsDirty) AssignJobs();
             bool work = IsWorkTime;
-            for (int i = 0; i < Citizens.Count; i++) UpdateCitizen(Citizens[i], work);
+            // People with a job set off a little before the shift, so the walk out isn't all taken from the workday.
+            bool early = !work && DayFraction >= B.workdayStart - B.commuteLead && DayFraction < B.workdayStart;
+            for (int i = 0; i < Citizens.Count; i++)
+            {
+                var c = Citizens[i];
+                UpdateCitizen(c, work || early && c.Job != null && !c.Sick);
+            }
             UpdateDeparting();
             for (int i = Citizens.Count - 1; i >= 0; i--) if (Citizens[i].Gone) Citizens.RemoveAt(i);
         }
