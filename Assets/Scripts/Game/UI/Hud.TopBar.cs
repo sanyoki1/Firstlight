@@ -119,16 +119,20 @@ namespace Firstlight.Game.UI
             if (GUI.Button(fr, GUIContent.none, GUIStyle.none)) ToggleStocks();
 
             // Research progress (right side), then the panel buttons.
-            float bx = VW - 4 * 100 - 6;
-            float rx = bx - 236;
-            var rr = new Rect(rx, 6, 228, 40);
+            // Narrow (a large interface size): smaller panel buttons without their keys and a shorter research box, so
+            // they don't run over the food figure.
+            bool narrow = VW - 4 * 100 - 6 - 236 < x + 156;
+            float bw = narrow ? 80 : 100, rw = narrow ? 180 : 228;
+            float bx = VW - 4 * bw - 6;
+            float rx = bx - rw - 8;
+            var rr = new Rect(rx, 6, rw, 40);
             string cur = S.CurrentResearch;
             var def = cur != null ? D.ResearchById(cur) : null;
             if (GUI.Button(rr, GUIContent.none, Button)) ToggleResearch();
             bool allKnown = def == null && !S.AvailableResearch.Any();
-            GUI.Label(new Rect(rx + 8, 7, 214, 20), def != null ? $"Researching <b>{def.name}</b>" : allKnown ? Col("All research known", Good) : Col("Nothing being researched", Warn), new GUIStyle(Label) { fontSize = 14 });
-            Bar(new Rect(rx + 8, 30, 130, 9), def != null ? S.ResearchProgress(cur) : 0, Accent);
-            GUI.Label(new Rect(rx + 146, 25, 80, 18), $"+{_knowPerDay:0.#}/day", Small);
+            GUI.Label(new Rect(rx + 8, 7, rw - 14, 20), def != null ? $"Researching <b>{def.name}</b>" : allKnown ? Col("All research known", Good) : Col("Nothing being researched", Warn), new GUIStyle(Label) { fontSize = 14 });
+            Bar(new Rect(rx + 8, 30, rw - 98, 9), def != null ? S.ResearchProgress(cur) : 0, Accent);
+            GUI.Label(new Rect(rx + rw - 82, 25, 80, 18), $"+{_knowPerDay:0.#}/day", Small);
             Tip(rr, (def != null ? $"{def.name}: {S.ResearchProgress(cur):P0}. {S.ResearchQueue.Count} in the queue." : $"Nothing queued: knowledge is banked ({S.KnowledgeBank:0}) until you choose.") +
                     $"\n\nKnowledge {_knowPerDay:0.#} a day, from staffed Elders' Fires (elders count more). More fires and more elders on them research faster. Open the research tree (R).");
 
@@ -138,12 +142,12 @@ namespace Firstlight.Game.UI
             string[] tips = { "Research tree: choose what to learn next.", "Goals: the key research and milestones for the next age.", "Jobs: how many work where; set priorities on each building.", "Controls and keys." };
             for (int i = 0; i < 4; i++)
             {
-                var r = new Rect(bx + i * 100, 9, 96, 34);
-                if (GUI.Button(r, $"{labels[i]} {Col(keys[i], Dim)}", open[i] ? ButtonOn : Button))
+                var r = new Rect(bx + i * bw, 9, bw - 4, 34);
+                if (GUI.Button(r, narrow ? labels[i] : $"{labels[i]} {Col(keys[i], Dim)}", open[i] ? ButtonOn : Button))
                 {
                     if (i == 0) ToggleResearch(); else if (i == 1) ToggleGoals(); else if (i == 2) ToggleJobs(); else ToggleHelp();
                 }
-                Tip(r, tips[i]);
+                Tip(r, tips[i] + (narrow ? $" ({keys[i]})" : ""));
             }
 
             // Row two: key stocks, then the needs and unrest (they keep their order and drop from the right when narrow).

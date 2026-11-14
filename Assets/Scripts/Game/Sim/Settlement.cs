@@ -492,9 +492,10 @@ namespace Firstlight.Game
             foreach (var h in Buildings) if (h.Active && h.Def.housing > 0 && h.Residents > CrowdFree(h)) crowded += h.Residents;
             var why = new List<string>();
             if (crowded * 5 >= pop) why.Add("crowded homes");
-            if (noWater * 5 >= pop) why.Add("homes without clean water");
-            if (uncovered * 3 >= pop) why.Add($"{(pop >= 100 ? "a large town" : "homes")} out of a healer's reach");
+            if (noWater * 5 >= pop) why.Add("no clean water");
+            if (uncovered * 3 >= pop) why.Add("no healer near");
             if (why.Count == 0) why.Add("a town this size");
+            // (Short: it stands as a chip, which has room for about 60 letters.)
             return $"Sickness could spread: {string.Join(", ", why)}.";
         }
 
