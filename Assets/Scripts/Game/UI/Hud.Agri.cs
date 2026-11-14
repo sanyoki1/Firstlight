@@ -202,11 +202,22 @@ namespace Firstlight.Game.UI
         {
             var mouse = Mouse.current;
             if (mouse == null || PointerOverride != null) return;
-            if (!overUI && HoverValid && mouse.leftButton.wasPressedThisFrame) _pathStart = HoverCell;
+            PathDrag(!overUI && mouse.leftButton.wasPressedThisFrame, mouse.leftButton.wasReleasedThisFrame);
+        }
+
+        /// <summary>
+        /// The drag handler itself (the mouse, and -p4shots with an aimed pointer, both come through here): a press at the
+        /// pointer starts the line, every frame the line follows the pointer, a release lays it.
+        /// </summary>
+        public void PathDrag(bool pressed, bool released)
+        {
+            UpdateHover();
+            if (pressed && HoverValid) _pathStart = HoverCell;
             if (_pathStart != null && HoverValid) PathLine(_pathStart.Value, HoverCell, _pathCells);
-            if (_pathStart != null && mouse.leftButton.wasReleasedThisFrame)
+            if (_pathStart != null && released)
             {
-                LayPath(_pathCells);
+                int n = LayPath(_pathCells);
+                if (n > 0) G.Sound?.Click();
                 _pathStart = null;
                 _pathCells.Clear();
             }
@@ -275,31 +286,37 @@ namespace Firstlight.Game.UI
 
         // ------------------------------------------------------------------ needs in the top bar
 
-        /// <summary>The needs that have arrived, as "Water 92%" chips (only once they apply), and unrest.</summary>
-        float DrawNeedsStrip(float x, float right)
+        /// <summary>The needs that have arrived, as "Water 92%" (only once they apply), and unrest; row two of the top bar.</summary>
+        void DrawNeedsStrip(float x, float y, float right)
         {
+            {
+                float hp = S.AverageHappiness;
+                var r = new Rect(x, y, 108, 26);
+                GUI.Label(new Rect(x, y + 3, 60, 20), "Happy", Small);
+                GUI.Label(new Rect(x + 60, y + 2, 48, 22), Col($"<b>{hp:P0}</b>", hp >= 0.6f ? Good : hp >= D.Balance.leaveHappiness + 0.05f ? Warn : Bad), Label);
+                Tip(r, $"Average happiness {hp:P0}: a blend of the average and the worst of each person's needs (food, warmth, shelter, health, and later water, pottery and faith). Happy people work faster; below {D.Balance.leaveHappiness:P0} for {D.Balance.leaveAfterDays:0} days they leave.");
+                x += 112;
+            }
             foreach (var n in D.Balance.needs)
             {
                 float met = S.NeedMet(n.id);
                 if (met < 0) continue;
-                if (x + 70 > right) return x;
-                var r = new Rect(x, 5, 68, 42);
-                GUI.Label(new Rect(x, 5, 68, 20), n.id == "water" ? "Water" : n.name, Small);
-                GUI.Label(new Rect(x, 24, 68, 22), Col($"{met:P0}", met >= 0.9f ? Good : met >= 0.6f ? Warn : Bad), Bold);
-                Tip(r, $"{n.name}: {met:P0} of people have it. Unmet, it holds happiness down to about {n.unmet:P0}." +
-                       (n.id == "water" ? " Homes near the river or a well have clean water." : n.id == "goods" ? " Each household keeps one pottery good in use; potters make them." : n.id == "faith" ? " Homes in reach of a staffed Shaman's Hut have it." : ""));
-                x += 70;
+                if (x + 108 > right) return;
+                var r = new Rect(x, y, 108, 26);
+                GUI.Label(new Rect(x, y + 3, 60, 20), n.id == "water" ? "Water" : n.name, Small);
+                GUI.Label(new Rect(x + 60, y + 2, 48, 22), Col($"<b>{met:P0}</b>", met >= 0.9f ? Good : met >= 0.6f ? Warn : Bad), Label);
+                Tip(r, $"{n.name}: {met:P0} of people have it. Unmet, it holds their happiness down to about {n.unmet:P0}." +
+                       (n.id == "water" ? " Homes near the river or within a well's reach have clean water; without it people also fall sick more." : n.id == "goods" ? " Each household keeps pots in use and they wear out; a clay pit and potters keep them coming." : n.id == "faith" ? " Homes within reach of a staffed Shaman's Hut have it; without it unrest grows." : ""));
+                x += 112;
             }
-            if (S.Age.order >= 1 && x + 70 <= right)
+            if (S.Age.order >= 1 && x + 108 <= right)
             {
-                var r = new Rect(x, 5, 68, 42);
+                var r = new Rect(x, y, 108, 26);
                 float u = S.Unrest;
-                GUI.Label(new Rect(x, 5, 68, 20), "Unrest", Small);
-                GUI.Label(new Rect(x, 24, 68, 22), Col($"{u:P0}", u >= D.Balance.disputeAt ? Bad : u >= D.Balance.unrestWarn ? Warn : Good), Bold);
+                GUI.Label(new Rect(x, y + 3, 60, 20), "Unrest", Small);
+                GUI.Label(new Rect(x + 60, y + 2, 48, 22), Col($"<b>{u:P0}</b>", u >= D.Balance.disputeAt ? Bad : u >= D.Balance.unrestWarn ? Warn : Good), Label);
                 Tip(r, $"Unrest {u:P0} (heading for {S.UnrestTarget:P0}). It grows with unhappiness, crowding, people without faith and sheer numbers. Above {D.Balance.disputeAt:P0} disputes cost work days; above {D.Balance.theftAt:P0} goods go missing. A staffed council and laws calm it.");
-                x += 70;
             }
-            return x;
         }
     }
 }

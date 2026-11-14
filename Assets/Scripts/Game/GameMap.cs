@@ -73,6 +73,7 @@ namespace Firstlight.Game
             Reserved = new bool[n];
             Open = new bool[n];
             Path = new bool[n];
+            LiveCost = new byte[n];
             for (int i = 0; i < n; i++) BuildingAt[i] = -1;
             Flow = new FlowFieldCache(W, H, 512);
         }
@@ -135,19 +136,25 @@ namespace Firstlight.Game
         public void RefreshCost(int c)
         {
             byte v = CostOf(c);
-            byte old = Flow.Cost[c];
+            byte old = LiveCost[c];
             if (old == v) return;
-            Flow.Cost[c] = v;
+            LiveCost[c] = v;
             if (old == 0 || v == 0 || v == CostPath || old == CostPath) _costDirty = true;
             else _softDirty = true;
         }
+
+        /// <summary>
+        /// Walking prices as they are now (<see cref="FlowFieldCache.Cost"/> holds the committed copy the paths are built
+        /// from). Every path between two commits sees the same prices, so routes never depend on which paths happened to
+        /// be cached: a loaded game walks exactly as the original would have.
+        /// </summary>
+        public readonly byte[] LiveCost;
 
         /// <summary>Drops cached paths if anything blocking changed (or a path was laid or lifted). True if it did.</summary>
         public bool CommitCostChanges()
         {
             if (!_costDirty) return false;
-            _costDirty = _softDirty = false;
-            Flow.Invalidate();
+            Commit();
             return true;
         }
 
@@ -155,10 +162,19 @@ namespace Firstlight.Game
         public bool CommitSoftCostChanges()
         {
             if (!_softDirty && !_costDirty) return false;
-            _costDirty = _softDirty = false;
-            Flow.Invalidate();
+            Commit();
             return true;
         }
+
+        void Commit()
+        {
+            _costDirty = _softDirty = false;
+            Flow.Cost.CopyFrom(LiveCost);
+            Flow.Invalidate();
+        }
+
+        /// <summary>Save/load: the pending-change flags (the committed prices are saved with Flow.Cost).</summary>
+        public (bool hard, bool soft) CostFlags { get => (_costDirty, _softDirty); set { _costDirty = value.hard; _softDirty = value.soft; } }
 
         /// <summary>Counts a feature within a circle around a point (cell units).</summary>
         public int CountFeature(string feature, float2 center, int radius, List<Herd> herdsOut = null)
@@ -228,7 +244,7 @@ namespace Firstlight.Game
         }
 
         /// <summary>Nearest walkable cell on the map edge (for migrants arriving / people leaving).</summary>
-        public int EdgeCellNear(float2 p, System.Random rng)
+        public int EdgeCellNear(float2 p, SimRandom rng)
         {
             for (int attempt = 0; attempt < 400; attempt++)
             {
@@ -364,8 +380,8 @@ namespace Firstlight.Game
 
             for (int c = 0; c < n; c++)
                 WaterClass[c] = (byte)(Ground[c] == Game.Ground.Water ? 2 : Ground[c] == Game.Ground.Ford ? 1 : 0);
-            for (int c = 0; c < n; c++) Flow.Cost[c] = CostOf(c);
-            Flow.Invalidate();
+            for (int c = 0; c < n; c++) LiveCost[c] = CostOf(c);
+            Commit();
             TreesDirty = RocksDirty = true;
 
             GenerateDeposits(seed, bal, dist);
@@ -456,7 +472,7 @@ namespace Firstlight.Game
         }
 
         /// <summary>Daily regrowth: a few new trees sprout next to existing forest; herds recover.</summary>
-        public void DailyRegrowth(System.Random rng, Balance bal)
+        public void DailyRegrowth(SimRandom rng, Balance bal)
         {
             for (int k = 0; k < bal.treeRegrowPerDay; k++)
             {
@@ -486,6 +502,50 @@ namespace Firstlight.Game
             }
             foreach (var h in Herds)
                 h.Pop = math.min(h.Max, h.Pop + h.Pop * bal.herdRegrowPerDay + 0.05f);
+        }
+
+        // ------------------------------------------------------------------ save / load
+
+        /// <summary>
+        /// Everything that changes after generation (a load regenerates the map from its seed, then puts these back):
+        /// trees, rock, paths, herd sizes, occupancy, water classes and both sets of walking prices.
+        /// </summary>
+        public void Write(SaveWriter w)
+        {
+            int n = W * H;
+            w.Int(n);
+            w.Bools(Tree); w.Bytes(TreeKind); w.Floats(TreeScale); w.Floats(TreeYaw);
+            var off = new float[n * 2]; for (int c = 0; c < n; c++) { off[c * 2] = TreeOffset[c].x; off[c * 2 + 1] = TreeOffset[c].y; }
+            w.Floats(off);
+            w.Floats(Rock); w.Bools(Path); w.Ints(BuildingAt); w.Bools(Reserved); w.Bools(Open);
+            w.Bytes(WaterClass); w.Bytes(LiveCost); w.Bytes(Flow.Cost.ToArray());
+            var (hard, soft) = CostFlags; w.Bool(hard); w.Bool(soft);
+            w.Bool(OreRevealed);
+            w.Int(Herds.Count); foreach (var h in Herds) w.Float(h.Pop);
+        }
+
+        public void Read(SaveReader r)
+        {
+            int n = r.Int();
+            if (n != W * H) throw new System.IO.InvalidDataException($"map size {n} does not match {W * H}");
+            Put(r.Bools(), Tree); Put(r.Bytes(), TreeKind); Put(r.Floats(), TreeScale); Put(r.Floats(), TreeYaw);
+            var off = r.Floats(); for (int c = 0; c < n; c++) TreeOffset[c] = new float2(off[c * 2], off[c * 2 + 1]);
+            Put(r.Floats(), Rock); Put(r.Bools(), Path); Put(r.Ints(), BuildingAt); Put(r.Bools(), Reserved); Put(r.Bools(), Open);
+            Put(r.Bytes(), WaterClass); Put(r.Bytes(), LiveCost);
+            var committed = r.Bytes(); if (committed.Length != n) throw new System.IO.InvalidDataException("walk costs");
+            Flow.Cost.CopyFrom(committed);
+            Flow.Invalidate();
+            CostFlags = (r.Bool(), r.Bool());
+            OreRevealed = r.Bool();
+            int hn = r.Int();
+            for (int i = 0; i < hn; i++) { float pop = r.Float(); if (i < Herds.Count) Herds[i].Pop = pop; }
+            TreesDirty = RocksDirty = PathsDirty = true;
+        }
+
+        static void Put<T>(T[] from, T[] to)
+        {
+            if (from == null || from.Length != to.Length) throw new System.IO.InvalidDataException("map layer size");
+            System.Array.Copy(from, to, to.Length);
         }
     }
 }

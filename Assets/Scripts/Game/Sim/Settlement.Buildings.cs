@@ -9,16 +9,32 @@ namespace Firstlight.Game
     {
         // ------------------------------------------------------------------ placement
 
-        /// <summary>The walkable cell in front of a footprint (below its middle), where people go in and out.</summary>
-        public static int2 DoorCell(BuildingDef d, int2 origin) => new int2(origin.x + d.sizeX / 2, origin.y - 1);
-        public static float2 FootprintCenter(BuildingDef d, int2 origin) => new float2(origin.x + d.sizeX * 0.5f, origin.y + d.sizeY * 0.5f);
+        /// <summary>Footprint size on the map for a turn (rot = quarter turns, 0..3): odd turns swap the sides.</summary>
+        public static int2 Size(BuildingDef d, int rot) => (rot & 1) == 0 ? new int2(d.sizeX, d.sizeY) : new int2(d.sizeY, d.sizeX);
+        public static float2 FootprintCenter(BuildingDef d, int2 origin, int rot = 0) => origin + (float2)Size(d, rot) * 0.5f;
+
+        /// <summary>
+        /// The walkable cell in front of a footprint, where people go in and out. Unturned the front faces -y (the door
+        /// below the middle); each quarter turn carries the door round with the model (yaw = rot x 90 degrees: -x, +y, +x).
+        /// </summary>
+        public static int2 DoorCell(BuildingDef d, int2 origin, int rot = 0)
+        {
+            // The unturned door's offset from the footprint middle, turned like the model (the view's yaw convention).
+            float dx = d.sizeX / 2 + 0.5f - d.sizeX * 0.5f, dy = -d.sizeY * 0.5f - 0.5f;
+            int r = rot & 3;
+            float s = r == 1 ? 1 : r == 3 ? -1 : 0, c = r == 0 ? 1 : r == 2 ? -1 : 0;
+            var p = FootprintCenter(d, origin, rot) + new float2(c * dx + s * dy, -s * dx + c * dy);
+            return new int2((int)math.floor(p.x), (int)math.floor(p.y));
+        }
 
         /// <summary>
         /// Whether a building can go with its lower-left corner on <paramref name="origin"/>: footprint on dry free
         /// ground, a walkable door cell, research and age reached, nearby features present, unique respected.
         /// The first placement must be the town center.
         /// </summary>
-        public bool CanPlace(BuildingDef d, int2 origin, out string reason)
+        public bool CanPlace(BuildingDef d, int2 origin, out string reason) => CanPlace(d, origin, 0, out reason);
+
+        public bool CanPlace(BuildingDef d, int2 origin, int rot, out string reason)
         {
             reason = "";
             if (d == null) { reason = "Nothing selected"; return false; }
@@ -33,8 +49,9 @@ namespace Firstlight.Game
             }
             if (d.unique && CountBuildings(d.id, true) > 0) { reason = "Only one can be built"; return false; }
             if (d.path) return CanPlacePath(origin, out reason);
-            for (int y = origin.y; y < origin.y + d.sizeY; y++)
-                for (int x = origin.x; x < origin.x + d.sizeX; x++)
+            var size = Size(d, rot);
+            for (int y = origin.y; y < origin.y + size.y; y++)
+                for (int x = origin.x; x < origin.x + size.x; x++)
                 {
                     if (x < 1 || y < 1 || x >= Map.W - 1 || y >= Map.H - 1) { reason = "Too close to the map edge"; return false; }
                     int c = Map.Cell(x, y);
@@ -43,7 +60,7 @@ namespace Firstlight.Game
                     if (Map.Reserved[c]) { reason = "Blocks another building's entrance"; return false; }
                     if (Map.Rock[c] > 0) { reason = "Rock in the way"; return false; }
                 }
-            var door = DoorCell(d, origin);
+            var door = DoorCell(d, origin, rot);
             if (!Map.InBounds(door.x, door.y)) { reason = "No room for an entrance"; return false; }
             int dc = Map.Cell(door.x, door.y);
             if (Map.WaterClass[dc] >= 2 || Map.BuildingAt[dc] >= 0 || Map.Rock[dc] > 0) { reason = "The entrance is blocked"; return false; }
@@ -51,24 +68,25 @@ namespace Firstlight.Game
             {
                 var kind = GameMap.DepositOf(d.onDeposit);
                 if (!Map.DepositVisible(kind)) { reason = $"{Cap(d.onDeposit)} deposits are hidden until Prospecting"; return false; }
-                int on = DepositCells(d, origin);
+                int on = DepositCells(d, origin, rot);
                 if (on < d.depositMin) { reason = on == 0 ? $"Must be built on a {d.onDeposit} deposit" : $"Must stand more on the {d.onDeposit} deposit ({on} of {d.depositMin} cells)"; return false; }
             }
             if (d.HasNearby && d.nearby.min > 0)
             {
-                int n = Map.CountFeature(d.nearby.feature, FootprintCenter(d, origin), d.nearby.radius);
+                int n = Map.CountFeature(d.nearby.feature, FootprintCenter(d, origin, rot), d.nearby.radius);
                 if (n < d.nearby.min) { reason = $"Needs {(d.nearby.feature == "open" ? "open grass" : d.nearby.feature)} nearby ({n} of {d.nearby.min})"; return false; }
             }
             return true;
         }
 
         /// <summary>Footprint cells over a building's deposit kind.</summary>
-        public int DepositCells(BuildingDef d, int2 origin)
+        public int DepositCells(BuildingDef d, int2 origin, int rot = 0)
         {
             var kind = GameMap.DepositOf(d.onDeposit);
             int on = 0;
-            for (int y = origin.y; y < origin.y + d.sizeY; y++)
-                for (int x = origin.x; x < origin.x + d.sizeX; x++)
+            var size = Size(d, rot);
+            for (int y = origin.y; y < origin.y + size.y; y++)
+                for (int x = origin.x; x < origin.x + size.x; x++)
                     if (Map.InBounds(x, y) && Map.Deposits[Map.Cell(x, y)] == kind) on++;
             return on;
         }
@@ -87,17 +105,26 @@ namespace Firstlight.Game
             if (Map.BuildingAt[c] >= 0) { reason = "Something is already there"; return false; }
             if (Map.Rock[c] > 0) { reason = "Rock in the way"; return false; }
             if (Map.Path[c]) { reason = "Already a path"; return false; }
+            var d = PathDef;
+            if (d != null)
+                foreach (var a in d.cost)
+                    if (Stock(a.id) < a.amount - 1e-4f) { reason = $"Needs {a.amount:0.#} {Data.Resource(a.id)?.name.ToLower() ?? a.id} per tile"; return false; }
             return true;
         }
+
+        BuildingDef _pathDef; bool _pathDefLooked;
+        public BuildingDef PathDef { get { if (!_pathDefLooked) { _pathDefLooked = true; _pathDef = Data.Buildings.Find(b => b.path); } return _pathDef; } }
 
         /// <summary>Lays one path tile (free and immediate: people tread it in). Paths are not buildings.</summary>
         public bool PlacePath(int2 cell, out string reason)
         {
-            var d = Data.Buildings.Find(b => b.path);
+            var d = PathDef;
             if (d == null) { reason = "No paths in this build"; return false; }
             if (NeedsCampfire) { reason = "Place the campfire first"; return false; }
             if (!IsUnlocked(d)) { reason = $"Needs the {Data.Age(d.age)?.name ?? d.age}"; return false; }
             if (!CanPlacePath(cell, out reason)) return false;
+            // A little material per tile, taken from store at once (tiles are laid on the spot).
+            foreach (var a in d.cost) { int r = ResIndex(a.id); if (r >= 0) Withdraw(r, a.amount); }
             Map.SetPath(Map.Cell(cell.x, cell.y), true);
             PathCount++;
             Map.CommitCostChanges();
@@ -120,27 +147,32 @@ namespace Firstlight.Game
         /// <summary>Places a construction site (or, for the campfire, the finished town center and the starting band).</summary>
         public Building Place(BuildingDef d, int2 origin) => Place(d, origin, out _);
 
-        public Building Place(BuildingDef d, int2 origin, out string reason)
+        public Building Place(BuildingDef d, int2 origin, out string reason) => Place(d, origin, 0, out reason);
+
+        /// <summary>Places a building turned <paramref name="rot"/> quarter turns (its door turns with it).</summary>
+        public Building Place(BuildingDef d, int2 origin, int rot, out string reason)
         {
             if (d != null && d.path) { PlacePath(origin, out reason); return null; }
-            if (!CanPlace(d, origin, out reason)) return null;
+            rot &= 3;
+            if (!CanPlace(d, origin, rot, out reason)) return null;
+            var size = Size(d, rot);
             var b = new Building
             {
-                Id = Buildings.Count, Def = d, Origin = origin, State = BuildState.Site,
+                Id = Buildings.Count, Def = d, Origin = origin, Rot = rot, State = BuildState.Site,
                 Delivered = new float[d.cost.Length], InTransit = new float[d.cost.Length],
                 Out = new float[ResCount], In = new float[ResCount],
-                Center = FootprintCenter(d, origin),
+                Center = FootprintCenter(d, origin, rot),
                 CostRes = Array.ConvertAll(d.cost, a => ResIndex(a.id)),
                 OutRes = Array.ConvertAll(d.outputs, a => ResIndex(a.id)),
                 InRes = Array.ConvertAll(d.inputs, i => Array.ConvertAll(i.ids, ResIndex)),
                 YieldKey = "yield." + d.yieldTag,
             };
-            var door = DoorCell(d, origin);
+            var door = DoorCell(d, origin, rot);
             b.Door = Map.Cell(door.x, door.y);
             b.DoorPos = new float2(door.x + 0.5f, door.y + 0.5f);
             Buildings.Add(b);
-            for (int y = origin.y; y < origin.y + d.sizeY; y++)
-                for (int x = origin.x; x < origin.x + d.sizeX; x++)
+            for (int y = origin.y; y < origin.y + size.y; y++)
+                for (int x = origin.x; x < origin.x + size.x; x++)
                 {
                     int c = Map.Cell(x, y);
                     Map.RemoveTree(c);
@@ -151,8 +183,8 @@ namespace Firstlight.Game
                 }
             Map.Reserved[b.Door] = true;
             // The ground round it is cleared too: a yard, and room to walk round.
-            for (int y = origin.y - 1; y <= origin.y + d.sizeY; y++)
-                for (int x = origin.x - 1; x <= origin.x + d.sizeX; x++)
+            for (int y = origin.y - 1; y <= origin.y + size.y; y++)
+                for (int x = origin.x - 1; x <= origin.x + size.x; x++)
                     if (Map.InBounds(x, y)) Map.RemoveTree(Map.Cell(x, y));
             Map.CommitCostChanges();
             if (d.townCenter)
@@ -189,8 +221,8 @@ namespace Firstlight.Game
                 if (c.Home == b) c.Home = null;
                 if (c.Job == b) c.Job = null;
             }
-            for (int y = b.Origin.y; y < b.Origin.y + b.Def.sizeY; y++)
-                for (int x = b.Origin.x; x < b.Origin.x + b.Def.sizeX; x++)
+            for (int y = b.Origin.y; y < b.Origin.y + b.SY; y++)
+                for (int x = b.Origin.x; x < b.Origin.x + b.SX; x++)
                 {
                     int c = Map.Cell(x, y);
                     Map.BuildingAt[c] = -1;
@@ -347,7 +379,7 @@ namespace Firstlight.Game
             foreach (var a in B.startResources)
             {
                 int r = ResIndex(a.id);
-                if (r >= 0) { tc.Store[r] += a.amount; tc.Stored += a.amount; }
+                if (r >= 0) { tc.Store[r] += a.amount * Diff.startGoods; tc.Stored += a.amount * Diff.startGoods; }
             }
             for (int i = 0; i < B.startPeople; i++)
             {
@@ -443,7 +475,7 @@ namespace Firstlight.Game
             bool spoils = r >= 0 && Data.Resources[r].spoilPerDay > 0;
             foreach (var s in Buildings)
             {
-                if (!s.Active || s.Store == null || Free(s) < min || !Accepts(s, r)) continue;
+                if (!s.Active || s.Store == null || s.Flooded || Free(s) < min || !Accepts(s, r)) continue;
                 float d = math.distance(s.DoorPos, from) + 4f;
                 if (spoils) d *= 0.4f + s.Def.spoilMultiplier;
                 if (d < bd) { bd = d; best = s; }
@@ -524,7 +556,7 @@ namespace Firstlight.Game
             if (d.outputs.Length == 0) return did;
             if (d.crop) return CropWork(c, b, frac, field);
             if (!field && b.OutTotal >= OutCap(b)) { b.Status = "Waiting for goods to be carried off"; return did; }
-            float yield = d.SeasonYield(Season) * b.Fullness * (string.IsNullOrEmpty(d.yieldTag) ? 1f : Effect(b.YieldKey));
+            float yield = d.SeasonYield(Season) * b.Fullness * (string.IsNullOrEmpty(d.yieldTag) ? 1f : Effect(b.YieldKey)) * Diff.yield;
             if (yield <= 0)
             {
                 b.Status = d.SeasonYield(Season) <= 0 ? "Nothing to do this season" : $"No {d.nearby?.feature} left nearby";

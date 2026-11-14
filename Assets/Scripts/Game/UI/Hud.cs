@@ -52,13 +52,14 @@ namespace Firstlight.Game.UI
         Vector2 _rightDown; bool _rightHeld;
         int _confirmDemolish = -1;
 
-        public Hud(GameController g) { G = g; }
+        public Hud(GameController g) { G = g; InitGuide(); }
 
         // ================================================================== actions (mouse and -uishots both call these)
 
         public void StartPlacing(BuildingDef d)
         {
             if (d == null) return;
+            if (PlaceDef != d) PlaceRot = 0;
             Mode = ToolMode.Place; PlaceDef = d;
             Select(null); SelectCitizen(null);
         }
@@ -89,13 +90,15 @@ namespace Firstlight.Game.UI
         /// <summary>Esc: closes the topmost thing open, else drops the tool, else the selection.</summary>
         public void Back()
         {
+            if (MenuOpen) { MenuBack(); return; }
             if (EndOpen) EndOpen = false;
             else if (ResearchOpen) ResearchOpen = false;
             else if (HelpOpen) HelpOpen = false;
             else if (Mode != ToolMode.None && !S.NeedsCampfire) CancelTool();
             else if (BuildCategory != null) BuildCategory = null;
             else if (GoalsOpen || JobsOpen || StocksOpen || LawsOpen) GoalsOpen = JobsOpen = StocksOpen = LawsOpen = false;
-            else { Select(null); SelectCitizen(null); }
+            else if (Selected != null || SelectedCitizen != null) { Select(null); SelectCitizen(null); }
+            else OpenMenu();                       // nothing left to close: the game menu
         }
 
         /// <summary>A left click on the world at the pointer: place, demolish or select.</summary>
@@ -110,7 +113,7 @@ namespace Firstlight.Game.UI
             }
             if (Mode == ToolMode.Place && PlaceDef != null)
             {
-                var b = S.Place(PlaceDef, PlaceOrigin(PlaceDef, HoverCell), out string why);
+                var b = S.Place(PlaceDef, PlaceOrigin(PlaceDef, HoverCell, PlaceRot), PlaceRot, out string why);
                 if (b == null) { PlaceReason = why; return; }
                 if (b.Def.townCenter) OnCampfirePlaced(b);
                 if (!keepTool || b.Def.unique) { Mode = ToolMode.None; PlaceDef = null; }
@@ -176,6 +179,16 @@ namespace Firstlight.Game.UI
         public void Update(float dt)
         {
             if (S == null) return;
+            if (MenuOpen)
+            {
+                // The game menu holds every key but Esc (and the world gets no input).
+                OrbitCamera.PointerOverUI = true;
+                OrbitCamera.KeyboardCaptured = true;
+                var k = Keyboard.current;
+                if (k != null && k.escapeKey.wasPressedThisFrame) MenuBack();
+                if (!MenuOpen) OrbitCamera.KeyboardCaptured = false;
+                return;
+            }
             if (S.NeedsCampfire && Mode != ToolMode.Place) StartPlacing(D.Buildings.Find(b => b.townCenter));
             bool overUI = PointerOverUI;
             OrbitCamera.PointerOverUI = overUI;
@@ -199,6 +212,8 @@ namespace Firstlight.Game.UI
                 if (S.TownCenter != null) JumpTo(S.TownCenter.Center, 34f);
             }
             CheckEnd();
+            UpdateGuide();
+            UpdateHints();
             if (Selected != null && !Selected.Alive) Select(null);
             if (SelectedCitizen != null && SelectedCitizen.Gone) SelectCitizen(null);
             PushToView();
@@ -218,6 +233,8 @@ namespace Firstlight.Game.UI
             if (kb.rKey.wasPressedThisFrame && !S.NeedsCampfire) ToggleResearch();
             if (kb.lKey.wasPressedThisFrame && !S.NeedsCampfire && !ResearchOpen) ToggleLaws();
             if (kb.f9Key.wasPressedThisFrame) G.ToggleAuto();
+            if (kb.f5Key.wasPressedThisFrame) G.QuickSave();
+            if (kb.f8Key.wasPressedThisFrame) { G.QuickLoad(); return; }
             if (kb.spaceKey.wasPressedThisFrame) G.TogglePause();
             if (kb.digit1Key.wasPressedThisFrame) G.SetSpeed(1);
             if (kb.digit2Key.wasPressedThisFrame) G.SetSpeed(2);
@@ -228,8 +245,13 @@ namespace Firstlight.Game.UI
             if (kb.jKey.wasPressedThisFrame) ToggleJobs();
             if (kb.tKey.wasPressedThisFrame) ToggleStocks();
             if (kb.bKey.wasPressedThisFrame) OpenCategory(BuildCategory == null ? Categories[0] : BuildCategory);
+            if (Mode == ToolMode.Place && PlaceDef != null && !PlaceDef.path)
+            {
+                if (kb.periodKey.wasPressedThisFrame) RotatePlacement(1);
+                if (kb.commaKey.wasPressedThisFrame) RotatePlacement(-1);
+            }
             if (kb.xKey.wasPressedThisFrame || kb.deleteKey.wasPressedThisFrame) { if (Mode == ToolMode.Demolish) CancelTool(); else StartDemolish(); }
-            if (kb.f8Key.wasPressedThisFrame && S.NeedsCampfire) PointAtSuggestedSite();
+            if (kb.tabKey.wasPressedThisFrame && S.NeedsCampfire) PointAtSuggestedSite();
         }
 
         void MouseInput(bool overUI)
@@ -264,12 +286,20 @@ namespace Firstlight.Game.UI
             JumpTo(c);
         }
 
-        public static int2 PlaceOrigin(BuildingDef d, int2 cell) => new int2(cell.x - (d.sizeX - 1) / 2, cell.y - (d.sizeY - 1) / 2);
+        public static int2 PlaceOrigin(BuildingDef d, int2 cell, int rot = 0)
+        {
+            var size = Settlement.Size(d, rot);
+            return new int2(cell.x - (size.x - 1) / 2, cell.y - (size.y - 1) / 2);
+        }
+
+        /// <summary>Quarter turns of the building being placed (, and . while placing); its door turns with it.</summary>
+        public int PlaceRot { get; private set; }
+        public void RotatePlacement(int dir) { PlaceRot = (PlaceRot + dir + 4) & 3; }
 
         /// <summary>Ground point under the pointer (marching the ray over the height field) and what is there.</summary>
         void UpdateHover()
         {
-            HoverValid = false; HoverBuilding = null;
+            HoverValid = false; HoverBuilding = null; HoverCitizen = null;
             var cam = G.Cam.Cam;
             if (cam == null) return;
             var ray = cam.ScreenPointToRay(PointerScreen);
@@ -298,9 +328,11 @@ namespace Firstlight.Game.UI
             HoverPoint = new float2(p.x, p.z);
             HoverCell = new int2((int)p.x, (int)p.z);
             HoverBuilding = S.BuildingAtCell(HoverCell);
+            HoverCitizen = G.SView.CitizenNear(HoverPoint, 0.6f);
+            if (HoverCitizen != null) foreach (var (dc, dp) in G.SView.Drawn) if (dc == HoverCitizen) { HoverCitizenPos = dp; break; }
             if (Mode == ToolMode.Place && PlaceDef != null)
             {
-                PlaceOk = S.CanPlace(PlaceDef, PlaceOrigin(PlaceDef, HoverCell), out string why);
+                PlaceOk = S.CanPlace(PlaceDef, PlaceOrigin(PlaceDef, HoverCell, PlaceRot), PlaceRot, out string why);
                 PlaceReason = why;
             }
         }
@@ -321,11 +353,12 @@ namespace Firstlight.Game.UI
                 v.PathPreviewValid = v.PathPreview.Count == 0 || S.CanPlacePath(v.PathPreview[v.PathPreview.Count - 1], out _);
             }
             v.DemolishHover = Mode == ToolMode.Demolish && !PointerOverUI ? HoverBuilding : null;
+            v.HoverCitizen = Mode == ToolMode.None && !PointerOverUI ? HoverCitizen : null;
             if (v.GhostDef != null)
             {
-                var o = PlaceOrigin(PlaceDef, HoverCell);
-                v.GhostOrigin = o; v.GhostValid = PlaceOk;
-                AddRadii(v, PlaceDef, Settlement.FootprintCenter(PlaceDef, o));
+                var o = PlaceOrigin(PlaceDef, HoverCell, PlaceRot);
+                v.GhostOrigin = o; v.GhostValid = PlaceOk; v.GhostRot = PlaceRot;
+                AddRadii(v, PlaceDef, Settlement.FootprintCenter(PlaceDef, o, PlaceRot));
             }
             else if (Selected != null && Selected.Alive) AddRadii(v, Selected.Def, Selected.Center);
         }
@@ -349,6 +382,7 @@ namespace Firstlight.Game.UI
         {
             if (S == null) return;
             Ensure();
+            ClickSound();
             _rects.Clear();
             _tip = null;
             if (Hidden) { SwapRects(); return; }
@@ -358,12 +392,17 @@ namespace Firstlight.Game.UI
             {
                 DrawCampfirePrompt();
                 DrawPlacementTip();
+                DrawGuide();
             }
             else
             {
                 DrawFeed();
                 DrawBuildBar();
+                DrawGuide();
                 DrawInfo();
+                DrawTrade();
+                DrawHint();
+                DrawHoverTag();
                 if (GoalsOpen) DrawGoals();
                 if (JobsOpen) DrawJobs();
                 if (StocksOpen) DrawStocks();
@@ -375,12 +414,24 @@ namespace Firstlight.Game.UI
             }
             if (HelpOpen) DrawHelp();
             DrawBanner();
+            DrawGameMenu();
+            DrawConfirm();
+            DrawToast();
             DrawTip();
             GUI.matrix = old;
             SwapRects();
         }
 
         void SwapRects() { _prevRects.Clear(); _prevRects.AddRange(_rects); }
+
+        /// <summary>A soft click when a press lands on a panel (any button: they all sit on registered panels).</summary>
+        void ClickSound()
+        {
+            var e = Event.current;
+            if (e.type != EventType.MouseDown || e.button != 0) return;
+            var v = e.mousePosition / Scale;
+            foreach (var r in _prevRects) if (r.Contains(v)) { G.Sound?.Click(); return; }
+        }
 
         /// <summary>Draws a panel background and registers it as UI (blocks world clicks under it).</summary>
         Rect Box(Rect r, GUIStyle style = null)
@@ -433,7 +484,7 @@ namespace Firstlight.Game.UI
             var r = Box(new Rect(VW / 2 - 330, 18, 660, 112));
             GUI.Label(new Rect(r.x + 20, r.y + 12, 620, 30), "Choose a site for the campfire", Title);
             GUI.Label(new Rect(r.x + 20, r.y + 44, 620, 40), "The band will settle around it. Look for open ground with woods, loose rock, water and game within reach.", SmallWrap);
-            if (GUI.Button(new Rect(r.x + 20, r.y + 78, 190, 26), "Show a good site (F8)", Button)) PointAtSuggestedSite();
+            if (GUI.Button(new Rect(r.x + 20, r.y + 78, 190, 26), "Show a good site (Tab)", Button)) PointAtSuggestedSite();
             GUI.Label(new Rect(r.x + 226, r.y + 78, 420, 26), "Left-click to place.   Wheel, WASD, Q/E, right-drag: camera", Small);
         }
 
@@ -456,8 +507,10 @@ namespace Firstlight.Game.UI
             {
                 int n = _pathStart != null ? _pathCells.Count(c => S.CanPlacePath(c, out _)) : 0;
                 bool ok = S.CanPlacePath(HoverCell, out string why);
-                lines.Add(_pathStart != null ? $"{n} tile{(n == 1 ? "" : "s")} to lay" : ok ? "Press and drag to lay a line of path" : Col(why, Bad));
-                lines.Add(Col("People walk faster on paths, and their routes bend onto them. Free.", Dim));
+                if (_pathStart != null && n == 0 && _pathCells.Count > 0) S.CanPlacePath(_pathCells[_pathCells.Count - 1], out why);
+                lines.Add(_pathStart != null ? (n > 0 ? $"{n} tile{(n == 1 ? "" : "s")} to lay" : Col(why, Bad)) : ok ? "Press and drag to lay a line of path" : Col(why, Bad));
+                var pc = S.PathDef?.cost;
+                lines.Add(Col("People walk faster on paths, and their routes bend onto them." + (pc != null && pc.Length > 0 ? $" Each tile: {string.Join(", ", pc.Select(a => $"{a.amount:0.#} {ResName(a.id).ToLower()}"))}." : ""), Dim));
             }
             else if (!PlaceOk)
             {
@@ -466,7 +519,7 @@ namespace Firstlight.Game.UI
             }
             else
             {
-                var c = Settlement.FootprintCenter(d, PlaceOrigin(d, HoverCell));
+                var c = Settlement.FootprintCenter(d, PlaceOrigin(d, HoverCell, PlaceRot), PlaceRot);
                 if (d.HasNearby)
                 {
                     int n = M.CountFeature(d.nearby.feature, c, d.nearby.radius);
@@ -484,12 +537,14 @@ namespace Firstlight.Game.UI
                     lines.Add($"Within reach: trees {M.CountFeature("trees", c, 11)}, rock {M.CountFeature("rocks", c, 13)}, water {M.CountFeature("water", c, 14)}, game {M.CountFeature("wildlife", c, 18)}");
                     lines.Add(Col($"Warms homes within {d.warmthRadius}", Dim));
                 }
-                if (!string.IsNullOrEmpty(d.onDeposit)) lines.Add(Col($"On the {d.onDeposit} deposit: {S.DepositCells(d, PlaceOrigin(d, HoverCell))} cells (marked)", Good));
+                if (!string.IsNullOrEmpty(d.onDeposit)) lines.Add(Col($"On the {d.onDeposit} deposit: {S.DepositCells(d, PlaceOrigin(d, HoverCell, PlaceRot), PlaceRot)} cells (marked)", Good));
                 if (d.waterRadius > 0) { var c2 = Settlement.FootprintCenter(d, PlaceOrigin(d, HoverCell)); float wr = d.waterRadius * S.Effect("water.radius"); int dry = S.Buildings.Count(h => h.Active && h.Def.housing > 0 && h.Residents > 0 && !h.HasWater && math.distance(h.Center, c2) <= wr); lines.Add(dry > 0 ? Col($"Brings water to {dry} home{(dry == 1 ? "" : "s")} without it", Good) : Col("No homes without water in reach", Dim)); }
                 if (d.crop && d.irrigationRadius > 0) { var c2 = Settlement.FootprintCenter(d, PlaceOrigin(d, HoverCell)); lines.Add(M.CountFeature("water", c2, d.irrigationRadius) > 0 ? Col("Water in reach: can be irrigated", Good) : Col("No water in reach to irrigate", Dim)); }
+                if (!d.townCenter && S.FloodRiskCells(d, PlaceOrigin(d, HoverCell, PlaceRot), PlaceRot) > 0)
+                    lines.Add(d.crop ? Col("On the floodplain: a spring flood leaves silt (a better harvest that year)", Good) : Col("On the floodplain: spring floods may reach it", Warn));
                 if (d.cost.Length > 0) lines.Add("Cost: " + Cost(d));
             }
-            if (!d.path) lines.Add(Col(d.townCenter ? "Left-click to place" : "Left-click to place, Shift for several, right-click to stop", Dim));
+            if (!d.path) lines.Add(Col(d.townCenter ? "Left-click to place" : "Left-click to place, Shift for several, comma and period turn it, right-click to stop", Dim));
             string text = string.Join("\n", lines);
             var style = new GUIStyle(Wrap) { fontSize = 15 };
             float h = style.CalcHeight(new GUIContent(text), 360) + 14;
@@ -499,6 +554,25 @@ namespace Firstlight.Game.UI
             GUI.Box(r, GUIContent.none, UiTheme.Tip);
             GUI.Label(new Rect(r.x + 10, r.y + 7, 360, h - 12), text, style);
         }
+
+        /// <summary>The name and doing of the person under the pointer (with a faint ring in the view).</summary>
+        void DrawHoverTag()
+        {
+            var c = HoverCitizen;
+            if (c == null || Mode != ToolMode.None || PointerOverUI) return;
+            var cam = G.Cam.Cam;
+            var at = cam.WorldToScreenPoint(new Vector3(HoverCitizenPos.x, M.HeightAt(HoverCitizenPos.x, HoverCitizenPos.y) + 1.15f, HoverCitizenPos.y));
+            if (at.z <= 0) return;
+            string doing = c.Job != null ? c.Job.Def.workerTitle ?? c.Job.Def.name : c.IsBuilder ? "Builder" : c.Age < D.Balance.adultAge ? "Child" : "Hauler";
+            var text = $"<b>{c.Name}</b>  {Col(doing, Dim)}";
+            var size = Label.CalcSize(new GUIContent(text));
+            var r = new Rect(at.x / Scale - size.x / 2 - 8, (UnityEngine.Screen.height - at.y) / Scale - 30, size.x + 16, 24);
+            GUI.Box(r, GUIContent.none, UiTheme.Tip);
+            GUI.Label(r, text, Center);
+        }
+
+        public Citizen HoverCitizen { get; private set; }
+        public float2 HoverCitizenPos { get; private set; }
 
         // ================================================================== small helpers
 

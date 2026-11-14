@@ -13,7 +13,7 @@ namespace Firstlight.Game.UI
 
         Rect BeginSide(string title, float w, float h, System.Action close)
         {
-            var r = Box(new Rect(SideX(w), 62, w, h));
+            var r = Box(new Rect(SideX(w), TopBarHeight + 8, w, h));
             GUI.Label(new Rect(r.x + 16, r.y + 10, w - 60, 26), title, Title);
             if (GUI.Button(new Rect(r.xMax - 34, r.y + 10, 24, 22), "x", Button)) close();
             _lx = r.x + 16; _lw = w - 32; _ly = r.y + 44;
@@ -127,7 +127,7 @@ namespace Firstlight.Game.UI
 
         void DrawHelp()
         {
-            var r = Box(new Rect(VW / 2 - 330, VH / 2 - 314, 660, 628));
+            var r = Box(new Rect(VW / 2 - 330, VH / 2 - 356, 660, 712));
             GUI.Label(new Rect(r.x + 20, r.y + 12, 400, 28), "Controls", Title);
             if (GUI.Button(new Rect(r.xMax - 34, r.y + 12, 24, 22), "x", Button)) HelpOpen = false;
             string[,] keys =
@@ -138,6 +138,9 @@ namespace Firstlight.Game.UI
                 { "Left-click", "Select a building or person; place what you are building" },
                 { "Shift + left-click", "Place several of the same building" },
                 { "Right-click, Esc", "Stop placing or removing; close a panel; clear the selection" },
+                { ",  and  .", "Turn a building while placing it (its door turns with it)" },
+                { "Esc (nothing open)", "Game menu: save, load, settings, quit" },
+                { "F5 / F8", "Quicksave / quickload" },
                 { "B", "Build menu" },
                 { "X or Delete", "Demolish tool" },
                 { "Space", "Pause / resume" },
@@ -158,18 +161,26 @@ namespace Firstlight.Game.UI
                 GUI.Label(new Rect(r.x + 240, y, 400, 26), keys[i, 1], Label);
                 y += 28;
             }
-            if (GUI.Button(new Rect(r.x + 24, r.yMax - 46, 140, 30), "Quit the game", Button)) Application.Quit();
-            GUI.Label(new Rect(r.x + 180, r.yMax - 46, 460, 30), Col("Saving arrives in a later build.", Faint), Small);
+            if (GUI.Button(new Rect(r.x + 24, r.yMax - 46, 160, 30), "Game menu (Esc)", Button)) { HelpOpen = false; OpenMenu(); }
+            GUI.Label(new Rect(r.x + 200, r.yMax - 46, 440, 30), Col("Saves itself at the start of every season.", Faint), Small);
         }
 
         // ------------------------------------------------------------------ warnings and events
 
         int _feedSeen;
+        readonly System.Collections.Generic.List<(int idx, int n)> _feedRows = new();
+
+        bool ShownAsChip(string text)
+        {
+            string key = text.Length > 14 ? text.Substring(0, 14) : text;
+            foreach (var w in S.Warnings) if (w.StartsWith(key)) return true;
+            return false;
+        }
         float[] _feedTime = new float[0];
 
         void DrawFeed()
         {
-            float y = 60;
+            float y = TopBarHeight + 8;
             // Standing problems, as chips.
             foreach (var w in S.Warnings)
             {
@@ -184,26 +195,38 @@ namespace Firstlight.Game.UI
             if (_feedTime.Length < S.Events.Count) System.Array.Resize(ref _feedTime, S.Events.Count + 256);
             for (; _feedSeen < S.Events.Count; _feedSeen++) _feedTime[_feedSeen] = Time.unscaledTime;
             y += 6;
-            int first = math.max(0, S.Events.Count - 7);
-            for (int i = first; i < S.Events.Count; i++)
+            // The last few events, newest at the bottom: a warning already standing as a chip is not repeated here, and
+            // the same line coming again is shown once with a count.
+            _feedRows.Clear();
+            for (int i = S.Events.Count - 1; i >= 0 && _feedRows.Count < 7 && i >= S.Events.Count - 60; i--)
             {
+                var e = S.Events[i];
+                if (e.Severity == Severity.Warning && ShownAsChip(e.Text)) continue;
+                if (_feedRows.Count > 0 && S.Events[_feedRows[_feedRows.Count - 1].idx].Text == e.Text) { var last = _feedRows[_feedRows.Count - 1]; _feedRows[_feedRows.Count - 1] = (last.idx, last.n + 1); continue; }
+                _feedRows.Add((i, 1));
+            }
+            for (int k = _feedRows.Count - 1; k >= 0; k--)
+            {
+                var (i, repeats) = _feedRows[k];
                 var e = S.Events[i];
                 float age = Time.unscaledTime - _feedTime[i];
                 float a = math.saturate(1.4f - age / 40f);
                 if (a <= 0.05f) continue;
                 var col = e.Severity == Severity.Bad ? Bad : e.Severity == Severity.Warning ? Warn : Text;
-                var content = new GUIContent(e.Text);
-                var style = new GUIStyle(Label) { fontSize = 14 };
-                float wd = math.min(460, style.CalcSize(content).x + 26);
-                var r = new Rect(10, y, wd, 24);
+                string line = repeats > 1 ? $"{e.Text}  {Col($"x{repeats}", Faint)}" : e.Text;
+                var content = new GUIContent(line);
+                var style = new GUIStyle(Label) { fontSize = 14, wordWrap = true };
+                float wd = math.min(520, style.CalcSize(content).x + 26);
+                float hh = math.max(24, style.CalcHeight(content, wd - 14) + 6);
+                var r = new Rect(10, y, wd, hh);
                 var old = GUI.color; GUI.color = new Color(1, 1, 1, a);
                 Box(r, UiTheme.Header);
                 Fill(new Rect(r.x + 1, r.y + 1, 4, r.height - 2), col);
-                GUI.Label(new Rect(r.x + 12, r.y, wd - 14, 24), Col(e.Text, col), style);
+                GUI.Label(new Rect(r.x + 12, r.y + 3, wd - 14, hh - 6), repeats > 1 ? Col(e.Text, col) + "  " + Col($"x{repeats}", Faint) : Col(e.Text, col), style);
                 if (e.HasPlace && GUI.Button(r, GUIContent.none, GUIStyle.none)) JumpTo(e.Place);
                 if (e.HasPlace) Tip(r, $"Day {e.Day + 1}. Click to go there.");
                 GUI.color = old;
-                y += 27;
+                y += hh + 3;
             }
         }
     }

@@ -411,8 +411,8 @@
       ]
     },
     {
-      "id": "dirt_path", "name": "Dirt Path", "age": "agricultural", "category": "Paths", "description": "Trodden earth. People walk faster on paths and their routes bend onto them. Drag to lay a line of tiles; free and immediate.",
-      "sizeX": 1, "sizeY": 1, "cost": [], "buildWork": 0, "unlockedBy": "", "maxWorkers": 0, "path": true, "color": "#7a6449",
+      "id": "dirt_path", "name": "Dirt Path", "age": "agricultural", "category": "Paths", "description": "Trodden earth. People walk faster on paths and their routes bend onto them. Drag to lay a line of tiles; each tile costs half a stone and is laid at once.",
+      "sizeX": 1, "sizeY": 1, "cost": [{ "id": "stone", "amount": 0.5 }], "buildWork": 0, "unlockedBy": "", "maxWorkers": 0, "path": true, "color": "#7a6449",
       "parts": []
     },
     {

@@ -25,7 +25,7 @@ namespace Firstlight.Game
         public readonly GameData Data;
         public readonly GameMap Map;
         readonly Balance B;
-        readonly System.Random _rng;
+        readonly SimRandom _rng;
         public readonly int Seed;
 
         public readonly List<Building> Buildings = new();
@@ -43,7 +43,7 @@ namespace Firstlight.Game
         public string SeasonName => B.seasonNames[Season];
         public int DayOfSeason => Day % B.daysPerSeason;
         public int Year => Day / DaysPerYear;
-        public float Temperature => B.seasonTemperature[Season];
+        public float Temperature => B.seasonTemperature[Season] + (Season == 3 ? Diff.winterTemperature : 0f);
         public int WintersSurvived { get; private set; }
         public bool IsWorkTime => DayFraction >= B.workdayStart && DayFraction < B.workdayEnd;
         public float WorkdaySeconds => (B.workdayEnd - B.workdayStart) * B.dayLengthSeconds;
@@ -90,7 +90,7 @@ namespace Firstlight.Game
         public Settlement(GameData data, GameMap map, int seed)
         {
             Data = data; Map = map; B = data.Balance; Seed = seed;
-            _rng = new System.Random(seed ^ 0x5e771e);
+            _rng = new SimRandom(seed ^ 0x5e771e);
             ResCount = data.Resources.Count;
             for (int i = 0; i < ResCount; i++) _resIndex[data.Resources[i].id] = i;
             StockTotals = new float[ResCount];
@@ -218,12 +218,14 @@ namespace Firstlight.Game
             }
             RefreshStock();
             DailyCrops();
+            DailyFlood();
             DailyGoods();
             DailyNeeds();
             DailySpoilage();
             DailyPopulation();
             DailyUnrest();
             DailyOutbreak();
+            DailyTradeExpiry();
             TraderVisit();
             Map.DailyRegrowth(_rng, B);
             if (DayOfSeason == 0 && Map.CommitSoftCostChanges()) PrefetchPaths();
@@ -482,7 +484,7 @@ namespace Firstlight.Game
             for (int s = Season; s < 4; s++)
             {
                 int days = s == Season ? B.daysPerSeason - DayOfSeason : B.daysPerSeason;
-                float perDay = homes * B.firewoodPerHome[s];
+                float perDay = homes * B.firewoodPerHome[s] * Diff.firewood;
                 if (TownCenter != null && TownCenter.Def.fuelPerDay != null && TownCenter.Def.fuelPerDay.Length == 4) perDay += TownCenter.Def.fuelPerDay[s];
                 need += perDay * days;
             }

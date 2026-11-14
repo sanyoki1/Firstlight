@@ -92,7 +92,7 @@ namespace Firstlight.Game.UI
         void DrawResearch()
         {
             if (_nodes == null) LayoutResearch();
-            var r = Box(new Rect(14, 58, VW - 28, VH - 72));
+            var r = Box(new Rect(14, TopBarHeight + 4, VW - 28, VH - TopBarHeight - 18));
             Fill(new Rect(r.x + 1, r.y + 1, r.width - 2, r.height - 2), new Color(0.095f, 0.1f, 0.1f, 1f));   // opaque: a screen of its own
             GUI.Label(new Rect(r.x + 20, r.y + 12, 300, 30), "Research", new GUIStyle(Title) { fontSize = 24 });
             if (GUI.Button(new Rect(r.xMax - 44, r.y + 12, 30, 28), "x", Button)) ResearchOpen = false;

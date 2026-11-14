@@ -24,7 +24,10 @@ namespace Firstlight.Game.UI
         static bool _ready;
 
         /// <summary>Scale from virtual (1080 high) to real pixels.</summary>
-        public static float Scale => Mathf.Clamp(Screen.height / 1080f, 0.6f, 3f);
+        // At least 0.75: at 1280x720 the layout is 1707 wide instead of 1920 and the text stays readable.
+        public static float Scale => Mathf.Clamp(Screen.height / 1080f * UserScale, 0.75f, 3f);
+        /// <summary>The player's interface size setting (1 = the 1080-high layout fitted to the screen height).</summary>
+        public static float UserScale = 1f;
         public static float VW => Screen.width / Scale;
         public static float VH => Screen.height / Scale;
 

@@ -256,7 +256,10 @@ namespace Firstlight.Game
             for (int i = 0; i < 2; i++) yield return null;
             _shotNo++;
             string path = Path.Combine(_shotDir, $"{_shotNo:00}_{name}.png");
-            _shotRT ??= new RenderTexture(1920, 1080, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB) { antiAliasing = 4 };
+            // The shot is the window's size (the HUD lays itself out for it: -p4shots also takes 1280x720).
+            int sw = Application.isBatchMode ? 1920 : Screen.width, sh = Application.isBatchMode ? 1080 : Screen.height;
+            if (_shotRT != null && (_shotRT.width != sw || _shotRT.height != sh)) { _shotRT.Release(); _shotRT = null; }
+            _shotRT ??= new RenderTexture(sw, sh, 24, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB) { antiAliasing = 4 };
             Cam.Cam.targetTexture = _shotRT;
             _pendingShot = path; _guiDrawn = false;
             float speed = Sim.Speed;

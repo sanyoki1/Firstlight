@@ -64,7 +64,14 @@ namespace Firstlight.Game
         public Citizen SelectedCitizen;
         public BuildingDef GhostDef;
         public int2 GhostOrigin;
+        public int GhostRot;
         public bool GhostValid;
+        /// <summary>The person under the pointer: a faint ring.</summary>
+        public Citizen HoverCitizen;
+        /// <summary>Set each frame by the game: 0 by day, 1 at deep night (fires light the ground round them).</summary>
+        public float Night;
+        /// <summary>Set each frame by the game: the point trees are cut away round (the camera focus) and how strongly.</summary>
+        public float2 CutCenter; public float CutRadius, CutStrength;
         public Building DemolishHover;
         public readonly List<(float2 center, float radius, Color color)> Radii = new();
         public bool HidePeople;           // perf probe only
@@ -74,7 +81,7 @@ namespace Firstlight.Game
         public readonly List<int2> PathPreview = new();
         public bool PathPreviewValid = true;
 
-        static readonly uint White = Pal.Pack(Color.white);
+        static readonly uint White = Pal.Pack(Color.white), Flooded = Pal.Pack(new Color(0.62f, 0.66f, 0.72f));
 
         public SettlementView(Settlement s, WorldView w, Wildlife wild)
         {
@@ -135,11 +142,12 @@ namespace Firstlight.Game
         // ------------------------------------------------------------------ ground
 
         /// <summary>Ground height for a footprint: between its lowest and average corner, so little floats or sinks.</summary>
-        public float BaseHeight(BuildingDef d, int2 o)
+        public float BaseHeight(BuildingDef d, int2 o, int rot = 0)
         {
+            var size = Settlement.Size(d, rot);
             float lo = float.MaxValue, sum = 0; int n = 0;
-            for (int y = o.y; y <= o.y + d.sizeY; y++)
-                for (int x = o.x; x <= o.x + d.sizeX; x++)
+            for (int y = o.y; y <= o.y + size.y; y++)
+                for (int x = o.x; x <= o.x + size.x; x++)
                 {
                     if (x < 0 || y < 0 || x > M.W || y > M.H) continue;
                     float h = M.Corners[y * (M.W + 1) + x];
@@ -157,7 +165,7 @@ namespace Firstlight.Game
                 Array.Resize(ref _ground, _base.Length);
                 for (int i = old; i < _base.Length; i++) _base[i] = float.NaN;
             }
-            if (float.IsNaN(_base[b.Id])) _base[b.Id] = BaseHeight(b.Def, b.Origin);
+            if (float.IsNaN(_base[b.Id])) _base[b.Id] = BaseHeight(b.Def, b.Origin, b.Rot);
             return _base[b.Id];
         }
 
@@ -167,12 +175,12 @@ namespace Firstlight.Game
             byte want = b.Alive ? (byte)1 : (byte)2;
             if (_ground[b.Id] == want || (!b.Alive && _ground[b.Id] == 0)) return;
             _ground[b.Id] = want;
-            for (int y = b.Origin.y - 1; y <= b.Origin.y + b.Def.sizeY; y++)
-                for (int x = b.Origin.x - 1; x <= b.Origin.x + b.Def.sizeX; x++)
+            for (int y = b.Origin.y - 1; y <= b.Origin.y + b.SY; y++)
+                for (int x = b.Origin.x - 1; x <= b.Origin.x + b.SX; x++)
                 {
                     if (!M.InBounds(x, y)) continue;
                     int c = M.Cell(x, y);
-                    bool inside = x >= b.Origin.x && x < b.Origin.x + b.Def.sizeX && y >= b.Origin.y && y < b.Origin.y + b.Def.sizeY;
+                    bool inside = x >= b.Origin.x && x < b.Origin.x + b.SX && y >= b.Origin.y && y < b.Origin.y + b.SY;
                     if (!inside && c != b.Door) continue;
                     if (b.Alive) W.SetCellMaterial(c, "dirt");
                     else if (M.BuildingAt[c] < 0) W.RestoreCellMaterial(c);
@@ -186,7 +194,9 @@ namespace Firstlight.Game
             _frame++;
             _anim += dt * S.Speed;
             SyncPaths();
+            _fires.Clear();
             DrawBuildings();
+            PushLights();
             DrawOres();
             DrawPeople(dt);
             DrawKills();
@@ -204,10 +214,11 @@ namespace Firstlight.Game
                 if (!b.Alive) continue;
                 float y = BaseOf(b);
                 var at = new float3(b.Center.x, y, b.Center.y);
+                float yaw = Yaw(b.Rot);
                 var (body, glow, height) = Def(b.Def);
                 if (b.Active)
                 {
-                    body.Add(new InstanceData(at, 0, new float3(1f), White));
+                    body.Add(new InstanceData(at, yaw, new float3(1f), b.Flooded ? Flooded : White));
                     if (b.Def.crop)
                     {
                         // The crop: bare soil, shoots, growing, ripe, stubble; each field ripens a shade differently.
@@ -218,20 +229,26 @@ namespace Firstlight.Game
                         {
                             // Mid-harvest: stubble where it is cut, the ripe rows still standing beyond.
                             int rows = BuildingMeshes.CropRows(b.Def), cut = math.clamp((int)math.round(b.Harvested * rows), 1, rows - 1);
-                            CropFor(b.Def, 4, kind)?.Add(new InstanceData(at, 0, new float3(1f), tint));
-                            CropFor(b.Def, 3, kind, cut)?.Add(new InstanceData(at, 0, new float3(1f), tint));
+                            CropFor(b.Def, 4, kind)?.Add(new InstanceData(at, yaw, new float3(1f), tint));
+                            CropFor(b.Def, 3, kind, cut)?.Add(new InstanceData(at, yaw, new float3(1f), tint));
                         }
-                        else CropFor(b.Def, b.CropStage(S.Season), kind)?.Add(new InstanceData(at, 0, new float3(1f), tint));
+                        else CropFor(b.Def, b.CropStage(S.Season), kind)?.Add(new InstanceData(at, yaw, new float3(1f), tint));
                     }
                     if (b.UpgradeTo != null) DrawRising(b, at, b.UpgradeTo, BuildingMeshes.For(b.UpgradeTo).height, false);
                     // Fires burn while there is fuel; a town fire with nothing to burn shows only ash.
                     bool lit = b.Def.warmthRadius > 0 ? b.Fueled : b.Def.knowledgePerWorker > 0 ? b.Workers > 0 : b.Workers > 0 || b.Def.maxWorkers == 0;
-                    if (glow != null && lit) glow.Add(new InstanceData(at, 0, new float3(1f, flicker, 1f), White));
+                    if (glow != null && lit)
+                    {
+                        glow.Add(new InstanceData(at, yaw, new float3(1f, flicker, 1f), White));
+                        // A pool of firelight round it at night: the town fire reaches farthest.
+                        float reach = b.Def.townCenter ? 5.5f : b.Def.warmthRadius > 0 || b.Def.knowledgePerWorker > 0 ? 3.6f : 2.6f;
+                        _fires.Add(new Vector4(b.Center.x, y + 0.45f, b.Center.y, reach * (0.94f + 0.06f * flicker)));
+                    }
                     DrawStore(b, at);
                     continue;
                 }
                 // A site: marked out, its materials piled up as they arrive, then the building rising inside scaffolding.
-                SiteMarks(b.Def).Add(new InstanceData(at, 0, new float3(1f), White));
+                SiteMarks(b.Def).Add(new InstanceData(at, yaw, new float3(1f), White));
                 DrawRising(b, at, b.Def, height, true);
             }
         }
@@ -243,21 +260,51 @@ namespace Firstlight.Game
         void DrawRising(Building b, float3 at, BuildingDef d, float height, bool rises)
         {
             float rise = math.saturate((b.Progress - 0.3f) / 0.7f);
+            float yaw = Yaw(b.Rot);
             if (rises && rise > 0.01f)
             {
                 byte cut = (byte)math.clamp(math.round(height * rise / 4f * 255f), 1, 254);
-                Def(d).body.Add(new InstanceData(at, 0, new float3(1f), White & 0x00ffffffu | ((uint)cut << 24)));
+                Def(d).body.Add(new InstanceData(at, yaw, new float3(1f), White & 0x00ffffffu | ((uint)cut << 24)));
             }
-            if (rise > 0.01f || !rises && b.MaterialsFraction > 0.2f) Scaffold(d).Add(new InstanceData(at, 0, new float3(1f), White));
+            if (rise > 0.01f || !rises && b.MaterialsFraction > 0.2f) Scaffold(d).Add(new InstanceData(at, yaw, new float3(1f), White));
             for (int i = 0; i < d.cost.Length && i < b.Delivered.Length; i++)
             {
                 float need = d.cost[i].amount;
                 float f = need <= 0 ? 0 : b.Delivered[i] / need * (1f - rise * 0.85f);   // used up as it rises
                 if (f < 0.02f) continue;
-                var p = new float2(b.Origin.x + 0.45f + i * 0.75f, b.Origin.y - 0.25f);
-                if (i * 0.75f > d.sizeX - 0.6f) p = new float2(b.Origin.x + d.sizeX + 0.25f, b.Origin.y + 0.45f + (i - 2) * 0.75f);
+                // Piles along the front (the door side), turned with the building.
+                var local = new float2(-d.sizeX * 0.5f + 0.45f + i * 0.75f, -d.sizeY * 0.5f - 0.25f);
+                if (i * 0.75f > d.sizeX - 0.6f) local = new float2(d.sizeX * 0.5f + 0.25f, -d.sizeY * 0.5f + 0.45f + (i - 2) * 0.75f);
+                var p = b.Center + Turn(local, yaw);
                 PileFor(S.ResIndex(d.cost[i].id)).Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), i * 0.7f, new float3(0.45f + 0.55f * math.saturate(f)), White));
             }
+        }
+
+        static float Yaw(int rot) => (rot & 3) * math.PI * 0.5f;
+
+        /// <summary>Turns a footprint-local offset like the models turn (the instance shader's yaw convention).</summary>
+        static float2 Turn(float2 p, float yaw) { math.sincos(yaw, out float s, out float c); return new float2(c * p.x + s * p.y, -s * p.x + c * p.y); }
+
+        readonly List<Vector4> _fires = new();
+        readonly Vector4[] _fireArr = new Vector4[16];
+        static readonly int FiresId = Shader.PropertyToID("_FL_Fires"), FireCountId = Shader.PropertyToID("_FL_FireCount"), FireStrengthId = Shader.PropertyToID("_FL_FireStrength");
+        static readonly int CutId = Shader.PropertyToID("_FL_Cut"), CutStrengthId = Shader.PropertyToID("_FL_CutStrength");
+
+        /// <summary>The 16 fires nearest the camera focus light the ground at night; the canopy cut-away point.</summary>
+        void PushLights()
+        {
+            int n = 0;
+            if (Night > 0.02f && _fires.Count > 0)
+            {
+                var c = CutCenter;
+                _fires.Sort((a, b) => math.distancesq(new float2(a.x, a.z), c).CompareTo(math.distancesq(new float2(b.x, b.z), c)));
+                for (; n < _fires.Count && n < 16; n++) _fireArr[n] = _fires[n];
+            }
+            Shader.SetGlobalVectorArray(FiresId, _fireArr);
+            Shader.SetGlobalFloat(FireCountId, n);
+            Shader.SetGlobalFloat(FireStrengthId, Night * 1.15f);
+            Shader.SetGlobalVector(CutId, new Vector4(CutCenter.x, CutCenter.y, 0, CutRadius));
+            Shader.SetGlobalFloat(CutStrengthId, CutStrength);
         }
 
         // ------------------------------------------------------------------ deposits and paths
@@ -411,7 +458,8 @@ namespace Firstlight.Game
             else if (carry >= 0) pose = (int)PersonModel.Pose.Carry0;
 
             bool child = c.Age < S.Data.Balance.adultAge;
-            float scale = child ? math.lerp(0.55f, 0.92f, math.saturate(c.Age / S.Data.Balance.adultAge)) : 1f;
+            // Drawn a touch larger than life (1.12) so people read at the usual zoom.
+            float scale = (child ? math.lerp(0.55f, 0.92f, math.saturate(c.Age / S.Data.Balance.adultAge)) : 1f) * 1.12f;
             var at = new float3(v.Pos.x, M.HeightAt(v.Pos.x, v.Pos.y), v.Pos.y);
             uint tint = Pal.Pack(new Color(0.86f + Hash(c.Id, 4) * 0.18f, 0.86f + Hash(c.Id, 5) * 0.13f, 0.82f + Hash(c.Id, 6) * 0.15f));
             _people[pose * 2 + (c.Female ? 1 : 0)].Add(new InstanceData(at, v.Yaw, new float3(scale), tint));
@@ -487,7 +535,7 @@ namespace Firstlight.Game
                 face = math.atan2(d.x, d.y);
                 return p;
             }
-            var spot = b.DoorPos + new float2((slot - 0.4f) * 1.4f, 0.55f);
+            var spot = b.DoorPos + Turn(new float2((slot - 0.4f) * 1.4f, 0.55f), Yaw(b.Rot));
             var to = b.Center - spot;
             face = math.atan2(to.x, to.y);
             return spot;
@@ -553,27 +601,29 @@ namespace Firstlight.Game
                 float r = math.max(Selected.Def.sizeX, Selected.Def.sizeY) * 0.75f;
                 _rings.Add(new InstanceData(new float3(Selected.Center.x, y, Selected.Center.y), 0, new float3(r, 1, r), Pal.Pack(sel)));
             }
-            if (SelectedCitizen != null)
+            if (SelectedCitizen != null || HoverCitizen != null)
             {
                 foreach (var (c, p) in Drawn)
-                    if (c == SelectedCitizen)
-                        _rings.Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), 0, new float3(0.45f, 1, 0.45f), Pal.Pack(sel)));
+                {
+                    if (c == SelectedCitizen) _rings.Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), 0, new float3(0.45f, 1, 0.45f), Pal.Pack(sel)));
+                    else if (c == HoverCitizen) _rings.Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), 0, new float3(0.4f, 1, 0.4f), Pal.Pack(new Color(0.7f, 0.68f, 0.6f))));
+                }
             }
             if (GhostDef != null)
             {
                 var col = GhostValid ? new Color(0.45f, 0.85f, 0.45f) : new Color(0.9f, 0.35f, 0.3f);
                 uint ghost = Pal.Pack(col) & 0x00ffffffu;                 // alpha 0 = ghost wash
-                var center = Settlement.FootprintCenter(GhostDef, GhostOrigin);
-                var at = new float3(center.x, BaseHeight(GhostDef, GhostOrigin), center.y);
-                Def(GhostDef).body.Add(new InstanceData(at, 0, new float3(1f), ghost));
-                SiteMarks(GhostDef).Add(new InstanceData(at, 0, new float3(1f), ghost));
-                var door = Settlement.DoorCell(GhostDef, GhostOrigin);
+                var center = Settlement.FootprintCenter(GhostDef, GhostOrigin, GhostRot);
+                var at = new float3(center.x, BaseHeight(GhostDef, GhostOrigin, GhostRot), center.y);
+                Def(GhostDef).body.Add(new InstanceData(at, Yaw(GhostRot), new float3(1f), ghost));
+                SiteMarks(GhostDef).Add(new InstanceData(at, Yaw(GhostRot), new float3(1f), ghost));
+                var door = Settlement.DoorCell(GhostDef, GhostOrigin, GhostRot);
                 _markers.Add(new InstanceData(new float3(door.x + 0.5f, M.HeightAt(door.x + 0.5f, door.y + 0.5f), door.y + 0.5f), 0, new float3(2f, 1f, 2f), Pal.Pack(col)));
             }
             if (DemolishHover != null && DemolishHover.Alive)
             {
                 var at = new float3(DemolishHover.Center.x, BaseOf(DemolishHover) + 0.01f, DemolishHover.Center.y);
-                Def(DemolishHover.Def).body.Add(new InstanceData(at, 0, new float3(1.02f), Pal.Pack(new Color(0.9f, 0.3f, 0.25f)) & 0x00ffffffu));
+                Def(DemolishHover.Def).body.Add(new InstanceData(at, Yaw(DemolishHover.Rot), new float3(1.02f), Pal.Pack(new Color(0.9f, 0.3f, 0.25f)) & 0x00ffffffu));
             }
             // Where the deposit is, while placing a mine or pit on it.
             if (DepositHint != Deposit.None && M.DepositVisible(DepositHint))

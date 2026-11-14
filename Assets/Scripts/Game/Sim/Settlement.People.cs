@@ -787,7 +787,7 @@ namespace Firstlight.Game
                 }
             }
             foreach (var b in Buildings)
-                if (b.Active && b.Def.IsWorkplace) b.Status = b.Paused ? "Paused" : !WantsWorkers(b) ? (Season == 3 ? "Nothing to do this season" : "The harvest is in") : b.Workers == 0 ? "No workers" : b.Status == "No workers" || b.Status == "Paused" ? "" : b.Status;
+                if (b.Active && b.Def.IsWorkplace) b.Status = b.Paused ? "Paused" : b.Flooded ? "Flooded" : !WantsWorkers(b) ? (Season == 3 ? "Nothing to do this season" : "The harvest is in") : b.Workers == 0 ? "No workers" : b.Status == "No workers" || b.Status == "Paused" ? "" : b.Status;
         }
 
         // Builders share the top tier with high-priority jobs: filled after them, but never taken by them.
@@ -852,8 +852,9 @@ namespace Firstlight.Game
                 }
                 if (b.Def.housing > 0)
                 {
-                    float need = b.Residents > 0 ? B.firewoodPerHome[season] : 0;
+                    float need = b.Residents > 0 ? B.firewoodPerHome[season] * Diff.firewood : 0;
                     b.Heated = need <= 0 || Withdraw(_fuel, need) >= need * 0.99f;
+                    if (b.Flooded) b.Heated = false;      // a fire won't burn in a flooded hut
                 }
             }
 

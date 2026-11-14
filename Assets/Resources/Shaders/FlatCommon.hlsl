@@ -23,6 +23,17 @@ float4 _FL_SeasonNeedle;   // rgb multiplier for conifer needles
 float _FL_Snow;            // 0 = none, 1 = full cover on flat ground
 float _FL_Glow;            // brightness of unlit (glowing) materials
 
+// Fires at night (SettlementView): up to 16 burning fires near the camera, xyz = flame position, w = reach. A warm
+// pool of light in pixel-sized steps on everything round them; _FL_FireStrength is 0 by day.
+float4 _FL_Fires[16];
+float _FL_FireCount;
+float _FL_FireStrength;
+
+// Canopy cut-away (SettlementView): leaves and needles of trees near this point are dithered away when zoomed in, so
+// the people working under them can be seen. xz = centre, z unused, w = radius; _FL_CutStrength 0..1.
+float4 _FL_Cut;
+float _FL_CutStrength;
+
 
 
 // Terrain material map: one texel per grid cell holding a layer index.
@@ -140,6 +151,46 @@ float MacroVariation(float2 pxz)
     return 1 + (v - 0.5) * 0.16;
 }
 
+half3 FireLight(float3 posWS, float3 n)
+{
+    if (_FL_FireStrength <= 0.001 || _FL_FireCount < 0.5) return 0;
+    // Lit per texture pixel, in a few steps, so the pool reads as pixel art rather than a smooth gradient.
+    float3 p = (floor(posWS * _FL_TexelsPerUnit) + 0.5) / _FL_TexelsPerUnit;
+    float sum = 0;
+    [loop] for (int i = 0; i < 16; i++)
+    {
+        if (i >= (int)_FL_FireCount) break;
+        float3 d = _FL_Fires[i].xyz - p;
+        float dist = length(d);
+        float k = saturate(1 - dist / _FL_Fires[i].w);
+        float facing = saturate(dot(n, d / max(dist, 0.001)) * 0.6 + 0.45);
+        sum += k * k * facing;
+    }
+    sum = floor(min(sum, 1.5) * 8) / 8;
+    return half3(1.0, 0.56, 0.26) * (sum * _FL_FireStrength);
+}
+
+// How much of a tree's foliage near the cut-away point is removed (per instance, in the vertex shader).
+float CanopyFade(float3 instPos)
+{
+    if (_FL_CutStrength <= 0.001) return 0;
+    float dist = distance(instPos.xz, _FL_Cut.xy);
+    float r = _FL_Cut.w * _FL_CutStrength;          // the cut grows as the camera comes in
+    return 1 - smoothstep(r - 1.6, r, dist);
+}
+
+static const float FL_Bayer[16] = { 0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5 };
+
+// Screen-door dither: true where a pixel of something faded by `fade` should be dropped (4x4 Bayer, 2x2 blocks).
+bool DitherDrop(float2 screenPx, float fade)
+{
+    if (fade <= 0.001) return false;
+    uint2 q = (uint2)(screenPx * 0.5) & 3;
+    return (FL_Bayer[q.y * 4 + q.x] + 0.5) / 16.0 < fade;
+}
+
+bool IsFoliage(float layer) { return layer == _FL_LayerLeaves || layer == _FL_LayerNeedles; }
+
 half3 FlatShade(float3 posWS, float3 n, half3 albedo)
 {
     float4 shadowCoord = TransformWorldToShadowCoord(posWS);
@@ -147,7 +198,7 @@ half3 FlatShade(float3 posWS, float3 n, half3 albedo)
     half ndl = saturate(dot(n, light.direction));
     half3 direct = light.color * (ndl * light.shadowAttenuation);
     half3 amb = lerp(_FL_AmbientGround.rgb, _FL_AmbientSky.rgb, n.y * 0.5 + 0.5);
-    return albedo * (direct + amb);
+    return albedo * (direct + amb + FireLight(posWS, n));
 }
 
 float3 _LightDirection;

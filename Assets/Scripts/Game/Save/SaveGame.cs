@@ -1,0 +1,188 @@
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
+using UnityEngine;
+
+namespace Firstlight.Game
+{
+    /// <summary>
+    /// Save files. Layout: "FLSV", format version, a small uncompressed header (what the load screen lists: name, kind,
+    /// age, year, season, population, real date), then a gzip body: the map's changes, the settlement, the auto-player
+    /// (if one runs), and two length-prefixed blocks for the game (camera, HUD, water) and the auto-test. The map itself
+    /// is regenerated from its seed on load. Files are written to a temporary name and moved into place, so a crash
+    /// mid-save never leaves a half-written save under the real name.
+    /// </summary>
+    public static class SaveGame
+    {
+        public const int Version = 1;
+        const string Magic = "FLSV";
+        public const string Extension = ".flsave";
+
+        public static string Dir => Path.Combine(Application.persistentDataPath, "saves");
+
+        public sealed class Header
+        {
+            public int Version, Seed, Day, Year, Population, Difficulty;
+            public string Name = "", Kind = "manual", Age = "", Season = "";
+            public long SavedUtcTicks;
+            public string File;                         // where it was read from (not stored)
+            public DateTime SavedLocal => new DateTime(SavedUtcTicks, DateTimeKind.Utc).ToLocalTime();
+        }
+
+        /// <summary>What a load brings back: the map and settlement ready to run, plus the game's and the test's blocks.</summary>
+        public sealed class Loaded
+        {
+            public Header Header;
+            public GameMap Map;
+            public Settlement Sim;
+            public AutoPlayer Auto;
+            public byte[] Game, Test;
+            public float[] WaterDepth;
+        }
+
+        public static Header HeaderFor(Settlement s, string name, string kind) => new Header
+        {
+            Version = Version, Seed = s.Seed, Day = s.Day, Year = s.Year + 1, Population = s.Population, Difficulty = s.Difficulty,
+            Name = name, Kind = kind, Age = s.Age?.name ?? "", Season = s.NeedsCampfire ? "" : s.SeasonName, SavedUtcTicks = DateTime.UtcNow.Ticks,
+        };
+
+        public static void Write(string path, Header h, Settlement s, AutoPlayer auto, WaterSim water, byte[] game, byte[] test)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            string tmp = path + ".tmp";
+            using (var fs = File.Create(tmp))
+            {
+                var w = new SaveWriter(fs);
+                w.W.Write(System.Text.Encoding.ASCII.GetBytes(Magic));
+                w.Int(Version);
+                w.Str(h.Name); w.Str(h.Kind); w.Int(h.Seed); w.Int(h.Day); w.Int(h.Year); w.Str(h.Season); w.Str(h.Age);
+                w.Int(h.Population); w.Int(h.Difficulty); w.Long(h.SavedUtcTicks);
+                w.W.Flush();
+                using var gz = new GZipStream(fs, System.IO.Compression.CompressionLevel.Fastest, true);
+                var b = new SaveWriter(gz);
+                b.Int(s.Map.W);
+                s.Map.Write(b);
+                s.Write(b);
+                b.Bool(auto != null);
+                auto?.Write(b);
+                float[] depth = null;
+                if (water != null) { depth = new float[water.Depth.Length]; water.Depth.CopyTo(depth); }
+                b.Floats(depth);
+                b.Block(game);
+                b.Block(test);
+                b.Str("end");
+                b.W.Flush();
+            }
+            if (File.Exists(path)) File.Delete(path);
+            File.Move(tmp, path);
+        }
+
+        /// <summary>Reads only the header (for the load screen). Null with a reason for anything that is not a save this build can read.</summary>
+        public static Header ReadHeader(string path, out string error)
+        {
+            try
+            {
+                using var fs = File.OpenRead(path);
+                return ReadHeader(new SaveReader(fs), path, out error);
+            }
+            catch (Exception e) { error = $"Could not read the save ({e.GetType().Name}: {e.Message})."; return null; }
+        }
+
+        static Header ReadHeader(SaveReader r, string path, out string error)
+        {
+            error = null;
+            var magic = System.Text.Encoding.ASCII.GetString(r.R.ReadBytes(4));   // bytes, not chars: ReadChars may read ahead
+            if (magic != Magic) { error = "This is not a Firstlight save file."; return null; }
+            int v = r.Int();
+            if (v > Version) { error = $"This save was made by a newer build (save format {v}); this build reads format {Version} and older."; return null; }
+            if (v < 1) { error = $"Unknown save format {v}."; return null; }
+            var h = new Header { Version = v, File = path };
+            h.Name = r.Str() ?? ""; h.Kind = r.Str() ?? ""; h.Seed = r.Int(); h.Day = r.Int(); h.Year = r.Int(); h.Season = r.Str() ?? ""; h.Age = r.Str() ?? "";
+            h.Population = r.Int(); h.Difficulty = r.Int(); h.SavedUtcTicks = r.Long();
+            return h;
+        }
+
+        /// <summary>
+        /// Loads a save: regenerates the map from the seed (and settles the river), puts the map's changes back and restores
+        /// the settlement. Null with a player-facing reason if the file is unknown, newer, damaged or for other game data.
+        /// </summary>
+        public static Loaded Read(string path, GameData data, out string error)
+        {
+            GameMap map = null;
+            try
+            {
+                using var fs = File.OpenRead(path);
+                var r0 = new SaveReader(fs);
+                var h = ReadHeader(r0, path, out error);
+                if (h == null) return null;
+                using var gz = new GZipStream(fs, CompressionMode.Decompress, true);
+                var r = new SaveReader(gz);
+                int size = r.Int();
+                if (size != data.Balance.mapSize) { error = $"The save's map size ({size}) does not match this build's ({data.Balance.mapSize})."; return null; }
+                map = new GameMap(size);
+                map.Generate(h.Seed, data.Balance);
+                map.Read(r);
+                var s = new Settlement(data, map, h.Seed);
+                s.Read(r);
+                AutoPlayer auto = null;
+                if (r.Bool()) { auto = new AutoPlayer(s); auto.Read(r); }
+                var res = new Loaded { Header = h, Map = map, Sim = s, Auto = auto, WaterDepth = r.Floats(), Game = r.Block(), Test = r.Block() };
+                if (r.Str() != "end") throw new InvalidDataException("missing end marker");
+                return res;
+            }
+            catch (Exception e)
+            {
+                map?.Dispose();
+                error = $"The save could not be loaded: it is damaged or from an incompatible build ({e.GetType().Name}: {e.Message}).";
+                Debug.LogWarning($"[Save] {path}: {e}");
+                return null;
+            }
+        }
+
+        // ------------------------------------------------------------------ slots
+
+        public static string PathFor(string slot) => Path.Combine(Dir, Sanitize(slot) + Extension);
+
+        public static string Sanitize(string name)
+        {
+            var chars = (name ?? "").Trim().Select(ch => char.IsLetterOrDigit(ch) || ch == ' ' || ch == '-' || ch == '_' ? ch : '_').ToArray();
+            var s = new string(chars).Trim();
+            return s.Length == 0 ? "save" : s.Length > 40 ? s.Substring(0, 40) : s;
+        }
+
+        /// <summary>Every readable save, newest first (unreadable files are listed with their error).</summary>
+        public static List<(Header h, string file, string error)> List()
+        {
+            var list = new List<(Header, string, string)>();
+            if (!Directory.Exists(Dir)) return list;
+            foreach (var f in Directory.GetFiles(Dir, "*" + Extension))
+            {
+                var h = ReadHeader(f, out string err);
+                list.Add((h, f, err));
+            }
+            return list.OrderByDescending(x => x.Item1?.SavedUtcTicks ?? File.GetLastWriteTimeUtc(x.Item2).Ticks).ToList();
+        }
+
+        public static (Header h, string file)? Latest()
+        {
+            foreach (var (h, f, err) in List()) if (h != null) return (h, f);
+            return null;
+        }
+
+        /// <summary>The autosave slot to write next: the oldest of the three (or a free one).</summary>
+        public static string NextAutosave()
+        {
+            string best = null; DateTime oldest = DateTime.MaxValue;
+            for (int i = 1; i <= 3; i++)
+            {
+                var p = PathFor($"autosave-{i}");
+                if (!File.Exists(p)) return p;
+                var t = File.GetLastWriteTimeUtc(p);
+                if (t < oldest) { oldest = t; best = p; }
+            }
+            return best;
+        }
+    }
+}

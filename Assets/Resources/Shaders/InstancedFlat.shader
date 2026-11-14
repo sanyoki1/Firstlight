@@ -63,6 +63,7 @@ Shader "Firstlight/InstancedFlat"
                 float4 positionCS : SV_POSITION; float3 positionWS : TEXCOORD0; float3 local : TEXCOORD1;
                 half3 color : COLOR; float2 uv : TEXCOORD2; nointerpolation float3 mat : TEXCOORD3; half fog : TEXCOORD4;
                 nointerpolation half4 inst : TEXCOORD5;    // instance colour (linear rgb, raw alpha)
+                nointerpolation float cut : TEXCOORD6;     // canopy cut-away for this instance (trees near the focus)
             };
 
             Varyings vert(Attributes v)
@@ -79,12 +80,14 @@ Shader "Firstlight/InstancedFlat"
                 o.mat = float3(v.mat, d.yaw);
                 o.fog = ComputeFogFactor(o.positionCS.z);
                 o.inst = ic;
+                o.cut = CanopyFade(d.pos);
                 return o;
             }
 
             half4 frag(Varyings i) : SV_Target
             {
                 if (i.inst.a < 0.995 && i.inst.a > 0.002) clip(i.inst.a * BUILD_HEIGHT - i.local.y);
+                if (i.cut > 0.001 && IsFoliage(i.mat.x) && DitherDrop(i.positionCS.xy, i.cut)) discard;
                 float3 n = FlatNormal(i.positionWS);
                 float3 nl = Unrotate(i.mat.z, n);
                 bool explicitUV = i.mat.y > 0.5 && i.mat.y < 1.5;
@@ -147,7 +150,7 @@ Shader "Firstlight/InstancedFlat"
             #pragma vertex vert
             #pragma fragment frag
             struct Attributes { float4 positionOS : POSITION; float2 uv : TEXCOORD0; float2 mat : TEXCOORD1; uint id : SV_InstanceID; };
-            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; nointerpolation float2 mat : TEXCOORD1; float cut : TEXCOORD2; };
+            struct Varyings { float4 positionCS : SV_POSITION; float2 uv : TEXCOORD0; nointerpolation float2 mat : TEXCOORD1; float cut : TEXCOORD2; nointerpolation float canopy : TEXCOORD3; };
             Varyings vert(Attributes v)
             {
                 InstanceData d = _Instances[v.id];
@@ -155,11 +158,13 @@ Shader "Firstlight/InstancedFlat"
                 o.positionCS = TransformWorldToHClip(Rotate(d.yaw, v.positionOS.xyz * d.scale) + d.pos);
                 o.uv = v.uv; o.mat = v.mat;
                 o.cut = BuildCut(d.color, v.positionOS.y * d.scale.y);
+                o.canopy = CanopyFade(d.pos);
                 return o;
             }
             half4 frag(Varyings i) : SV_Target
             {
                 clip(i.cut);
+                if (i.canopy > 0.001 && IsFoliage(i.mat.x) && DitherDrop(i.positionCS.xy, i.canopy)) discard;
                 if (i.mat.y > 0.5 && i.mat.y < 1.5) clip(SAMPLE_TEXTURE2D_ARRAY_LOD(_FL_Tex, sampler_FL_Tex, i.uv, i.mat.x, 0).a - 0.5);
                 return 0;
             }

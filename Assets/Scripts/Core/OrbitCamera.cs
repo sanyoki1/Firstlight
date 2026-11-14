@@ -26,6 +26,11 @@ namespace Firstlight.Core
         public static bool KeyboardCaptured;
         /// <summary>Pan when the pointer touches the screen edge.</summary>
         public bool EdgeScroll = true;
+        /// <summary>Player settings: edge scrolling on/off and a multiplier on pan and turn speed.</summary>
+        public static bool EdgeScrollEnabled = true;
+        public static float SpeedScale = 1f;
+        /// <summary>No input at all (the main menu's slow orbit, a modal screen).</summary>
+        public static bool InputLocked;
 
         public Camera Cam { get; private set; }
 
@@ -46,7 +51,8 @@ namespace Firstlight.Core
             Vector2 move = Vector2.zero;
             float rot = 0;
             // Edge scrolling: only with a real, focused window (in batch mode the pointer sits at 0,0).
-            if (mouse != null && EdgeScroll && Application.isFocused && !Application.isBatchMode)
+            if (InputLocked) { Apply(); return; }
+            if (mouse != null && EdgeScroll && EdgeScrollEnabled && Application.isFocused && !Application.isBatchMode)
             {
                 var mp = mouse.position.ReadValue();
                 const float edge = 4f;
@@ -71,9 +77,9 @@ namespace Firstlight.Core
             float yawRad = Yaw * Mathf.Deg2Rad;
             var fwd = new Vector3(Mathf.Sin(yawRad), 0, Mathf.Cos(yawRad));
             var right = new Vector3(Mathf.Cos(yawRad), 0, -Mathf.Sin(yawRad));
-            float panSpeed = Mathf.Max(8f, Distance * 0.9f);
+            float panSpeed = Mathf.Max(8f, Distance * 0.9f) * SpeedScale;
             Focus += (right * move.x + fwd * move.y) * (panSpeed * dt);
-            Yaw += rot * 90f * dt;
+            Yaw += rot * 90f * dt * SpeedScale;
 
             if (mouse != null)
             {

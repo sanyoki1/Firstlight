@@ -10,7 +10,7 @@ namespace Firstlight.Game.UI
     public sealed partial class Hud
     {
         const float InfoW = 430;
-        Rect InfoRect(float h) => new(VW - InfoW - 10, 62, InfoW, h);
+        Rect InfoRect(float h) => new(VW - InfoW - 10, TopBarHeight + 8, InfoW, h);
 
         void DrawInfo()
         {
@@ -61,7 +61,10 @@ namespace Firstlight.Game.UI
             {
                 string status = !string.IsNullOrEmpty(b.Status) ? b.Status : d.IsWorkplace ? (b.Workers > 0 ? "Working" : "No workers") : "";
                 if (d.warmthRadius > 0) status = b.Fueled ? "The fire is burning" : "Out of firewood: the fire is out";
-                if (status.Length > 0) Row(Col(status, status == "Working" || b.Fueled && d.warmthRadius > 0 ? Good : Warn), Bold);
+                if (b.Flooded) status = "Under flood water";
+                if (status.Length > 0) Row(Col(status, b.Flooded ? Bad : status == "Working" || b.Fueled && d.warmthRadius > 0 ? Good : Warn), Bold);
+                if (b.Flooded) Para(Col("No work, no storing and a cold home here until the river goes down; goods stored here were partly spoiled.", Warn));
+                else if (S.FloodCells != null && UnderFlood(b) && !S.Flooding) Para(Col("On the low ground the river will flood tomorrow.", Warn));
                 Para(d.description);
                 if (d.crop) DrawCrop(b);
                 if (d.IsWorkplace) DrawWorkplace(b);

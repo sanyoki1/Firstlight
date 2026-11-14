@@ -135,6 +135,23 @@
   "traderValue": 40,
   "traderRate": 0.75,
   "lawCooldownDays": 4,
+
+  "_floodComment": "Spring floods: decided on the first day of spring (from floodFromYear), warned the day before, last floodDays. Strength = rise of the river in world units.",
+  "floodChance": 0.4,
+  "floodFromYear": 1,
+  "floodDays": 2,
+  "floodStrengthMin": 0.3,
+  "floodStrengthMax": 0.55,
+  "floodLoss": 0.15,
+  "floodLossSpoiling": 0.4,
+  "floodFertility": 0.25,
+
+  "_difficultyComment": "New-game difficulty: multipliers on the standard balance. winterTemperature is added to winter's temperature.",
+  "difficulties": [
+    { "id": "gentle", "name": "Gentle", "description": "More food and wood to start, milder winters, better yields. For learning the game.", "startGoods": 1.5, "winterTemperature": 0.08, "firewood": 0.85, "yield": 1.15 },
+    { "id": "standard", "name": "Standard", "description": "The intended balance: a hungry first winter if you are not careful.", "startGoods": 1.0, "winterTemperature": 0.0, "firewood": 1.0, "yield": 1.0 },
+    { "id": "harsh", "name": "Harsh", "description": "Fewer goods to start, colder winters that burn more firewood, poorer yields.", "startGoods": 0.7, "winterTemperature": -0.05, "firewood": 1.15, "yield": 0.9 }
+  ],
   "namesFemale": ["Ama", "Bera", "Dalla", "Esi", "Ferra", "Gesa", "Hela", "Ilka", "Juna", "Kesa", "Lira", "Mara", "Nesa", "Orla", "Peri", "Runa", "Sela", "Tova", "Una", "Vela", "Wenna", "Yara", "Asta", "Brin", "Cela", "Dora", "Edda", "Fenna", "Gerd", "Ise"],
   "namesMale": ["Aro", "Bren", "Cato", "Dag", "Eno", "Falk", "Garr", "Hask", "Ivo", "Jorn", "Kael", "Lond", "Moro", "Nil", "Odd", "Pell", "Rak", "Sten", "Tor", "Ulf", "Varn", "Wim", "Yan", "Zev", "Ansel", "Bodo", "Ceth", "Dunn", "Egil", "Finn"]
 }

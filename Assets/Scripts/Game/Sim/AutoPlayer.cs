@@ -36,11 +36,51 @@ namespace Firstlight.Game
 
         public AutoPlayer(Settlement s) { S = s; D = s.Data; M = s.Map; }
 
+        /// <summary>Save/load: the strategy's memory (what it measured, what it is replacing, what it has done).</summary>
+        public void Write(SaveWriter w)
+        {
+            w.Bool(Careless);
+            w.Strs(Actions);
+            w.Int(_replacing.Count); foreach (var (site, old) in _replacing) { w.Int(site.Id); w.Int(old.Id); }
+            w.Int(_relocateFailed.Count); foreach (var kv in _relocateFailed) { w.Int(kv.Key); w.Int(kv.Value); }
+            w.Float(_harvestPerField); w.Float(_grainAtAutumn); w.Float(_grainShare); w.Int(_lastHungryYear); w.Int(_lastFullYear);
+            w.Ints(_pathed.OrderBy(x => x).ToArray());
+            w.Int(_readySince);
+        }
+
+        public void Read(SaveReader r)
+        {
+            Careless = r.Bool();
+            Actions.Clear(); Actions.AddRange(r.Strs());
+            _replacing.Clear();
+            for (int i = 0, n = r.Int(); i < n; i++) { int a = r.Int(), b = r.Int(); _replacing.Add((S.Buildings[a], S.Buildings[b])); }
+            _relocateFailed.Clear();
+            for (int i = 0, n = r.Int(); i < n; i++) _relocateFailed[r.Int()] = r.Int();
+            _harvestPerField = r.Float(); _grainAtAutumn = r.Float(); _grainShare = r.Float(); _lastHungryYear = r.Int(); _lastFullYear = r.Int();
+            _pathed.Clear(); foreach (int id in r.Ints()) _pathed.Add(id);
+            _readySince = r.Int();
+        }
+
         void Note(string text) => Actions.Add($"day {S.Day} {text}");
+        int _readySince = -1;              // day the next age's conditions were first all met
+
+        /// <summary>Perf probe: when set, time per part of Think is added up (ms) in <see cref="ProfMs"/>.</summary>
+        public bool Profile;
+        public readonly SortedDictionary<string, double> ProfMs = new();
+        long Stamp() => Profile ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+        long Prof(string key, long t0)
+        {
+            if (!Profile) return 0;
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            ProfMs.TryGetValue(key, out double v);
+            ProfMs[key] = v + (now - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+            return now;
+        }
 
         /// <summary>One decision round; call it every game hour or so.</summary>
         public void Think()
         {
+            S.AutoTrade = true;                  // it takes every trader's offer
             if (S.NeedsCampfire)
             {
                 var site = S.SuggestCampfireSite();
@@ -48,17 +88,30 @@ namespace Firstlight.Game
                 Note(tc != null ? $"campfire placed at {site.x},{site.y}" : $"campfire failed: {why}");
                 return;
             }
+            long t = Stamp();
             QueueResearch();
-            S.SetBuilders(math.clamp(S.Adults / 4, 2, 6 + S.Adults / 20));
+            // Out of food (outside winter, when there is little to gather anyway): hands go to food before building.
+            bool starving = S.FoodDays < 1.5f && S.Season != 3 && !Careless;
+            S.SetBuilders(starving ? 1 : math.clamp(S.Adults / 4, 2, 6 + S.Adults / 20));
+            t = Prof("research", t);
             if (!Careless)
             {
                 SetPriorities();
+                t = Prof("priorities", t);
                 Relocate();
+                t = Prof("relocate", t);
             }
             if (S.Age.order >= 1) Agricultural();
+            t = Prof("agricultural", t);
             BuildSomething();
+            t = Prof("build", t);
             // A new age brings new needs: not on the edge of a hungry winter.
-            if (S.CanAdvanceAge() && (Careless || S.FoodDays >= 3f && (S.Season <= 1 || S.FoodStock >= S.DailyFoodNeed * S.LeanDays() * 0.4f)))
+            // Into farming: fields are sown in spring and give nothing until autumn, so not in summer or autumn on thin stores.
+            // (Waiting is only worth it for a year: a town that never gets ahead of its food goes anyway.)
+            bool can = S.CanAdvanceAge();
+            if (!can) _readySince = -1; else if (_readySince < 0) _readySince = S.Day;
+            bool firstFields = S.Age.order == 0 && (S.Season == 1 || S.Season == 2) && S.Day - _readySince < S.DaysPerYear;
+            if (can && (Careless || S.FoodDays >= (firstFields ? 6f : 3f) && (S.Season <= 1 || S.FoodStock >= S.DailyFoodNeed * S.LeanDays() * 0.4f)))
             {
                 string from = S.Age.name;
                 if (S.AdvanceAge()) { Note($"advanced from the {from} to the {S.Age.name}"); QueueResearch(); }
@@ -130,8 +183,12 @@ namespace Firstlight.Game
                     int focus = -1;
                     for (int i = 0; i < b.Def.outputs.Length && !pause; i++)
                         if (!Plenty(b.Def.outputs[i].id) && b.Def.outputs.Where((o, j) => j != i).All(o => Plenty(o.id))) focus = i;
+                    // Building held up for want of wood while the firewood pile will see out the cold: all wood (a woodcutter
+                    // on the mix makes too little of either on a map with thin woods, and sites wait on it for seasons).
+                    int fw = Array.FindIndex(b.Def.outputs, o => o.id == "firewood"), wd = Array.FindIndex(b.Def.outputs, o => o.id == "wood");
+                    if (wd >= 0 && fw >= 0 && (shortMat.Contains("wood") || S.Stock("wood") < LowStock("wood"))
+                        && S.Stock("firewood") >= math.max(15f, S.FuelNeedUntilSpring() * (S.Season >= 2 ? 1f : 0.5f))) focus = wd;
                     // Before winter, firewood comes first unless wood itself is scarce.
-                    int fw = Array.FindIndex(b.Def.outputs, o => o.id == "firewood");
                     if (fw >= 0 && (S.Season == 1 || S.Season == 2) && S.Stock("firewood") < S.FuelNeedUntilSpring() * 1.2f
                         && S.Stock("wood") >= LowStock("wood") && !shortMat.Contains("wood")) focus = fw;
                     // Short of firewood for the winter: that comes before any building.
@@ -218,7 +275,11 @@ namespace Firstlight.Game
 
         float LowStock(string id) => id == "wood" ? 15f : id == "stone" ? 10f : 0f;
 
-        readonly Dictionary<Building, Building> _replacing = new();   // new site -> the worn-out building it replaces
+        // New site -> the worn-out building it replaces (a list: its order decides what is pulled down first, and a
+        // list keeps that order through a save and load where a dictionary's reuse of freed slots would not).
+        readonly List<(Building site, Building old)> _replacing = new();
+        readonly Dictionary<int, int> _relocateFailed = new();         // building id -> day a search for its replacement last ran
+        const int RelocateRetryDays = 3;
 
         /// <summary>
         /// Producers whose nearby trees, rock or game are nearly used up get a replacement on fresh ground; the old
@@ -228,15 +289,19 @@ namespace Firstlight.Game
         {
             foreach (var kv in _replacing.ToList())
             {
-                if (!kv.Key.Alive) { _replacing.Remove(kv.Key); continue; }
-                if (!kv.Key.Active) continue;
-                if (kv.Value.Alive) { S.Demolish(kv.Value); Note($"removed worn-out {kv.Value.Def.id}"); }
-                _replacing.Remove(kv.Key);
+                if (!kv.site.Alive) { _replacing.Remove(kv); continue; }
+                if (!kv.site.Active) continue;
+                if (kv.old.Alive) { S.Demolish(kv.old); Note($"removed worn-out {kv.old.Def.id}"); }
+                _replacing.Remove(kv);
             }
             if (S.Sites.Count() >= 2) return;
             foreach (var b in S.Buildings)
             {
-                if (!b.Active || !b.Def.HasNearby || b.Def.nearby.feature == "water" || b.Fullness >= 0.3f || _replacing.ContainsValue(b)) continue;
+                if (!b.Active || !b.Def.HasNearby || b.Def.nearby.feature == "water" || b.Fullness >= 0.3f || _replacing.Any(kv => kv.old == b)) continue;
+                // A search that found nothing is not repeated for a few days (it scans a wide square; late in the game,
+                // with the woods cut back, it failed every hour for every worn-out producer and cost more than the sim).
+                if (_relocateFailed.TryGetValue(b.Id, out int failed) && S.Day - failed < RelocateRetryDays) continue;
+                _relocateFailed[b.Id] = S.Day;
                 var at = FindSite(b.Def);
                 // The woods near town are gone: look farther out for fresh ones.
                 if (at != null && math.saturate(M.CountFeature(b.Def.nearby.feature, Settlement.FootprintCenter(b.Def, at.Value), b.Def.nearby.radius) / (float)math.max(1, b.Def.nearby.full)) < 0.6f)
@@ -247,7 +312,8 @@ namespace Firstlight.Game
                 if (fresh < 0.6f) continue;
                 var nb = S.Place(b.Def, at.Value);
                 if (nb == null) continue;
-                _replacing[nb] = b;
+                _relocateFailed.Remove(b.Id);
+                _replacing.Add((nb, b));
                 Note($"placed {b.Def.id} at {at.Value.x},{at.Value.y} to replace a worn-out one (fullness {b.Fullness:F2})");
                 return;
             }
@@ -374,6 +440,10 @@ namespace Firstlight.Game
                         int n = M.CountFeature(d.nearby.feature, Settlement.FootprintCenter(d, origin), d.nearby.radius);
                         score += math.saturate(n / (float)math.max(1, d.nearby.full)) * 40f;
                     }
+                    // Not across the river from the campfire: the walk round by a ford can take builders and workers all day.
+                    if (CrossesRiver(tc, Settlement.FootprintCenter(d, origin))) score -= 60f;
+                    // Off the floodplain, but for fields (a flood leaves them silt) and what must stand by the water.
+                    if (!d.crop && d.nearby?.feature != "water" && S.FloodRiskCells(d, origin) > 0) score -= 30f;
                     if (d.housing > 0 && d.homeWarmth < 0.6f && dist > S.TownCenter.Def.warmthRadius - 1) score -= 25f;
                     // Woodcutters fell the trees gatherers live off, and producers sharing a feature split it: keep them apart.
                     var here = Settlement.FootprintCenter(d, origin);
@@ -387,6 +457,14 @@ namespace Firstlight.Game
                     if (score > bestScore) { bestScore = score; best = origin; }
                 }
             return best;
+        }
+
+        /// <summary>Deep water on the straight line between two points.</summary>
+        bool CrossesRiver(float2 a, float2 b)
+        {
+            int n = (int)(math.distance(a, b) * 2f) + 1;
+            for (int i = 1; i < n; i++) if (M.WaterClass[M.CellAt(math.lerp(a, b, i / (float)n))] >= 2) return true;
+            return false;
         }
 
         /// <summary>Keeps one free cell around every building so paths never get walled off.</summary>

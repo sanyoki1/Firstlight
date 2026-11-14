@@ -41,18 +41,32 @@ namespace Firstlight.Game
         {
             Data = GameData.Load();
             if (HasArg("-autotest")) { RunAutoTest(); return; }
+            GameSettings.Load();
+            bool cli = CommandLineMode;
+            GameSettings.Apply(display: !cli);
             MaterialLibrary.SetDensity(ArgInt("-texels", 64));
             Cam = WorldLighting.CreateCamera();
             _sun = WorldLighting.CreateSun();
+            OrbitCamera.InputLocked = false; OrbitCamera.KeyboardCaptured = false;
 
-            _seed = ArgInt("-seed", Environment.TickCount & 0xffff);
-            Map = new GameMap(Data.Balance.mapSize);
-            Map.Generate(_seed, Data.Balance);
+            // What to start: what the menu asked for before the scene reloaded, else the command line, else the menu.
+            var launch = _next ?? (Arg("-load") != null ? Launch.LoadFile(Arg("-load")) : cli ? Launch.NewGame(ArgInt("-seed", Environment.TickCount & 0xffff), ArgInt("-difficulty", 1)) : Launch.Menu());
+            _next = null;
+            SaveGame.Loaded loaded = null;
+            if (launch.Mode == LaunchMode.Load)
+            {
+                loaded = SaveGame.Read(launch.Path, Data, out string err);
+                if (loaded == null) { Debug.LogWarning($"[Save] load failed: {err}"); MenuMessage = err; launch = Launch.Menu(); }
+            }
+            InMenu = launch.Mode == LaunchMode.Menu;
+            _seed = loaded?.Header.Seed ?? (InMenu ? MenuSeed : launch.Seed);
+            if (loaded != null) Map = loaded.Map;
+            else { Map = new GameMap(Data.Balance.mapSize); Map.Generate(_seed, Data.Balance); }
             View = new WorldView(Map);
             View.Build();
             Water = new WaterSim(Map);
-            Water.SyncWaterClasses();
-            Map.CommitCostChanges();
+            if (loaded?.WaterDepth != null && loaded.WaterDepth.Length == Water.Depth.Length) Water.Depth.CopyFrom(loaded.WaterDepth);
+            if (loaded == null) { Water.SyncWaterClasses(); Map.CommitCostChanges(); }   // a save brings its own water classes
             View.AttachWater(Water);
             Wild = new Wildlife(Map, Water, _seed);
             View.AttachWildlife(Wild);
@@ -62,6 +76,7 @@ namespace Firstlight.Game
             Cam.HeightAt = Map.HeightAt;
             var site = FindViewpoint();
             Cam.SetView(new Vector3(site.x, Map.HeightAt(site.x, site.y), site.y), 45f, 50f, 30f);
+            _menuFocus = new Vector3(site.x, Map.HeightAt(site.x, site.y), site.y);
 
             _demo = HasArg("-shots") || HasArg("-watershots") || HasArg("-deershots") || HasArg("-deerpair") || HasArg("-huntshots");
             // The animated hunting band is a show piece for the clip modes; in the game the Hunters' Camp workers hunt.
@@ -73,13 +88,26 @@ namespace Firstlight.Game
             }
 
             // The settlement waits for its campfire site: the HUD opens in campfire placement.
-            Sim = new Settlement(Data, Map, _seed);
+            Sim = loaded?.Sim ?? new Settlement(Data, Map, _seed);
+            if (loaded == null) Sim.SetDifficulty(launch.Difficulty);
             SView = new SettlementView(Sim, View, Wild);
             Atmo = new Atmosphere(_sun, Cam.Cam);
             Hud = new Hud(this);
+            Sound = new SoundScape(this);
+            if (loaded != null)
+            {
+                Auto = loaded.Auto;
+                ReadGameBlock(loaded.Game);
+                _savedAt = Sim.Time;
+                _autosaveSeason = Sim.Day / Data.Balance.daysPerSeason;
+                Hud.Toast($"Loaded: {loaded.Header.Name}");
+                SmokeAfterLoad();
+                Debug.Log($"[Save] loaded {launch.Path}: day {Sim.Day}, population {Sim.Population}");
+            }
             // -autoplay: the auto-player runs the settlement from the start (-simspeed N, -quitafter seconds for smoke tests).
             if (HasArg("-autoplay")) Auto = new AutoPlayer(Sim);
-            Sim.SetSpeed(ArgInt("-simspeed", 1));
+            if (loaded == null) Sim.SetSpeed(ArgInt("-simspeed", 1));
+            if (InMenu) { OrbitCamera.InputLocked = true; Cam.SetView(_menuFocus, 58f, 38f, 20f); }
             float quitAfter = ArgInt("-quitafter", 0);
             if (quitAfter > 0) StartCoroutine(QuitAfter(quitAfter));
 
@@ -89,9 +117,17 @@ namespace Firstlight.Game
             if (HasArg("-deerpair")) StartCoroutine(DeerPairShots());
             if (HasArg("-huntshots")) StartCoroutine(HuntShots());
             if (HasArg("-uishots")) StartCoroutine(UiShots());
+            if (HasArg("-p4shots")) StartCoroutine(P4Shots());
+            if (_smoke > 0 || HasArg("-smoketest")) StartCoroutine(SmokeTest());
         }
 
-        public void ToggleAuto() => Auto = Auto == null ? new AutoPlayer(Sim) : null;
+        public void ToggleAuto()
+        {
+            // The auto-player takes every trader's offer; handing back restores the player's own choice.
+            if (Auto == null) { _autoTradeBefore = Sim.AutoTrade; Auto = new AutoPlayer(Sim); }
+            else { Auto = null; Sim.AutoTrade = _autoTradeBefore; }
+        }
+        bool _autoTradeBefore;
         public void SetSpeed(float s) { if (s > 0) _lastSpeed = s; Sim.SetSpeed(s); }
         public void TogglePause() => SetSpeed(Sim.Speed > 0 ? 0 : _lastSpeed);
 
@@ -123,12 +159,14 @@ namespace Firstlight.Game
                 if (kb.f6Key.wasPressedThisFrame) StartFlood();
                 if (kb.f7Key.wasPressedThisFrame) Band?.StartHunt();
             }
-            if (!_demo) Hud.Update(Time.deltaTime);   // HUD keys and mouse (speed, panels, placing, selecting)
+            if (InMenu) MenuUpdate();
+            else if (!_demo) Hud.Update(Time.deltaTime);   // HUD keys and mouse (speed, panels, placing, selecting)
             UpdateWater(Time.deltaTime);
             Map.CommitCostChanges();
-            if (Sim != null)
+            if (Sim != null && !InMenu)
             {
-                Sim.Update(Time.deltaTime);
+                if (!_demo && !Paused) Autosave();
+                Sim.Update(Paused ? 0 : Time.deltaTime);
                 // The auto-player thinks once per game hour, like in the auto-test.
                 _autoClock += Time.deltaTime * Sim.Speed;
                 if (Auto != null && (_autoClock >= Data.Balance.dayLengthSeconds / 24f || Sim.NeedsCampfire)) { _autoClock = 0; Auto.Think(); }
@@ -136,9 +174,18 @@ namespace Firstlight.Game
             Band?.Update(Time.deltaTime);     // first, so the deer see where people are this frame
             Wild.Update(Time.deltaTime);
             WorldLighting.UpdateForZoom(Cam.Distance);
-            if (!_demo) { Atmo.Apply(Sim); View.HideGroundCover = Atmo.Snow > 0.4f; }
+            // Firelight at night, and trees cut away round the focus (or the selected person) when zoomed in.
+            SView.Night = InMenu || _demo ? 0 : 1f - Atmo.Daylight;
+            var sel = Hud?.SelectedCitizen;
+            float2 cut = sel != null && !sel.Gone ? sel.Pos : new float2(Cam.Focus.x, Cam.Focus.z);
+            SView.CutCenter = cut;
+            SView.CutRadius = 5f + Cam.Distance * 0.1f;
+            SView.CutStrength = InMenu || _demo || CanopyCutOff || Sim.NeedsCampfire ? 0 : math.saturate((27f - Cam.Distance) / 10f);
+            if (InMenu) Atmo.Apply(0.7f, 1.35f, 0f);          // the title backdrop: a late summer afternoon
+            else if (!_demo) { Atmo.Apply(Sim); View.HideGroundCover = Atmo.Snow > 0.4f; }
             View.Draw(Time.time);
             SView.Draw(Time.deltaTime);
+            if (!_demo) Sound?.Update(Time.deltaTime);
         }
 
         void OnGUI()
@@ -148,11 +195,13 @@ namespace Firstlight.Game
             bool shot = _pendingShot != null && Event.current.type == EventType.Repaint && Cam.Cam.targetTexture == _shotRT;
             var prev = RenderTexture.active;
             if (shot) RenderTexture.active = _shotRT;
-            Hud.OnGUI();
+            if (InMenu) Hud.OnMenuGUI(); else Hud.OnGUI();
             if (shot) { _guiDrawn = true; RenderTexture.active = prev; }
         }
 
         bool _hideGui;
+        /// <summary>-p4shots: the same view without the canopy cut-away, for comparison.</summary>
+        public bool CanopyCutOff;
 
         // ------------------------------------------------------------------ water
 
@@ -170,12 +219,15 @@ namespace Firstlight.Game
 
         void UpdateWater(float dt)
         {
+            // The settlement's spring floods raise the river (the F6 debug surge too).
+            float boost = Sim != null && !Sim.NeedsCampfire ? Sim.FloodLevel : 0f;
             if (_floodTimer >= 0)
             {
                 _floodTimer += dt;
-                Water.SourceBoost = FloodBoost(_floodTimer);
+                boost = math.max(boost, FloodBoost(_floodTimer));
                 if (_floodTimer > 80) _floodTimer = -1;
             }
+            Water.SourceBoost = boost;
             _waterAccum += dt;
             int steps = Mathf.Min(12, (int)(_waterAccum / WaterSim.StepSeconds));
             if (steps > 0)
@@ -184,11 +236,31 @@ namespace Firstlight.Game
                 if (_waterAccum > 1f) _waterAccum = 0;
                 Water.Step(WaterSim.StepSeconds, steps);
             }
+            if (Sim != null && Sim.Flooding && Sim.FloodCells != null) FillFlood(dt);
             _waterSyncTimer += dt;
             if (_waterSyncTimer > 1f)
             {
                 _waterSyncTimer = 0;
                 Water.SyncWaterClasses();
+            }
+        }
+
+        /// <summary>
+        /// While the settlement floods, the water simulation is led over exactly the cells the sim floods (raised toward the
+        /// flood's level there), so what is drawn under water is what stopped working. When the level falls the water
+        /// drains back to the river by itself.
+        /// </summary>
+        void FillFlood(float dt)
+        {
+            var cells = Sim.FloodCells; float level = Sim.FloodLevel * 0.85f;
+            if (level <= 0.01f) return;
+            float k = math.min(1f, dt * 0.7f);
+            var depth = Water.Depth; var bed = Water.Bed;
+            for (int c = 0; c < cells.Length; c++)
+            {
+                if (!cells[c] || Map.Ground[c] != Ground.Grass) continue;
+                float want = Map.RiverLevelAt(c / Map.W) + level - bed[c];
+                if (want > depth[c]) depth[c] = depth[c] + (want - depth[c]) * k;
             }
         }
 
@@ -631,10 +703,53 @@ namespace Firstlight.Game
                 Water.SyncWaterClasses();
                 Map.CommitCostChanges();
                 if (ArgInt("-crowd", 0) > 0) { AutoTest.Crowd(Data, Map, _seed, ArgInt("-crowd", 0)); code = 0; }
-                else code = AutoTest.Run(Data, Map, _seed, years, outDir, HasArg("-careless")) ? 0 : 1;
+                else if (HasArg("-saveloadcheck")) code = SaveLoadCheck(years, outDir) ? 0 : 1;
+                else
+                {
+                    // -savemid FILE: also write a save halfway (for -uishots -load, which starts from it).
+                    string mid = Arg("-savemid");
+                    int at = ArgInt("-saveday", years * Data.Balance.daysPerSeason * 4 / 2);
+                    code = AutoTest.Run(Data, Map, _seed, years, outDir, HasArg("-careless"), mid != null ? at : -1, mid) ? 0 : 1;
+                }
             }
             catch (Exception e) { Debug.LogException(e); }
             Application.Quit(code);
+        }
+
+        /// <summary>
+        /// -autotest -saveloadcheck: run A plays to the end and saves at a mid point (-saveday, default a little past half);
+        /// run B loads that save and plays to the same end. Both write their report (outdir/a, outdir/b); they must be
+        /// byte-identical, or saving and loading changed what happens.
+        /// </summary>
+        bool SaveLoadCheck(int years, string outDir)
+        {
+            int totalDays = years * Data.Balance.daysPerSeason * 4;
+            int at = ArgInt("-saveday", totalDays / 2 + 3);
+            string dirA = Path.Combine(outDir, "a"), dirB = Path.Combine(outDir, "b"), save = Path.Combine(outDir, "mid" + SaveGame.Extension);
+            var swA = System.Diagnostics.Stopwatch.StartNew();
+            bool passA = AutoTest.Run(Data, Map, _seed, years, dirA, false, at, save);
+            Debug.Log($"[SaveLoad] run A {(passA ? "PASS" : "FAIL")} in {swA.Elapsed.TotalSeconds:F1} s");
+            Water.Dispose(); Water = null;
+            Map.Dispose(); Map = null;
+
+            var loaded = SaveGame.Read(save, Data, out string err);
+            if (loaded == null) { Debug.LogError($"[SaveLoad] could not load {save}: {err}"); return false; }
+            Map = loaded.Map;
+            Debug.Log($"[SaveLoad] loaded day {loaded.Sim.Day} ({loaded.Sim.DayFraction:F3}), population {loaded.Sim.Population}");
+            bool passB = AutoTest.Run(Data, Map, _seed, years, dirB, false, -1, null, loaded);
+            bool same = true;
+            foreach (var f in new[] { "autotest-report.md", "autotest-report.json" })
+            {
+                var a = File.ReadAllLines(Path.Combine(dirA, f)); var b = File.ReadAllLines(Path.Combine(dirB, f));
+                int n = Math.Min(a.Length, b.Length), first = -1;
+                for (int i = 0; i < n && first < 0; i++) if (a[i] != b[i]) first = i;
+                if (first < 0 && a.Length != b.Length) first = n;
+                if (first < 0) { Debug.Log($"[SaveLoad] {f}: identical ({a.Length} lines)"); continue; }
+                same = false;
+                Debug.LogWarning($"[SaveLoad] {f}: DIFFERENT from line {first + 1}:\n  A: {(first < a.Length ? a[first] : "(end)")}\n  B: {(first < b.Length ? b[first] : "(end)")}");
+            }
+            Debug.Log($"[SaveLoad] seed {_seed}: {(same ? "IDENTICAL" : "DIFFERENT")} reports; run A {(passA ? "PASS" : "FAIL")}, run B {(passB ? "PASS" : "FAIL")}");
+            return same && passA && passB;
         }
 
         IEnumerator QuitAfter(float seconds)

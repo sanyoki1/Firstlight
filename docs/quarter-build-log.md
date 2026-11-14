@@ -537,3 +537,27 @@ State added in phase 3 that must be saved (everything else is derived and refres
   `GameMap.DailyRegrowth` still draws from it.
 - The view rebuilds its caches from the sim (`SettlementView` path and ore layers resync when `Map.PathsDirty` /
   building count change; set `Map.PathsDirty = true` after a load).
+
+## Phase 4: save/load, menus, onboarding, polish, performance
+
+Status: in progress (this section is updated at each commit). How to play: `docs/how-to-play.md`.
+
+### What exists
+- **Save / load** (`Game/Save/SaveIO.cs`, `SaveGame.cs`, `Sim/Settlement.Save.cs`, `GameMap.Write/Read`,
+  `AutoPlayer.Write/Read`). Format: `FLSV`, format version (1), an uncompressed header (name, kind, seed, day, year,
+  season, age, population, difficulty, UTC ticks: what the load screen lists), then a gzip body: map size, the map's
+  changes (trees with kind/scale/yaw/offset, rock, paths, occupancy, reserved/open cells, water classes, live and
+  committed walk costs, pending-commit flags, ore revealed, herd sizes), the settlement (every field the sim carries,
+  float bits exact, buildings by index, citizens with their errand state, events, warnings and the warning memory,
+  laws, floods, trader offer, difficulty, RNG state), the auto-player if one runs, the water depths, a length-prefixed
+  game block (camera, last speed, HUD: end shown, guide step, hints seen) and a test block (the auto-test's report so
+  far). The map is regenerated from its seed. Written to `name.tmp` and moved into place. A newer format, a foreign
+  file or a damaged one gives a player-facing message, never a crash. Saves: `persistentDataPath/saves/*.flsave`.
+- **Determinism through a save**: `Sim/SimRandom.cs` (SplitMix64, one ulong of state) replaces `System.Random` in the
+  sim and the map's regrowth. Walk costs now have a live copy (`GameMap.LiveCost`) and a committed copy
+  (`Flow.Cost`, copied at each commit): every path between two commits sees the same prices, so routes no longer
+  depend on which flow fields happened to be cached, and a loaded game (empty cache) walks exactly as the original.
+  The auto-player's replacement map became an ordered list (a dictionary's slot reuse is not restored by a load).
+- **Save/load check**: `-autotest -saveloadcheck -seed N -years Y -outdir D` runs A (saves at day Y*32/2+3) and B
+  (loads that save) and compares `autotest-report.md/json` line by line. `-savemid FILE [-saveday D]` on a normal
+  auto-test also writes a save (used for the screenshot run).

@@ -72,7 +72,13 @@ namespace Firstlight.Game
                       $"{ms / Math.Max(1, days) / (data.Balance.dayLengthSeconds / Settlement.Step):F3} ms per sim step, {s.Buildings.Count} buildings");
         }
 
-        public static bool Run(GameData data, GameMap map, int seed, int years, string outDir, bool careless = false)
+        /// <summary>
+        /// Save/load check: <paramref name="saveAtDay"/> &gt;= 0 writes a save to <paramref name="savePath"/> once that day is
+        /// reached (and goes on to the end); <paramref name="resume"/> continues a run from such a save. The report state
+        /// so far (season rows, snapshot, extremes) travels in the save's test block, so both runs write the same report.
+        /// </summary>
+        public static bool Run(GameData data, GameMap map, int seed, int years, string outDir, bool careless = false,
+                               int saveAtDay = -1, string savePath = null, SaveGame.Loaded resume = null)
         {
             var errors = new List<string>();
             void OnLog(string msg, string stack, LogType type)
@@ -87,15 +93,31 @@ namespace Firstlight.Game
             AutoPlayer ap = null;
             try
             {
-                s = new Settlement(data, map, seed);
-                ap = new AutoPlayer(s) { Careless = careless };
-                rep.nextAge = s.Age.next;
-                rep.finalAge = data.Ages[data.Ages.Count - 1].id;
-                ap.Think();
-                rep.campfirePlaced = !s.NeedsCampfire;
                 float hour = data.Balance.dayLengthSeconds / 24f;
-                int totalDays = years * s.DaysPerYear, lastSeasonIdx = 0;
-                var prev = Snapshot(s);
+                int lastSeasonIdx = 0;
+                Snap prev;
+                if (resume != null)
+                {
+                    s = resume.Sim; ap = resume.Auto ?? new AutoPlayer(s);
+                    ap.Profile = true; s.Profile = true;
+                    var r = new SaveReader(new MemoryStream(resume.Test));
+                    r.Fields(rep);
+                    lastSeasonIdx = r.Int(); _noon = r.Str();
+                    prev = ReadSnap(r);
+                }
+                else
+                {
+                    s = new Settlement(data, map, seed);
+                    ap = new AutoPlayer(s) { Careless = careless, Profile = true };
+                    s.Profile = true;
+                    rep.nextAge = s.Age.next;
+                    rep.finalAge = data.Ages[data.Ages.Count - 1].id;
+                    ap.Think();
+                    rep.campfirePlaced = !s.NeedsCampfire;
+                    prev = Snapshot(s);
+                }
+                int totalDays = years * s.DaysPerYear;
+                bool saved = false;
                 while (rep.campfirePlaced && s.Day < totalDays)
                 {
                     s.Tick(hour);
@@ -107,12 +129,26 @@ namespace Firstlight.Game
                     rep.maxPopulation = Math.Max(rep.maxPopulation, pop);
                     if (pop == 0) break;
                     int seasonIdx = s.Day / data.Balance.daysPerSeason;
-                    if (seasonIdx != lastSeasonIdx && seasonIdx % 4 == 0) Debug.Log($"[AutoTest] year {seasonIdx / 4 + 1}: {pop} people, {sw.Elapsed.TotalSeconds:F0} s");
+                    if (seasonIdx != lastSeasonIdx && seasonIdx % 4 == 0)
+                    {
+                        Debug.Log($"[AutoTest] year {seasonIdx / 4 + 1}: {pop} people, {sw.Elapsed.TotalSeconds:F0} s; sim citizens {s.ProfCitizens / 1000:F1} s, hourly {s.ProfHourly / 1000:F1} s, daily {s.ProfDaily / 1000:F1} s, jobs {s.ProfJobs / 1000:F1} s; auto-player "
+                                  + string.Join(", ", ap.ProfMs.Select(kv => $"{kv.Key} {kv.Value / 1000:F1} s")));
+                    }
                     if (seasonIdx != lastSeasonIdx)
                     {
                         rep.seasons.Add(Row(s, prev, lastSeasonIdx, data));
                         prev = Snapshot(s);
                         lastSeasonIdx = seasonIdx;
+                    }
+                    if (saveAtDay >= 0 && !saved && s.Day >= saveAtDay)
+                    {
+                        saved = true;
+                        var ms = new MemoryStream();
+                        var w = new SaveWriter(ms);
+                        w.Fields(rep); w.Int(lastSeasonIdx); w.Str(_noon); WriteSnap(w, prev);
+                        w.W.Flush();
+                        SaveGame.Write(savePath, SaveGame.HeaderFor(s, $"auto-test seed {seed}", "test"), s, ap, null, null, ms.ToArray());
+                        Debug.Log($"[SaveLoad] saved at day {s.Day} ({s.DayFraction:F3}) to {savePath}");
                     }
                 }
                 if (rep.campfirePlaced && (rep.seasons.Count == 0 || rep.seasons[rep.seasons.Count - 1].day != s.Day)) rep.seasons.Add(Row(s, prev, lastSeasonIdx, data));
@@ -177,6 +213,23 @@ namespace Firstlight.Game
             $"day {day} (year {day / s.DaysPerYear + 1}, {s.Data.Balance.seasonNames[(day / s.Data.Balance.daysPerSeason) % 4]})";
 
         struct Snap { public int births, migrants, leavers, deaths, research, outbreaks, thefts, disputes, trades; public Dictionary<string, int> causes; public float[] produced, consumed; public float workerSec, prodSec; }
+
+        static void WriteSnap(SaveWriter w, Snap p)
+        {
+            w.Int(p.births); w.Int(p.migrants); w.Int(p.leavers); w.Int(p.deaths); w.Int(p.research);
+            w.Int(p.outbreaks); w.Int(p.thefts); w.Int(p.disputes); w.Int(p.trades);
+            w.Int(p.causes.Count); foreach (var kv in p.causes) { w.Str(kv.Key); w.Int(kv.Value); }
+            w.Floats(p.produced); w.Floats(p.consumed); w.Float(p.workerSec); w.Float(p.prodSec);
+        }
+
+        static Snap ReadSnap(SaveReader r)
+        {
+            var p = new Snap { births = r.Int(), migrants = r.Int(), leavers = r.Int(), deaths = r.Int(), research = r.Int(),
+                               outbreaks = r.Int(), thefts = r.Int(), disputes = r.Int(), trades = r.Int(), causes = new Dictionary<string, int>() };
+            for (int i = 0, n = r.Int(); i < n; i++) p.causes[r.Str()] = r.Int();
+            p.produced = r.Floats(); p.consumed = r.Floats(); p.workerSec = r.Float(); p.prodSec = r.Float();
+            return p;
+        }
 
         static Snap Snapshot(Settlement s) => new Snap
         {

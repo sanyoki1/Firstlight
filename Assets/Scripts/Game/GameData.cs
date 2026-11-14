@@ -143,6 +143,18 @@ namespace Firstlight.Game
         public MilestoneDef[] milestones = Array.Empty<MilestoneDef>();
     }
 
+    /// <summary>A difficulty choice for a new game (balance.json "difficulties"): multipliers on the standard balance.</summary>
+    [Serializable]
+    public class DifficultyDef
+    {
+        public string id = "standard", name = "Standard", description = "";
+        public float startGoods = 1f;          // starting goods at the campfire
+        public float winterTemperature;        // added to winter's temperature (+ milder, - colder)
+        public float firewood = 1f;            // firewood burned per home
+        public float yield = 1f;               // what workplaces and fields make
+        public static readonly DifficultyDef Standard = new();
+    }
+
     [Serializable]
     public class Balance
     {
@@ -220,6 +232,14 @@ namespace Firstlight.Game
         public int famineLeaveDays = 3;             // hungry this many days in a row: may leave to find food elsewhere
         public float famineLeaveChance = 0.2f;
         public string[] namesFemale = Array.Empty<string>(), namesMale = Array.Empty<string>();
+
+        // Phase 4: spring floods and difficulty.
+        public float floodChance = 0.4f;            // chance each spring (from floodFromYear) that the river floods
+        public int floodFromYear = 1, floodDays = 2;
+        public float floodStrengthMin = 0.3f, floodStrengthMax = 0.55f;   // rise of the river (world units)
+        public float floodLoss = 0.15f, floodLossSpoiling = 0.4f;          // share of stored goods spoiled (goods that rot lose more)
+        public float floodFertility = 0.25f;        // flooded fields: harvest bonus that year
+        public DifficultyDef[] difficulties = Array.Empty<DifficultyDef>();
     }
 
     [Serializable] class ResourceFile { public ResourceDef[] resources; }

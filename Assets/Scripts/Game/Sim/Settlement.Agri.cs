@@ -56,7 +56,7 @@ namespace Firstlight.Game
 
         /// <summary>Research and irrigation multiplier on a field's harvest.</summary>
         public float CropYieldMult(Building b) =>
-            (string.IsNullOrEmpty(b.Def.yieldTag) ? 1f : Effect(b.YieldKey)) * (b.Irrigated ? Effect("yield.irrigated") : 1f);
+            (string.IsNullOrEmpty(b.Def.yieldTag) ? 1f : Effect(b.YieldKey)) * (b.Irrigated ? Effect("yield.irrigated") : 1f) * b.FloodBonus * Diff.yield;
 
         /// <summary>A field's expected harvest this year at its current growth (for the HUD and the auto-player).</summary>
         public float ExpectedHarvest(Building b)
@@ -74,7 +74,7 @@ namespace Firstlight.Game
             foreach (var b in Buildings)
             {
                 if (!b.Active || !b.Def.crop) continue;
-                if (season == 0 && DayOfSeason == 0) { b.Sown = b.Growth = b.Harvested = 0; b.TendedToday = 0; continue; }
+                if (season == 0 && DayOfSeason == 0) { b.Sown = b.Growth = b.Harvested = 0; b.TendedToday = 0; b.FloodBonus = 1f; continue; }
                 if (season == 0) b.Growth += B.growthSpring * b.Sown;
                 else if (season == 1)
                 {
@@ -87,7 +87,7 @@ namespace Firstlight.Game
         }
 
         /// <summary>Fields need no hands in winter (their workers go hauling and building).</summary>
-        bool WantsWorkers(Building b) => !(b.Def.crop && (Season == 3 || Season == 2 && b.Harvested >= 0.999f));
+        bool WantsWorkers(Building b) => !b.Flooded && !(b.Def.crop && (Season == 3 || Season == 2 && b.Harvested >= 0.999f));
 
         /// <summary>
         /// Where a farmer goes: the field's door (one path target per field, so a big farmed area costs no more paths);
@@ -102,8 +102,8 @@ namespace Firstlight.Game
         /// <summary>A farmer moves to a spot among the rows (the view walks it there), facing along the row.</summary>
         void StepIntoField(Citizen c, Building b)
         {
-            float x = b.Origin.x + 0.4f + (float)_rng.NextDouble() * (b.Def.sizeX - 0.8f);
-            float y = b.Origin.y + 0.4f + (float)_rng.NextDouble() * (b.Def.sizeY - 0.8f);
+            float x = b.Origin.x + 0.4f + (float)_rng.NextDouble() * (b.SX - 0.8f);
+            float y = b.Origin.y + 0.4f + (float)_rng.NextDouble() * (b.SY - 0.8f);
             c.Pos = new float2(x, y);
             c.Facing = _rng.Next(2) == 0 ? math.PI * 0.5f : -math.PI * 0.5f;
             c.FieldFeature = -1;
@@ -180,11 +180,10 @@ namespace Firstlight.Game
             float giveAmt = value / Data.Resources[give].value;
             float getAmt = math.floor(value * B.traderRate / math.max(0.1f, Data.Resources[want].value));
             if (getAmt < 1) return;
-            float took = Withdraw(give, giveAmt);
-            Consumed[give] -= took;            // traded away, not used up
-            Deposit(want, getAmt, TownCenter.Center);
-            Trades++;
-            Log(Severity.Info, $"Traders came by: {took:0} {Data.Resources[give].name.ToLower()} swapped for {getAmt:0} {Data.Resources[want].name.ToLower()}.", TownCenter.Center);
+            // The player is asked (an offer stands for two days); the auto-player, or "always accept", takes it at once.
+            if (AutoTrade) { DoTrade(give, giveAmt, want, getAmt); return; }
+            PendingTrade = new TradeOffer { Give = give, GiveAmount = giveAmt, Want = want, GetAmount = getAmt, Day = Day };
+            Log(Severity.Info, $"Traders have come with an offer: {getAmt:0} {Data.Resources[want].name.ToLower()} for {giveAmt:0} {Data.Resources[give].name.ToLower()}.", TownCenter.Center);
         }
 
         int HomeCount() { int n = 0; foreach (var b in Buildings) if (b.Active && b.Def.housing > 0 && b.Residents > 0) n++; return n; }

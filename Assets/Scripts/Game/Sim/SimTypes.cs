@@ -50,6 +50,9 @@ namespace Firstlight.Game
         public int Id;
         public BuildingDef Def;
         public int2 Origin;                  // lower-left footprint cell
+        public int Rot;                      // quarter turns (0..3); the door is on the -y side unturned
+        public int SX => (Rot & 1) == 0 ? Def.sizeX : Def.sizeY;   // footprint on the map, turned
+        public int SY => (Rot & 1) == 0 ? Def.sizeY : Def.sizeX;
         public int Door;                     // walkable cell in front, where people arrive
         public float2 Center, DoorPos;
         public BuildState State;
@@ -79,6 +82,7 @@ namespace Firstlight.Game
 
         // Crop buildings (fields): this year's sowing, growth and harvest, each 0..1; the crop chosen at sowing.
         public float Sown, Growth, Harvested;
+        public float FloodBonus = 1f;        // silt from this spring's flood: harvest multiplier for the year
         public int CropOut;                  // output index sown this year
         internal float TendedToday;
         public bool Irrigated;               // water within the irrigation radius (counts once Irrigation is known)
@@ -86,6 +90,9 @@ namespace Firstlight.Game
         // Homes: what the household has (refreshed hourly; goods worn down daily).
         public float GoodsLife;              // days left on the household's pottery
         public bool HasWater, HasFaith;
+
+        /// <summary>Under flood water: no work, no storing, a cold home, until the water goes down.</summary>
+        public bool Flooded;
 
         public bool Alive => State != BuildState.Removed;
         public bool Active => State == BuildState.Active;

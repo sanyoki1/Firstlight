@@ -1,17 +1,41 @@
+using System.Linq;
 using Unity.Mathematics;
 using UnityEngine;
 using static Firstlight.Game.UI.UiTheme;
 
 namespace Firstlight.Game.UI
 {
-    // Top bar: age, calendar, speed, population, food, key stocks with daily trends, research, panel buttons.
+    // Top bar, two rows. Row one: age and calendar, speed, people, food, research, panel buttons. Row two: the key
+    // stocks with daily trends, then the needs that have arrived and unrest. Every figure has a tooltip saying what it
+    // is and what moves it. Row two keeps its order and drops from the right when the screen is narrow.
     public sealed partial class Hud
     {
         float[] _daySnap, _dayDelta;
         int _snapDay = -1;
         float _knowSnap, _knowPerDay, _foodSnap, _foodDelta;
 
-        static readonly string[] KeyStocks = { "wood", "firewood", "stone", "tools", "hides", "clothing", "herbs" };
+        /// <summary>Height of both rows: panels and the event feed start below it.</summary>
+        public const float TopBarHeight = 84;
+
+        // Stocks in the second row, most important first (tools = every tier together). Later goods appear once made.
+        static readonly string[] KeyStocks = { "wood", "firewood", "stone", "tools", "hides", "clothing", "herbs", "grain", "clay", "pottery", "copper", "bronze" };
+        static readonly int AlwaysShown = 4;
+
+        static readonly System.Collections.Generic.Dictionary<string, string> StockTips = new()
+        {
+            ["wood"] = "Wood: for building and rebuilding. Woodcutters make it (and firewood); every site takes it.",
+            ["firewood"] = "Firewood: burned by every lived-in home and the campfire each day, most in winter. Woodcutters split it; a woodcutter can be set to firewood only.",
+            ["stone"] = "Stone: for sturdier buildings and paths. Stone gatherers and mining pits take it from rock.",
+            ["tools"] = "Tools of every kind (stone, copper, bronze). Workers wear them out; a toolmaker or smiths make more. Without one, tool users work slower, and fields and mines not at all.",
+            ["hides"] = "Hides: from hunters and pens; hide workers make clothing from them, and hide tents need them.",
+            ["clothing"] = "Clothing: put on in the cold seasons and worn out over the winter; people without it are colder.",
+            ["herbs"] = "Herbs: gathered by the herbalist; healers use them to treat the sick.",
+            ["grain"] = "Grain: the harvest from the fields, eaten through winter and spring. Keeps best in a granary.",
+            ["clay"] = "Clay: dug at a clay pit on the river's clay beds; potters fire it into pottery.",
+            ["pottery"] = "Pottery: every household keeps pots in use, and they wear out. Potters make them.",
+            ["copper"] = "Copper: smelted from copper ore; coppersmiths make copper tools from it.",
+            ["bronze"] = "Bronze: copper with a little tin, cast at a foundry; bronze smiths make the best tools.",
+        };
 
         /// <summary>Change over the last full day per resource (for the trend arrows and the stock list).</summary>
         void SampleTrends()
@@ -49,13 +73,16 @@ namespace Firstlight.Game.UI
 
         void DrawTopBar()
         {
-            var bar = Box(new Rect(0, 0, VW, 52), UiTheme.Header);
+            Box(new Rect(0, 0, VW, 52), UiTheme.Header);
+            Box(new Rect(0, 52, VW, TopBarHeight - 52), UiTheme.Panel);
             float x = 14;
 
             // Age and calendar.
+            var ar = new Rect(x, 5, 250, 42);
             GUI.Label(new Rect(x, 5, 250, 22), S.Age?.name ?? "", Title);
-            GUI.Label(new Rect(x, 27, 270, 20), $"Year {S.Year + 1}, {S.SeasonName} day {S.DayOfSeason + 1}  ·  {Clock()}", Small);
-            x += 262;
+            GUI.Label(new Rect(x, 27, 250, 20), $"Year {S.Year + 1}, {S.SeasonName} day {S.DayOfSeason + 1}  ·  {Clock()}", Small);
+            Tip(ar, $"The age the settlement has reached, and the calendar: {D.Balance.daysPerSeason} days a season, a year of four seasons. Winter is cold and nothing grows; spring floods can come. Goals (G) show what the next age needs.");
+            x += 252;
 
             // Speed.
             float[] speeds = { 0, 1, 2, 4 };
@@ -65,20 +92,21 @@ namespace Firstlight.Game.UI
                 var r = new Rect(x + i * 42, 11, 38, 30);
                 bool on = math.abs(S.Speed - speeds[i]) < 0.01f;
                 if (GUI.Button(r, names[i], on ? ButtonOn : Button)) G.SetSpeed(speeds[i]);
-                Tip(r, i == 0 ? "Pause (Space)" : $"Speed {names[i]} (key {i})");
+                Tip(r, i == 0 ? "Pause (Space). You can still build and give orders while paused." : $"Game speed {names[i]} (key {i}).");
             }
-            x += 4 * 42 + 18;
+            x += 4 * 42 + 16;
 
             // People.
             int elders = 0;
             foreach (var c in S.Citizens) if (!c.Gone && S.IsElder(c)) elders++;
             int adults = S.Adults - elders, kids = S.Children;
             int free = S.HousingCapacity - S.Population;
-            var pr = new Rect(x, 5, 250, 42);
-            GUI.Label(new Rect(x, 5, 250, 22), $"<b>{S.Population}</b> people  " + (S.Homeless > 0 ? Col($"{S.Homeless} homeless", Warn) : free > 0 ? Col($"{free} beds free", Dim) : Col("no free beds", Dim)), Label);
-            GUI.Label(new Rect(x, 27, 250, 20), $"{adults} adults · {kids} children · {elders} elders", Small);
-            Tip(pr, $"Housing for {S.HousingCapacity}. Average happiness {S.AverageHappiness:P0}. Births {S.Births}, migrants {S.Migrants}, left {S.Leavers}, died {S.TotalDeaths}.");
-            x += 254;
+            var pr = new Rect(x, 5, 236, 42);
+            GUI.Label(new Rect(x, 5, 236, 22), $"<b>{S.Population}</b> people  " + (S.Homeless > 0 ? Col($"{S.Homeless} homeless", Warn) : free > 0 ? Col($"{free} beds free", Dim) : Col("no free beds", Dim)), Label);
+            GUI.Label(new Rect(x, 27, 236, 20), $"{adults} adults · {kids} children · {elders} elders", Small);
+            Tip(pr, $"People: {S.Population}, housing for {S.HousingCapacity}. Babies are born to families with a home, free beds and food in store; migrants come when there are free beds, food and good spirits. Unhappy or starving people leave.\n\n" +
+                    $"Happiness {S.AverageHappiness:P0}: the average and the worst of food, warmth, shelter, health (and later water, pottery and faith). It sets how fast people work.\n\nBorn {S.Births}, arrived {S.Migrants}, left {S.Leavers}, died {S.TotalDeaths}.");
+            x += 240;
 
             // Food.
             float fd = S.FoodDays;
@@ -86,57 +114,80 @@ namespace Firstlight.Game.UI
             var fr = new Rect(x, 5, 150, 42);
             GUI.Label(new Rect(x, 5, 150, 22), "Food " + Col(fd >= 99 ? "-" : $"{fd:0.#} days", fcol), Label);
             GUI.Label(new Rect(x, 27, 150, 20), $"{S.FoodStock:0} in store" + Arrow(_foodDelta, 0.5f), Small);
-            Tip(fr, $"Food for {fd:0.#} days at {S.DailyFoodNeed:0.#} a day. Change over the last day: {_foodDelta:+0.#;-0.#;0}.");
+            Tip(fr, $"Food in store lasts {fd:0.#} days at {S.DailyFoodNeed:0.#} a day (adults eat 1, children less). Change over the last day: {_foodDelta:+0.#;-0.#;0}.\n\n" +
+                    "Gatherers, hunters, fishers and, later, fields make it; it spoils in open piles (a granary keeps it). Winter makes little: stock up before it. Click for every good (T).");
             if (GUI.Button(fr, GUIContent.none, GUIStyle.none)) ToggleStocks();
-            x += 150;
 
-            // The needs that have arrived (Agricultural Age), then key stocks (click: the full list).
-            float right = VW - 4 * 96 - 240;
-            x = DrawNeedsStrip(x, right) + 4;
-            foreach (var id in KeyStocks)
-            {
-                int r = S.ResIndex(id);
-                if (r < 0) continue;
-                if (x + 80 > right) break;
-                float amt = S.StockTotals[r];
-                var sr = new Rect(x, 5, 78, 42);
-                GUI.Label(new Rect(x, 5, 78, 20), D.Resources[r].name, Small);
-                GUI.Label(new Rect(x, 24, 78, 22), $"{amt:0}" + Arrow(Trend(r), 0.3f), Bold);
-                Tip(sr, $"{D.Resources[r].name}: {amt:0.#} in store, {Trend(r):+0.#;-0.#;0} over the last day. Click for every good (T).");
-                if (GUI.Button(sr, GUIContent.none, GUIStyle.none)) ToggleStocks();
-                x += 80;
-            }
-
-            // Research progress.
-            float rx = VW - 4 * 96 - 234;
-            var rr = new Rect(rx, 6, 226, 40);
+            // Research progress (right side), then the panel buttons.
+            float bx = VW - 4 * 100 - 6;
+            float rx = bx - 236;
+            var rr = new Rect(rx, 6, 228, 40);
             string cur = S.CurrentResearch;
             var def = cur != null ? D.ResearchById(cur) : null;
             if (GUI.Button(rr, GUIContent.none, Button)) ToggleResearch();
-            GUI.Label(new Rect(rx + 8, 7, 214, 20), def != null ? $"Researching <b>{def.name}</b>" : Col("Nothing being researched", Warn), new GUIStyle(Label) { fontSize = 14 });
+            bool allKnown = def == null && !S.AvailableResearch.Any();
+            GUI.Label(new Rect(rx + 8, 7, 214, 20), def != null ? $"Researching <b>{def.name}</b>" : allKnown ? Col("All research known", Good) : Col("Nothing being researched", Warn), new GUIStyle(Label) { fontSize = 14 });
             Bar(new Rect(rx + 8, 30, 130, 9), def != null ? S.ResearchProgress(cur) : 0, Accent);
-            GUI.Label(new Rect(rx + 144, 25, 80, 18), $"+{_knowPerDay:0.#}/day", Small);
-            Tip(rr, def != null ? $"{def.name}: {S.ResearchProgress(cur):P0}. {S.ResearchQueue.Count} in the queue. Knowledge {_knowPerDay:0.#} a day. Open the research tree (R)." :
-                $"Knowledge is being banked ({S.KnowledgeBank:0}). Open the research tree (R) and choose what to learn.");
+            GUI.Label(new Rect(rx + 146, 25, 80, 18), $"+{_knowPerDay:0.#}/day", Small);
+            Tip(rr, (def != null ? $"{def.name}: {S.ResearchProgress(cur):P0}. {S.ResearchQueue.Count} in the queue." : $"Nothing queued: knowledge is banked ({S.KnowledgeBank:0}) until you choose.") +
+                    $"\n\nKnowledge {_knowPerDay:0.#} a day, from staffed Elders' Fires (elders count more). More fires and more elders on them research faster. Open the research tree (R).");
 
-            // Panel buttons.
-            float bx = VW - 4 * 96 - 4;
             string[] labels = { "Research", "Goals", "Jobs", "Help" };
             string[] keys = { "R", "G", "J", "F1" };
             bool[] open = { ResearchOpen, GoalsOpen, JobsOpen, HelpOpen };
+            string[] tips = { "Research tree: choose what to learn next.", "Goals: the key research and milestones for the next age.", "Jobs: how many work where; set priorities on each building.", "Controls and keys." };
             for (int i = 0; i < 4; i++)
             {
-                var r = new Rect(bx + i * 96, 9, 92, 34);
+                var r = new Rect(bx + i * 100, 9, 96, 34);
                 if (GUI.Button(r, $"{labels[i]} {Col(keys[i], Dim)}", open[i] ? ButtonOn : Button))
                 {
                     if (i == 0) ToggleResearch(); else if (i == 1) ToggleGoals(); else if (i == 2) ToggleJobs(); else ToggleHelp();
                 }
+                Tip(r, tips[i]);
             }
+
+            // Row two: key stocks, then the needs and unrest (they keep their order and drop from the right when narrow).
+            x = 12;
+            float y2 = 55, right = VW - 10;
+            int shown = 0;
+            foreach (var id in KeyStocks)
+            {
+                int r = S.ResIndex(id);
+                if (r < 0) continue;
+                bool tools = id == "tools";
+                float amt = tools ? S.ToolStock : S.StockTotals[r];
+                if (shown >= AlwaysShown && amt < 0.5f && S.Produced[r] < 0.5f) continue;
+                if (x + 116 > right - NeedsWidth()) break;
+                var sr = new Rect(x, y2, 112, 26);
+                float trend = tools ? ToolTrend() : Trend(r);
+                GUI.Label(new Rect(x, y2 + 3, 64, 20), tools ? "Tools" : D.Resources[r].name, Small);
+                GUI.Label(new Rect(x + 62, y2 + 2, 50, 22), $"<b>{amt:0}</b>" + Arrow(trend, 0.3f), Label);
+                Tip(sr, (StockTips.TryGetValue(id, out var t) ? t : D.Resources[r].name) + $"\n\n{amt:0.#} in store, {trend:+0.#;-0.#;0} over the last day. Click for every good (T).");
+                if (GUI.Button(sr, GUIContent.none, GUIStyle.none)) ToggleStocks();
+                x += 116; shown++;
+            }
+            DrawNeedsStrip(math.max(x + 10, right - NeedsWidth()), y2, right);
             if (G.Auto != null)
             {
-                var ar = Box(new Rect(VW - 330, VH - 40, 320, 30), UiTheme.Header);
-                GUI.Label(new Rect(ar.x + 12, ar.y, 300, 30), Col("Auto-player is running the settlement (F9)", Info), new GUIStyle(Label) { fontSize = 14 });
+                var ar2 = Box(new Rect(VW - 330, VH - 40, 320, 30), UiTheme.Header);
+                GUI.Label(new Rect(ar2.x + 12, ar2.y, 300, 30), Col("Auto-player is running the settlement (F9)", Info), new GUIStyle(Label) { fontSize = 14 });
             }
+        }
+
+        float ToolTrend()
+        {
+            float t = 0;
+            for (int r = 0; r < S.ResCount; r++) if (D.Resources[r].toolSpeed > 0) t += Trend(r);
+            return t;
+        }
+
+        /// <summary>Width the needs strip takes (0 while no need applies yet).</summary>
+        float NeedsWidth()
+        {
+            int n = 0;
+            foreach (var need in D.Balance.needs) if (S.NeedMet(need.id) >= 0) n++;
+            if (S.Age.order >= 1) n++;
+            return (n + 1) * 112;                  // + happiness, always shown
         }
     }
 }
