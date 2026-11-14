@@ -26,12 +26,13 @@
       "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 10}], "buildWork": 2, "unlockedBy": "", "maxWorkers": 0,
       "housing": 4, "homeWarmth": 0.35, "color": "#7a6247",
       "parts": [
-        {"prim": "wedge", "pos": [0, 0, 0.15], "size": [1.75, 1.15, 1.45], "material": "branches"},
-        {"prim": "box", "pos": [0, 0, -0.56], "size": [1.4, 0.95, 0.04], "material": "hide", "color": "#6a5e52"},
-        {"prim": "cylinder", "pos": [-0.82, 0, -0.62], "size": [0.12, 1.3, 0.12], "material": "bark_broad"},
-        {"prim": "cylinder", "pos": [0.82, 0, -0.62], "size": [0.12, 1.3, 0.12], "material": "bark_broad"},
-        {"prim": "log", "pos": [0, 1.18, -0.62], "size": [1.95, 0.1, 0.1], "material": "bark_broad"},
-        {"prim": "sphere", "pos": [0.55, 0, -0.8], "size": [0.4, 0.18, 0.35], "material": "fur"}
+        {"prim": "wedge", "pos": [0, 0, -0.1], "size": [1.75, 1.15, 1.45], "material": "branches", "yaw": 180},
+        {"prim": "box", "pos": [0, 0, 0.58], "size": [1.5, 1.0, 0.05], "material": "branches", "color": "#8a8070"},
+        {"prim": "cylinder", "pos": [-0.82, 0, 0.66], "size": [0.12, 1.3, 0.12], "material": "bark_broad"},
+        {"prim": "cylinder", "pos": [0.82, 0, 0.66], "size": [0.12, 1.3, 0.12], "material": "bark_broad"},
+        {"prim": "log", "pos": [0, 1.18, 0.66], "size": [1.95, 0.1, 0.1], "material": "bark_broad"},
+        {"prim": "sphere", "pos": [0.55, 0, -0.85], "size": [0.4, 0.16, 0.32], "material": "fur"},
+        {"prim": "logs", "pos": [-0.6, 0, -0.85], "size": [0.45, 0.2, 0.3], "material": "wood", "yaw": 90}
       ]
     },
     {

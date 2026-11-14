@@ -394,7 +394,7 @@ namespace Firstlight.Game.UI
             if (Event.current.type == EventType.Repaint) _bannerTime += math.min(Time.unscaledDeltaTime, 0.05f);
             float t = _bannerTime;
             if (t > 6f) { _bannerTime = -1; return; }
-            float a = math.saturate(math.min(t / 0.4f, (6f - t) / 1f));
+            float a = math.saturate(math.min(t / 0.15f, (6f - t) / 1f));
             var r = new Rect(VW / 2 - 480, VH * 0.24f, 960, 96);
             var old = GUI.color; GUI.color = new Color(1, 1, 1, a);
             GUI.Box(r, GUIContent.none, UiTheme.Header);
@@ -447,7 +447,7 @@ namespace Firstlight.Game.UI
                     lines.Add($"Within reach: trees {M.CountFeature("trees", c, 11)}, rock {M.CountFeature("rocks", c, 13)}, water {M.CountFeature("water", c, 14)}, game {M.CountFeature("wildlife", c, 18)}");
                     lines.Add(Col($"Warms homes within {d.warmthRadius}", Dim));
                 }
-                if (d.cost.Length > 0) lines.Add(Cost(d));
+                if (d.cost.Length > 0) lines.Add("Cost: " + Cost(d));
             }
             lines.Add(Col(d.townCenter ? "Left-click to place" : "Left-click to place, Shift for several, right-click to stop", Dim));
             string text = string.Join("\n", lines);

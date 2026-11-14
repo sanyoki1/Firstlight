@@ -58,6 +58,13 @@ namespace Firstlight.Game
             Hud.StartPlacing(gath);
             Aim(gc);
             yield return Shot("build_menu");
+            // The same tool over the river: red, with the reason.
+            var wet = NearestRiverCell(Sim.TownCenter.Center);
+            Aim(new float2(wet % Map.W + 0.5f, wet / Map.W + 0.5f));
+            LookAt(World(new float2(wet % Map.W + 0.5f, wet / Map.W + 0.5f)), 26f, 58f, 20f);
+            yield return Settle(3);
+            Aim(new float2(wet % Map.W + 0.5f, wet / Map.W + 0.5f));
+            yield return Shot("placement_invalid");
             Hud.CancelTool(); Hud.BuildCategory = null;
             Hud.PointerOverride = new Vector2(-100, -100);
 
@@ -84,8 +91,8 @@ namespace Firstlight.Game
 
             // 6. A citizen out at work (or carrying).
             // Someone at work where the trees don't hide them.
-            var person = Sim.Citizens.Where(c => c.Activity == Activity.Working || c.Activity == Activity.Carrying)
-                .OrderBy(c => Map.CountFeature("trees", c.Pos, 3) * 10 - (c.AtField ? 5 : 0)).FirstOrDefault() ?? Sim.Citizens[0];
+            var person = Sim.Citizens.Where(c => c.Activity is Activity.Working or Activity.Carrying or Activity.Building)
+                .OrderBy(c => Map.CountFeature("trees", c.Pos, 3) * 10 - (c.Activity == Activity.Building ? 15 : 0)).FirstOrDefault() ?? Sim.Citizens[0];
             Hud.SelectCitizen(person);
             LookAt(World(person.Pos), 12f, 50f, 35f);
             yield return Settle(12);
@@ -117,7 +124,7 @@ namespace Firstlight.Game
             if (_bannerPending)
             {
                 _bannerPending = false;
-                yield return Settle(8);
+                yield return Settle(15);
                 yield return Shot("age_up");
                 yield return Advance(() => Sim.Population >= 40 || Sim.Year >= 8, 40000, 24);
             }
@@ -142,6 +149,18 @@ namespace Firstlight.Game
             Hud.ToggleHelp();
             yield return Shot("help");
             Hud.ToggleHelp();
+
+            // Hunters out at a herd (if the camp is staffed and someone is out there now).
+            Citizen hunter = null;
+            yield return Advance(() => (hunter = Sim.Citizens.FirstOrDefault(c => c.AtField && c.Job != null && c.Job.Def.nearby?.feature == "wildlife" && c.Activity == Activity.Working)) != null, 300, 2);
+            if (hunter != null)
+            {
+                Hud.SelectCitizen(hunter);
+                LookAt(World(hunter.Pos), 16f, 52f, 30f);
+                yield return Settle(12);
+                yield return Shot("hunters");
+                Hud.SelectCitizen(null);
+            }
 
             // Night (autumn), then winter snow at midday.
             yield return Advance(() => Sim.Season == 2 && Sim.DayFraction > 0.9f, 20000, 12);

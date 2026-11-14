@@ -403,7 +403,7 @@ namespace Firstlight.Game
             Warnings.Clear();
             if (TownCenter == null) { Warnings.Add("Choose a site for the campfire."); return; }
             float fd = FoodDays;
-            if (fd < B.foodWarnDays) Warnings.Add(fd < 0.5f ? "There is no food left." : $"Food will run out in {math.max(1, (int)math.round(fd))} days.");
+            if (fd < B.foodWarnDays) { int n = math.max(1, (int)math.round(fd)); Warnings.Add(fd < 0.5f ? "There is no food left." : $"Food will run out in {n} day{(n == 1 ? "" : "s")}."); }
             float fuelNeed = FuelNeedUntilSpring();
             if (fuelNeed > 0 && StockTotals[_fuel] < fuelNeed * 0.7f && Season >= 2)
                 Warnings.Add($"Not enough firewood for winter ({StockTotals[_fuel]:F0} of about {fuelNeed:F0}).");
@@ -413,7 +413,7 @@ namespace Firstlight.Game
             if (cap > 0 && StorageUsed > cap * 0.9f) Warnings.Add("Storage is nearly full.");
             int noTools = 0;
             foreach (var c in Citizens) if (c.Job != null && c.Job.Def.usesTools && c.Tool < 0) noTools++;
-            if (noTools > 0) Warnings.Add($"{noTools} workers have no tools.");
+            if (noTools > 0) Warnings.Add(noTools == 1 ? "1 worker has no tools." : $"{noTools} workers have no tools.");
             int sick = 0;
             foreach (var c in Citizens) if (c.Sick) sick++;
             if (sick >= math.max(3, Population / 6)) Warnings.Add($"{sick} people are sick.");
