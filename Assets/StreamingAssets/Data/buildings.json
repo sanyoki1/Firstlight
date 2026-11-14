@@ -65,7 +65,7 @@
       "id": "woodcutter", "name": "Woodcutter", "age": "stone", "category": "Materials",
       "description": "Fells nearby trees for building wood and splits firewood for winter. Thins the forest over time.",
       "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 8 }, { "id": "stone", "amount": 4 } ], "buildWork": 3, "unlockedBy": "",
-      "maxWorkers": 2, "workerTitle": "Woodcutter",
+      "maxWorkers": 2, "workerTitle": "Woodcutter", "usesTools": true,
       "outputs": [ { "id": "wood", "amount": 1.4 }, { "id": "firewood", "amount": 1.4 } ], "yieldTag": "woodcutting",
       "seasonYield": [1, 1, 1, 0.85],
       "nearby": { "feature": "trees", "radius": 7, "min": 5, "full": 20 },
@@ -83,7 +83,7 @@
       "id": "stone_gatherer", "name": "Stone Gatherer", "age": "stone", "category": "Materials",
       "description": "Collects loose stone from nearby rock outcrops. Rocks run out eventually.",
       "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 10 } ], "buildWork": 3, "unlockedBy": "",
-      "maxWorkers": 2, "workerTitle": "Stone gatherer",
+      "maxWorkers": 2, "workerTitle": "Stone gatherer", "usesTools": true,
       "outputs": [ { "id": "stone", "amount": 1.2 } ], "yieldTag": "stone",
       "seasonYield": [1, 1, 1, 0.8],
       "nearby": { "feature": "rocks", "radius": 8, "min": 1, "full": 6 },
@@ -131,7 +131,7 @@
       "id": "hunters_camp", "name": "Hunters' Camp", "age": "stone", "category": "Food",
       "description": "Hunters track wildlife herds within range for meat and hides. Over-hunting thins the herds.",
       "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 15 }, { "id": "stone", "amount": 5 } ], "buildWork": 3, "unlockedBy": "spears",
-      "maxWorkers": 3, "workerTitle": "Hunter",
+      "maxWorkers": 3, "workerTitle": "Hunter", "usesTools": true,
       "outputs": [ { "id": "meat", "amount": 2.0 }, { "id": "hides", "amount": 0.35 } ], "yieldTag": "hunting",
       "seasonYield": [1, 1, 1.1, 0.6],
       "nearby": { "feature": "wildlife", "radius": 16, "min": 1, "full": 12 },
@@ -182,7 +182,7 @@
       "id": "hide_worker", "name": "Hide Worker", "age": "stone", "category": "Materials",
       "description": "Scrapes and stitches hides into clothing. Clothed people stay warm in autumn and winter.",
       "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 12 } ], "buildWork": 3, "unlockedBy": "hide_working",
-      "maxWorkers": 2, "workerTitle": "Hide worker",
+      "maxWorkers": 2, "workerTitle": "Hide worker", "usesTools": true,
       "inputs": [ { "ids": ["hides"], "amount": 1.0 } ],
       "outputs": [ { "id": "clothing", "amount": 0.5 } ], "yieldTag": "hideworking",
       "color": "#8a6a4f",
@@ -207,6 +207,163 @@
         { "prim": "sphere", "pos": [0.6, 0, -0.5], "size": [0.35, 0.3, 0.35], "color": "#6d7d52" },
         { "prim": "sphere", "pos": [0.2, 0, -0.7], "size": [0.3, 0.25, 0.3], "color": "#62734a" },
         { "prim": "sphere", "pos": [0.7, 0, -0.05], "size": [0.3, 0.28, 0.3], "color": "#74845a" }
+      ]
+    },
+    {
+      "id": "toolmaker", "name": "Toolmaker", "age": "stone", "category": "Materials",
+      "description": "Knaps stone heads and binds them to hafts. Makes the tools that woodcutters, hunters, miners, farmers and builders wear out.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 12 }, { "id": "stone", "amount": 4 } ], "buildWork": 3, "unlockedBy": "basic_tools",
+      "maxWorkers": 1, "workerTitle": "Toolmaker",
+      "inputs": [ { "ids": ["wood"], "amount": 0.4 }, { "ids": ["stone"], "amount": 0.4 } ],
+      "outputs": [ { "id": "tools", "amount": 0.6 } ], "yieldTag": "toolmaking",
+      "color": "#77736c",
+      "parts": [
+        { "prim": "wedge", "pos": [-0.3, 0, 0.35], "size": [1.2, 0.8, 1.0], "color": "#7a6247" },
+        { "prim": "cylinder", "pos": [0.5, 0, -0.45], "size": [0.5, 0.35, 0.5], "color": "#7a5d42" },
+        { "prim": "sphere", "pos": [0.5, 0.35, -0.45], "size": [0.28, 0.16, 0.28], "color": "#77736c" },
+        { "prim": "sphere", "pos": [-0.1, 0, -0.7], "size": [0.4, 0.25, 0.4], "color": "#8e8b85" }
+      ]
+    },
+    {
+      "id": "mining_pit", "name": "Mining Pit", "age": "stone", "category": "Materials",
+      "description": "Miners dig stone and flint out of rocky ground with picks. Slower than gathering loose rock, but it never runs out. Needs tools.",
+      "sizeX": 3, "sizeY": 3, "cost": [ { "id": "wood", "amount": 20 }, { "id": "tools", "amount": 2 } ], "buildWork": 6, "unlockedBy": "basic_mining",
+      "maxWorkers": 3, "workerTitle": "Miner", "requiresTools": true,
+      "outputs": [ { "id": "stone", "amount": 1.0 } ], "yieldTag": "mining",
+      "seasonYield": [1, 1, 1, 0.8],
+      "nearby": { "feature": "rocks", "radius": 6, "min": 3, "full": 8 },
+      "color": "#6b665f",
+      "parts": [
+        { "prim": "cylinder", "pos": [0, 0, 0], "size": [1.9, 0.08, 1.9], "color": "#4f4a44" },
+        { "prim": "sphere", "pos": [-1.0, 0, 0.8], "size": [0.9, 0.5, 0.8], "color": "#8e8b85" },
+        { "prim": "sphere", "pos": [1.0, 0, 0.9], "size": [0.7, 0.4, 0.7], "color": "#7f7c76" },
+        { "prim": "cylinder", "pos": [-0.7, 0, -0.9], "size": [0.1, 1.3, 0.1], "color": "#5b4532" },
+        { "prim": "cylinder", "pos": [0.7, 0, -0.9], "size": [0.1, 1.3, 0.1], "color": "#5b4532" },
+        { "prim": "box", "pos": [0, 1.25, -0.9], "size": [1.6, 0.1, 0.1], "color": "#5b4532" }
+      ]
+    },
+    {
+      "id": "field", "name": "Field", "age": "agricultural", "category": "Food",
+      "description": "Sown in spring, tended in summer, harvested in autumn. Nothing grows in winter. Needs tools.",
+      "sizeX": 4, "sizeY": 4, "cost": [ { "id": "wood", "amount": 6 }, { "id": "tools", "amount": 1 } ], "buildWork": 4, "unlockedBy": "farming",
+      "maxWorkers": 3, "workerTitle": "Farmer", "requiresTools": true,
+      "outputs": [ { "id": "grain", "amount": 2.4 } ], "yieldTag": "farming",
+      "seasonYield": [0.3, 0.6, 3.1, 0],
+      "color": "#8a7a4a",
+      "parts": [
+        { "prim": "box", "pos": [0, 0, 0], "size": [3.7, 0.06, 3.7], "color": "#6a5238" },
+        { "prim": "box", "pos": [0, 0.06, -1.2], "size": [3.4, 0.22, 0.35], "color": "#a8924f" },
+        { "prim": "box", "pos": [0, 0.06, -0.4], "size": [3.4, 0.22, 0.35], "color": "#a08a4a" },
+        { "prim": "box", "pos": [0, 0.06, 0.4], "size": [3.4, 0.22, 0.35], "color": "#a8924f" },
+        { "prim": "box", "pos": [0, 0.06, 1.2], "size": [3.4, 0.22, 0.35], "color": "#a08a4a" }
+      ]
+    },
+    {
+      "id": "clay_pit", "name": "Clay Pit", "age": "agricultural", "category": "Materials",
+      "description": "Digs clay from the river bank for potters and kilns. Must be built on a clay bed. Needs tools.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 10 } ], "buildWork": 3, "unlockedBy": "pottery",
+      "maxWorkers": 2, "workerTitle": "Clay digger", "requiresTools": true,
+      "outputs": [ { "id": "clay", "amount": 1.5 } ], "yieldTag": "clay",
+      "seasonYield": [1, 1, 1, 0.5],
+      "nearby": { "feature": "clay", "radius": 4, "min": 3, "full": 10 },
+      "color": "#9a6f55",
+      "parts": [
+        { "prim": "cylinder", "pos": [0, 0, 0.1], "size": [1.4, 0.06, 1.4], "color": "#7d5946" },
+        { "prim": "sphere", "pos": [0.55, 0, -0.55], "size": [0.6, 0.35, 0.6], "color": "#9a6f55" },
+        { "prim": "sphere", "pos": [-0.55, 0, -0.6], "size": [0.45, 0.28, 0.45], "color": "#8f6650" }
+      ]
+    },
+    {
+      "id": "copper_mine", "name": "Copper Mine", "age": "agricultural", "category": "Materials",
+      "description": "A shaft sunk into a copper deposit. Must be built on copper found by Prospecting. Needs tools.",
+      "sizeX": 3, "sizeY": 3, "cost": [ { "id": "wood", "amount": 30 }, { "id": "stone", "amount": 15 }, { "id": "tools", "amount": 3 } ], "buildWork": 10, "unlockedBy": "copper_working",
+      "maxWorkers": 4, "workerTitle": "Miner", "requiresTools": true,
+      "outputs": [ { "id": "copper_ore", "amount": 1.0 } ], "yieldTag": "mining",
+      "nearby": { "feature": "copper", "radius": 4, "min": 4, "full": 14 },
+      "color": "#5f8a78",
+      "parts": [
+        { "prim": "wedge", "pos": [0, 0, 0.4], "size": [2.4, 1.4, 1.8], "color": "#6b665f" },
+        { "prim": "box", "pos": [0, 0, -0.5], "size": [0.9, 0.9, 0.1], "color": "#2e2a27" },
+        { "prim": "cylinder", "pos": [-0.5, 0, -0.6], "size": [0.12, 1.0, 0.12], "color": "#5b4532" },
+        { "prim": "cylinder", "pos": [0.5, 0, -0.6], "size": [0.12, 1.0, 0.12], "color": "#5b4532" },
+        { "prim": "box", "pos": [0, 0.95, -0.6], "size": [1.2, 0.12, 0.12], "color": "#5b4532" },
+        { "prim": "sphere", "pos": [1.0, 0, -1.0], "size": [0.6, 0.35, 0.6], "color": "#5f8a78" }
+      ]
+    },
+    {
+      "id": "smelter", "name": "Smelter", "age": "agricultural", "category": "Materials",
+      "description": "A clay furnace that roasts copper ore into metal. Burns a lot of firewood.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "stone", "amount": 20 }, { "id": "clay", "amount": 15 }, { "id": "wood", "amount": 10 } ], "buildWork": 8, "unlockedBy": "copper_working",
+      "maxWorkers": 2, "workerTitle": "Smelter",
+      "inputs": [ { "ids": ["copper_ore"], "amount": 2.0 }, { "ids": ["firewood"], "amount": 1.5 } ],
+      "outputs": [ { "id": "copper", "amount": 1.0 } ], "yieldTag": "smelting",
+      "color": "#9a6f55",
+      "parts": [
+        { "prim": "cylinder", "pos": [-0.2, 0, 0.1], "size": [1.1, 1.0, 1.1], "color": "#9a6f55" },
+        { "prim": "cone", "pos": [-0.2, 1.0, 0.1], "size": [1.0, 0.6, 1.0], "color": "#8f6650" },
+        { "prim": "box", "pos": [-0.2, 0, -0.5], "size": [0.4, 0.4, 0.1], "color": "#2e2a27" },
+        { "prim": "box", "pos": [0.7, 0, -0.5], "size": [0.5, 0.35, 0.7], "color": "#a07850" }
+      ]
+    },
+    {
+      "id": "coppersmith", "name": "Coppersmith", "age": "agricultural", "category": "Materials",
+      "description": "Casts and hammers copper into axe heads, picks and sickles. Copper tools make every tool-using job 15% faster.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 20 }, { "id": "stone", "amount": 10 } ], "buildWork": 6, "unlockedBy": "copper_working",
+      "maxWorkers": 1, "workerTitle": "Coppersmith",
+      "inputs": [ { "ids": ["copper"], "amount": 0.5 }, { "ids": ["wood"], "amount": 0.4 } ],
+      "outputs": [ { "id": "copper_tools", "amount": 0.8 } ], "yieldTag": "toolmaking",
+      "color": "#b0713f",
+      "parts": [
+        { "prim": "prism", "pos": [-0.2, 0, 0.3], "size": [1.3, 0.9, 1.2], "color": "#7a6247" },
+        { "prim": "box", "pos": [0.6, 0, -0.55], "size": [0.45, 0.4, 0.45], "color": "#77736c" },
+        { "prim": "box", "pos": [0.6, 0.4, -0.55], "size": [0.3, 0.08, 0.2], "color": "#b0713f" }
+      ]
+    },
+    {
+      "id": "tin_mine", "name": "Tin Mine", "age": "bronze", "category": "Materials",
+      "description": "Works the map's one small tin deposit. Must be built on tin found by Prospecting. Needs tools.",
+      "sizeX": 3, "sizeY": 3, "cost": [ { "id": "wood", "amount": 30 }, { "id": "stone", "amount": 15 }, { "id": "copper_tools", "amount": 3 } ], "buildWork": 10, "unlockedBy": "bronze_working",
+      "maxWorkers": 3, "workerTitle": "Miner", "requiresTools": true,
+      "outputs": [ { "id": "tin_ore", "amount": 0.5 } ], "yieldTag": "mining",
+      "nearby": { "feature": "tin", "radius": 3, "min": 2, "full": 8 },
+      "color": "#6b6a70",
+      "parts": [
+        { "prim": "wedge", "pos": [0, 0, 0.4], "size": [2.4, 1.4, 1.8], "color": "#6b665f" },
+        { "prim": "box", "pos": [0, 0, -0.5], "size": [0.9, 0.9, 0.1], "color": "#2e2a27" },
+        { "prim": "cylinder", "pos": [-0.5, 0, -0.6], "size": [0.12, 1.0, 0.12], "color": "#5b4532" },
+        { "prim": "cylinder", "pos": [0.5, 0, -0.6], "size": [0.12, 1.0, 0.12], "color": "#5b4532" },
+        { "prim": "box", "pos": [0, 0.95, -0.6], "size": [1.2, 0.12, 0.12], "color": "#5b4532" },
+        { "prim": "sphere", "pos": [1.0, 0, -1.0], "size": [0.6, 0.35, 0.6], "color": "#6b6a70" }
+      ]
+    },
+    {
+      "id": "bronze_foundry", "name": "Bronze Foundry", "age": "bronze", "category": "Materials",
+      "description": "Melts copper with a little tin into bronze.",
+      "sizeX": 3, "sizeY": 3, "cost": [ { "id": "stone", "amount": 40 }, { "id": "clay", "amount": 20 }, { "id": "wood", "amount": 20 } ], "buildWork": 12, "unlockedBy": "bronze_working",
+      "maxWorkers": 2, "workerTitle": "Founder",
+      "inputs": [ { "ids": ["copper"], "amount": 1.0 }, { "ids": ["tin_ore"], "amount": 0.25 }, { "ids": ["firewood"], "amount": 1.5 } ],
+      "outputs": [ { "id": "bronze", "amount": 1.0 } ], "yieldTag": "smelting",
+      "color": "#a8853f",
+      "parts": [
+        { "prim": "box", "pos": [0.3, 0, 0.3], "size": [1.9, 1.2, 1.7], "color": "#8e8b85" },
+        { "prim": "prism", "pos": [0.3, 1.2, 0.3], "size": [2.0, 0.6, 1.8], "color": "#7a6247" },
+        { "prim": "cylinder", "pos": [-1.0, 0, -0.8], "size": [0.8, 1.1, 0.8], "color": "#9a6f55" },
+        { "prim": "cylinder", "pos": [-1.0, 1.1, -0.8], "size": [0.4, 0.5, 0.4], "color": "#6b665f" }
+      ]
+    },
+    {
+      "id": "bronze_smith", "name": "Bronze Smith", "age": "bronze", "category": "Materials",
+      "description": "Casts bronze tools. Bronze tools make every tool-using job 30% faster.",
+      "sizeX": 2, "sizeY": 2, "cost": [ { "id": "wood", "amount": 20 }, { "id": "stone", "amount": 20 } ], "buildWork": 8, "unlockedBy": "bronze_working",
+      "maxWorkers": 2, "workerTitle": "Bronze smith",
+      "inputs": [ { "ids": ["bronze"], "amount": 0.5 }, { "ids": ["wood"], "amount": 0.4 } ],
+      "outputs": [ { "id": "bronze_tools", "amount": 0.8 } ], "yieldTag": "toolmaking",
+      "color": "#a8853f",
+      "parts": [
+        { "prim": "box", "pos": [-0.2, 0, 0.3], "size": [1.3, 0.9, 1.2], "color": "#8e8b85" },
+        { "prim": "prism", "pos": [-0.2, 0.9, 0.3], "size": [1.4, 0.5, 1.3], "color": "#7a6247" },
+        { "prim": "box", "pos": [0.65, 0, -0.55], "size": [0.45, 0.4, 0.45], "color": "#77736c" },
+        { "prim": "box", "pos": [0.65, 0.4, -0.55], "size": [0.3, 0.08, 0.2], "color": "#a8853f" }
       ]
     }
   ]

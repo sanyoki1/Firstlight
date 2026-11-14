@@ -19,12 +19,13 @@ namespace Firstlight.Game
         public string id, name, category, color, note;
         public bool isFood;
         public float spoilPerDay;
+        public float toolSpeed;   // > 0 marks a tool; work speed multiplier for a worker holding one (best tier in stock is used)
     }
 
     [Serializable]
     public class NearbyDef
     {
-        public string feature;   // trees | rocks | water | wildlife
+        public string feature;   // trees | rocks | water | wildlife | clay | copper | tin
         public int radius;
         public int min;          // need at least this many to build
         public int full;         // this many gives full yield
@@ -62,6 +63,8 @@ namespace Firstlight.Game
         public float[] fuelPerDay;
         public int healthRadius;
         public float knowledgePerWorker;
+        public bool usesTools;       // workers wear tools down; without one they work at Balance.noToolWorkSpeed
+        public bool requiresTools;   // no work at all without a tool (implies usesTools)
         public PartDef[] parts = Array.Empty<PartDef>();
 
         public bool HasNearby => nearby != null && !string.IsNullOrEmpty(nearby.feature);
@@ -135,6 +138,9 @@ namespace Firstlight.Game
 
         public int treeRegrowPerDay = 3;
         public float rockStone = 30, herdRegrowPerDay = 0.04f;
+
+        public float noToolWorkSpeed = 0.6f, toolWearDays = 40;
+        public int copperDeposits = 3, tinDeposits = 1;
     }
 
     [Serializable] class ResourceFile { public ResourceDef[] resources; }
@@ -197,6 +203,7 @@ namespace Firstlight.Game
                 if (b.sizeX <= 0) b.sizeX = 2;
                 if (b.sizeY <= 0) b.sizeY = 2;
                 if (b.spoilMultiplier <= 0) b.spoilMultiplier = 1f;
+                if (b.requiresTools) b.usesTools = true;
             }
             foreach (var r in Research) { r.prereqs ??= Array.Empty<string>(); r.effects ??= Array.Empty<Effect>(); }
             foreach (var a in Ages) { a.keyResearch ??= Array.Empty<string>(); a.milestones ??= Array.Empty<MilestoneDef>(); }
@@ -210,7 +217,11 @@ namespace Firstlight.Game
             foreach (var r in Research)
                 foreach (var p in r.prereqs) if (ResearchById(p) == null) Debug.LogError($"[Data] research {r.id}: unknown prereq {p}");
             foreach (var a in Ages)
+            {
                 foreach (var k in a.keyResearch) if (ResearchById(k) == null) Debug.LogError($"[Data] age {a.id}: unknown key research {k}");
+                foreach (var m in a.milestones)
+                    if (m.type == "building" && Building(m.target) == null) Debug.LogError($"[Data] age {a.id}: unknown milestone building {m.target}");
+            }
         }
 
         public int AgeOrder(string ageId) => Age(ageId)?.order ?? 99;

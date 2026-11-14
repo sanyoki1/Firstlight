@@ -9,6 +9,9 @@ namespace Firstlight.Game
 {
     public enum Ground : byte { Grass, Water, Ford }
 
+    /// <summary>What lies under a cell. Clay shows from the start; copper and tin stay hidden until Prospecting.</summary>
+    public enum Deposit : byte { None, Clay, Copper, Tin }
+
     /// <summary>A wildlife herd: hunters reduce it, it regrows towards its maximum.</summary>
     public sealed class Herd
     {
@@ -38,7 +41,10 @@ namespace Firstlight.Game
         public readonly float[] TreeScale, TreeYaw;
         public readonly float2[] TreeOffset;
         public readonly float[] Rock;             // stone left; 0 = no rock
-        public readonly int[] BuildingAt;         // building id or -1
+        public readonly Deposit[] Deposits;       // clay / copper / tin under the cell
+        /// <summary>Set when Prospecting is researched: copper and tin then count as nearby features and can be drawn.</summary>
+        public bool OreRevealed;
+        public readonly int[] BuildingAt;        // building id or -1
         public readonly bool[] Reserved;          // door cells: walkable, nothing may be built on them
         public readonly List<Herd> Herds = new();
         public readonly FlowFieldCache Flow;
@@ -55,6 +61,7 @@ namespace Firstlight.Game
             Tree = new bool[n]; TreeKind = new byte[n]; TreeScale = new float[n]; TreeYaw = new float[n];
             TreeOffset = new float2[n];
             Rock = new float[n];
+            Deposits = new Deposit[n];
             WaterClass = new byte[n];
             BuildingAt = new int[n];
             Reserved = new bool[n];
@@ -135,6 +142,9 @@ namespace Firstlight.Game
                         case "trees": if (Tree[c]) count++; break;
                         case "rocks": if (Rock[c] > 0) count++; break;
                         case "water": if (WaterClass[c] > 0) count++; break;
+                        case "clay": if (Deposits[c] == Deposit.Clay) count++; break;
+                        case "copper": if (OreRevealed && Deposits[c] == Deposit.Copper) count++; break;
+                        case "tin": if (OreRevealed && Deposits[c] == Deposit.Tin) count++; break;
                     }
                 }
             return count;
@@ -313,6 +323,67 @@ namespace Firstlight.Game
             for (int c = 0; c < n; c++) Flow.Cost[c] = CostOf(c);
             Flow.Invalidate();
             TreesDirty = RocksDirty = true;
+
+            GenerateDeposits(seed, bal, dist);
+        }
+
+        /// <summary>
+        /// Clay along the river banks, a few copper patches in the hills and one small tin patch far from
+        /// the river. Uses its own random stream so the rest of the map stays the same for a given seed.
+        /// </summary>
+        void GenerateDeposits(int seed, Balance bal, float[] dist)
+        {
+            var rng = new System.Random(seed ^ 0x5eed0e);
+            float ox = rng.Next(0, 10000), oy = rng.Next(0, 10000);
+
+            for (int y = 0; y < H; y++)
+                for (int x = 0; x < W; x++)
+                {
+                    int c = Cell(x, y);
+                    if (Ground[c] != Game.Ground.Grass || dist[c] < 2f || dist[c] > 5f) continue;
+                    if (Mathf.PerlinNoise(ox + x * 0.09f, oy + y * 0.09f) > 0.62f) Deposits[c] = Deposit.Clay;
+                }
+
+            var centres = new List<float2>();
+            for (int i = 0; i < bal.copperDeposits; i++) PlaceOre(Deposit.Copper, 3.2f, 12f, 30f, rng, dist, centres);
+            for (int i = 0; i < bal.tinDeposits; i++) PlaceOre(Deposit.Tin, 1.9f, 22f, 30f, rng, dist, centres);
+        }
+
+        /// <summary>Picks the highest of a batch of candidate spots that are far enough from the river and other ore.</summary>
+        void PlaceOre(Deposit kind, float radius, float minRiverDist, float minSpacing, System.Random rng, float[] dist, List<float2> centres)
+        {
+            // Relax the distance rules step by step so every map gets its deposits.
+            for (float relax = 1f; relax > 0.2f; relax *= 0.75f)
+            {
+                int best = -1; float bestH = float.MinValue;
+                for (int attempt = 0; attempt < 300; attempt++)
+                {
+                    int x = rng.Next(6, W - 6), y = rng.Next(6, H - 6);
+                    int c = Cell(x, y);
+                    if (Ground[c] != Game.Ground.Grass || dist[c] < minRiverDist * relax) continue;
+                    var p = new float2(x + 0.5f, y + 0.5f);
+                    bool clear = true;
+                    foreach (var o in centres) if (math.distance(o, p) < minSpacing * relax) { clear = false; break; }
+                    if (!clear) continue;
+                    float h = CellHeight(x, y);
+                    if (h > bestH) { bestH = h; best = c; }
+                }
+                if (best < 0) continue;
+
+                int bx = best % W, by = best / W;
+                centres.Add(new float2(bx + 0.5f, by + 0.5f));
+                int r = (int)math.ceil(radius);
+                for (int y = by - r; y <= by + r; y++)
+                    for (int x = bx - r; x <= bx + r; x++)
+                    {
+                        if (!InBounds(x, y)) continue;
+                        int c = Cell(x, y);
+                        if (Ground[c] != Game.Ground.Grass) continue;
+                        float d = math.distance(new float2(x, y), new float2(bx, by));
+                        if (d <= radius - (float)rng.NextDouble() * 0.9f) Deposits[c] = kind;
+                    }
+                return;
+            }
         }
 
         public float[] RiverDistance()

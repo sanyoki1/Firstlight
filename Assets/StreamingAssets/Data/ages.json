@@ -14,8 +14,15 @@
       "id": "agricultural", "name": "Agricultural Age", "order": 1, "next": "bronze",
       "keyResearch": ["writing", "bronze_working"],
       "milestones": [
-        { "type": "population", "value": 80, "label": "Reach 80 people" }
+        { "type": "population", "value": 80, "label": "Reach 80 people" },
+        { "type": "building", "target": "mining_pit", "value": 1, "label": "Dig a Mining Pit" },
+        { "type": "building", "target": "smelter", "value": 1, "label": "Build a Smelter" }
       ]
+    },
+    {
+      "id": "bronze", "name": "Bronze Age", "order": 2, "next": "",
+      "keyResearch": [],
+      "milestones": []
     }
   ]
 }

@@ -46,7 +46,12 @@ Each line is a chain of research unlocks; each step is a new building tier or ca
 
 ## First playable slice: Stone → Agricultural
 ### Stone Age (draft v1)
-Known at start: Fire, Stone Tools, Foraging.
+Known at start: Fire, Foraging. Tools are **not** known: Basic Tools is the first research (decided 2026-11-13).
+
+**Tools are a physical good** (decided 2026-11-13). The Toolmaker turns wood + stone into stone tools; workers in
+tool-using jobs (woodcutter, stone gatherer, hunter, hide worker, miner, farmer, builders) wear them out
+(`toolWearDays`). Without a tool they work at 60% speed (`noToolWorkSpeed`); mines, pits and fields can't work at all
+without one. Better tiers work faster: stone ×1.0, copper ×1.15, bronze ×1.3 (best tier in stock is handed out first).
 
 **Buildings**
 | Building | Does | Needs research |
@@ -64,16 +69,22 @@ Known at start: Fire, Stone Tools, Foraging.
 | Hide Tent | Houses 6, good warmth | Hide Working |
 | Hide Worker | Hides → clothing (winter warmth need) | Hide Working |
 | Herbalist | Herbs; small health coverage radius | Herbal Knowledge |
+| Toolmaker | Wood + stone → stone tools | Basic Tools |
+| Mining Pit | Steady stone from rocky ground; never runs out; needs tools | Basic Mining |
+
+The Woodcutter and Stone Gatherer stay available from the start (deadfall and loose rock, at the slow no-tool speed),
+so the band can always reach the Elders' Fire and research Basic Tools.
 
 **Research tree** (→ means "leads to")
-- Stone Tools → Spears → Tracking (hunting yield ↑)
-- Stone Tools → Spears → Hide Working (tents, clothing)
+- Basic Tools → Spears → Tracking (hunting yield ↑)
+- Basic Tools → Spears → Hide Working (tents, clothing)
+- Basic Tools → Basic Mining (Mining Pit) → Flint Tools (tools last 40% longer)
 - Foraging → Food Preservation; Foraging → Fishing
 - Foraging → Herbal Knowledge (herbalist, first health)
 - Fire → Storytelling (Elders' Fire research ↑) → Kinship
 - Foraging + Herbal Knowledge → Seed Gathering
 
-**Key research:** Farming (needs Seed Gathering) and Tribes (needs Kinship + Storytelling).
+**Key research:** Farming (needs Seed Gathering + Basic Tools) and Tribes (needs Kinship + Storytelling).
 **Age-up milestones:** 25 people, survive one winter, have a Storage Pile and an Elders' Fire.
 
 ### Agricultural Age (draft v1)
@@ -82,7 +93,18 @@ Animal Pen, Well (water need), Healer's Hut (health tier 1), Shaman's Hut (resea
 (enables the first laws; order tier 1), Potter (pottery: storage ↑, goods need), Weaver, Dirt Path (movement ↑).
 
 **Research:** Animal Husbandry, Irrigation, Pottery, Weaving, Healing, Shamanism, Tribal Law (first laws, e.g. food
-sharing, dispute settling by elders), Masonry, Barter. **Key research toward the Bronze Age:** Writing + Bronze Working.
+sharing, dispute settling by elders), Masonry (needs Basic Mining + Farming), Barter. **Key research toward the Bronze
+Age:** Writing + Bronze Working.
+
+**Metal chain** (decided 2026-11-13). Mining is optional in the Stone Age but required before Bronze:
+- Basic Mining → Prospecting: reveals the map's hidden ore (3 copper patches in the hills, 1 small tin patch far from
+  the river, so bronze forces the city to expand). Clay beds along the river banks are visible from the start.
+- Prospecting + Pottery → Copper Working: Copper Mine (on a copper deposit) → Smelter (ore + firewood → copper) →
+  Coppersmith (copper + wood → copper tools). Pottery also unlocks the Clay Pit; the Smelter is built with clay.
+- Copper Working + Barter → Bronze Working (key): Tin Mine (on the tin deposit) → Bronze Foundry (copper + tin +
+  firewood → bronze) → Bronze Smith (bronze tools).
+
+**Age-up milestones:** 80 people, a Mining Pit and a Smelter (a Granary joins the list once that building exists).
 
 **New challenges:** winter food shortages, first disease outbreaks (crowding, bad water), first disputes/theft as the
 tribe grows.

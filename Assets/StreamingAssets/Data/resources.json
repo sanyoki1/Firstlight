@@ -9,6 +9,15 @@
     { "id": "stone", "name": "Stone", "category": "material", "isFood": false, "spoilPerDay": 0, "color": "#8e8b85" },
     { "id": "hides", "name": "Hides", "category": "material", "isFood": false, "spoilPerDay": 0.003, "color": "#8a6a4f" },
     { "id": "clothing", "name": "Clothing", "category": "goods", "isFood": false, "spoilPerDay": 0, "color": "#6f604c", "note": "Hide clothing, adds warmth in cold seasons" },
-    { "id": "herbs", "name": "Herbs", "category": "goods", "isFood": false, "spoilPerDay": 0.01, "color": "#6d7d52", "note": "Used by herbalists to treat the sick" }
+    { "id": "herbs", "name": "Herbs", "category": "goods", "isFood": false, "spoilPerDay": 0.01, "color": "#6d7d52", "note": "Used by herbalists to treat the sick" },
+    { "id": "tools", "name": "Stone tools", "category": "tools", "isFood": false, "spoilPerDay": 0, "toolSpeed": 1.0, "color": "#77736c", "note": "Hafted axes, picks and digging sticks. Workers wear them out" },
+    { "id": "copper_tools", "name": "Copper tools", "category": "tools", "isFood": false, "spoilPerDay": 0, "toolSpeed": 1.15, "color": "#b0713f", "note": "Sharper and tougher than stone" },
+    { "id": "bronze_tools", "name": "Bronze tools", "category": "tools", "isFood": false, "spoilPerDay": 0, "toolSpeed": 1.3, "color": "#a8853f", "note": "Hard edges that hold. The best tools until iron" },
+    { "id": "grain", "name": "Grain", "category": "food", "isFood": true, "spoilPerDay": 0.008, "color": "#b89a52", "note": "Harvested from fields in autumn" },
+    { "id": "clay", "name": "Clay", "category": "material", "isFood": false, "spoilPerDay": 0, "color": "#9a6f55" },
+    { "id": "copper_ore", "name": "Copper ore", "category": "material", "isFood": false, "spoilPerDay": 0, "color": "#5f8a78" },
+    { "id": "tin_ore", "name": "Tin ore", "category": "material", "isFood": false, "spoilPerDay": 0, "color": "#6b6a70" },
+    { "id": "copper", "name": "Copper", "category": "material", "isFood": false, "spoilPerDay": 0, "color": "#b0713f" },
+    { "id": "bronze", "name": "Bronze", "category": "material", "isFood": false, "spoilPerDay": 0, "color": "#a8853f" }
   ]
 }
