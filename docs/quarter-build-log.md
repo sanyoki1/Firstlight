@@ -328,3 +328,14 @@ out in its second or third winter; it is labour- and wood-starved and the extra 
   way for new mechanics (laws, faith, disease), and a new screen as another `Hud.*.cs` partial file.
 - New sim warnings show as chips automatically; events logged with `Log(severity, text, at)` are clickable.
 - Research effect text: `Hud.Research.EffectText` formats the known stat prefixes; add new prefixes there.
+
+## Phase 3: the Agricultural Age (in progress)
+
+Status: simulation, data and auto-player in (commit 8085526); view, HUD, screenshots and balance still being worked
+on. This section is rewritten at each commit.
+
+### What exists so far
+- Sim partial files: `Settlement.Agri.cs` (fields through the year, granary restocking, tool tiers, traders) and
+  `Settlement.Society.cs` (needs that arrive with the age, health tiers, laws, unrest, outbreaks); `AutoPlayer.Agri.cs`.
+- New data: `laws.json`; buildings granary, thatched_hut, stone_hut, animal_pen, well, healers_hut, shamans_hut,
+  tribal_council, potter, weaver, dirt_path; resources fibre and pottery; every resource has a barter `value`.
