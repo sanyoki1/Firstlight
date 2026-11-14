@@ -40,7 +40,7 @@ namespace Firstlight.Game
         void Start()
         {
             Data = GameData.Load();
-            if (HasArg("-autotest")) { RunAutoTest(); return; }
+            if (HasArg("-autotest") || HasArg("-fuzztest")) { RunAutoTest(); return; }
             GameSettings.Load();
             bool cli = CommandLineMode;
             GameSettings.Apply(display: !cli);
@@ -119,6 +119,8 @@ namespace Firstlight.Game
             if (HasArg("-uishots")) StartCoroutine(UiShots());
             if (HasArg("-p4shots")) StartCoroutine(P4Shots());
             if (_smoke > 0 || HasArg("-smoketest")) StartCoroutine(SmokeTest());
+            if (HasArg("-soak")) StartCoroutine(Soak(ArgInt("-soak", 10)));
+            if (HasArg("-reloadtest")) StartCoroutine(ReloadTest());
         }
 
         public void ToggleAuto()
@@ -702,14 +704,17 @@ namespace Firstlight.Game
                 Water = new WaterSim(Map);
                 Water.SyncWaterClasses();
                 Map.CommitCostChanges();
-                if (ArgInt("-crowd", 0) > 0) { AutoTest.Crowd(Data, Map, _seed, ArgInt("-crowd", 0)); code = 0; }
+                if (HasArg("-soundcheck")) { Debug.Log("[Sound] " + SoundScape.Check(out bool sok)); code = sok ? 0 : 1; }
+                else if (HasArg("-savecheck")) code = FuzzTest.SaveRobustness(Data, Map, _seed, outDir) ? 0 : 1;
+                else if (HasArg("-fuzztest")) { var fz = new FuzzTest(Data, Map, _seed, outDir); code = fz.Run(years) ? 0 : 1; Map = fz.Map; }
+                else if (ArgInt("-crowd", 0) > 0) { AutoTest.Crowd(Data, Map, _seed, ArgInt("-crowd", 0)); code = 0; }
                 else if (HasArg("-saveloadcheck")) code = SaveLoadCheck(years, outDir) ? 0 : 1;
                 else
                 {
                     // -savemid FILE: also write a save halfway (for -uishots -load, which starts from it).
                     string mid = Arg("-savemid");
                     int at = ArgInt("-saveday", years * Data.Balance.daysPerSeason * 4 / 2);
-                    code = AutoTest.Run(Data, Map, _seed, years, outDir, HasArg("-careless"), mid != null ? at : -1, mid) ? 0 : 1;
+                    code = AutoTest.Run(Data, Map, _seed, years, outDir, HasArg("-careless"), mid != null ? at : -1, mid, null, ArgInt("-difficulty", 1)) ? 0 : 1;
                 }
             }
             catch (Exception e) { Debug.LogException(e); }

@@ -78,7 +78,7 @@ namespace Firstlight.Game
         /// so far (season rows, snapshot, extremes) travels in the save's test block, so both runs write the same report.
         /// </summary>
         public static bool Run(GameData data, GameMap map, int seed, int years, string outDir, bool careless = false,
-                               int saveAtDay = -1, string savePath = null, SaveGame.Loaded resume = null)
+                               int saveAtDay = -1, string savePath = null, SaveGame.Loaded resume = null, int difficulty = 1)
         {
             var errors = new List<string>();
             void OnLog(string msg, string stack, LogType type)
@@ -108,6 +108,7 @@ namespace Firstlight.Game
                 else
                 {
                     s = new Settlement(data, map, seed);
+                    s.SetDifficulty(difficulty);
                     ap = new AutoPlayer(s) { Careless = careless, Profile = true };
                     s.Profile = true;
                     rep.nextAge = s.Age.next;
@@ -295,7 +296,7 @@ namespace Firstlight.Game
         static string Markdown(Report r, Settlement s, GameData data)
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"# Firstlight auto-test, seed {r.seed}{(r.careless ? " (careless player)" : "")}");
+            sb.AppendLine($"# Firstlight auto-test, seed {r.seed}{(r.careless ? " (careless player)" : "")}{(s != null && s.Difficulty != 1 ? $" ({s.Diff.name})" : "")}");
             sb.AppendLine();
             sb.AppendLine($"Ran {r.years} game years ({r.finalDay} days). Final population {r.finalPopulation} (min {r.minPopulation}, max {r.maxPopulation}).");
             sb.AppendLine($"Births {r.births}, migrants {r.migrants}, leavers {r.leavers}, deaths: {(r.deaths.Length > 0 ? r.deaths : "none")}.");
