@@ -27,15 +27,69 @@ namespace Firstlight.Game
             G = g;
             if (!Available) return;
             var host = g.Cam.gameObject;
-            var rng = new System.Random(1234);
-            _wind = Loop(host, Wind(rng));
-            _river = Loop(host, River(rng));
-            _fire = Loop(host, Fire(rng));
+            // The clips are made once per run and kept (a new game or a load rebuilds the scene, not the sounds).
+            if (_clips == null)
+            {
+                var b = Buffers();
+                _clips = new AudioClip[b.Length];
+                for (int i = 0; i < b.Length; i++)
+                {
+                    _clips[i] = AudioClip.Create(Names[i], b[i].Length, 1, Rate, false);
+                    _clips[i].hideFlags = HideFlags.DontUnloadUnusedAsset;
+                    _clips[i].SetData(b[i], 0);
+                }
+            }
+            _wind = Loop(host, _clips[0]);
+            _river = Loop(host, _clips[1]);
+            _fire = Loop(host, _clips[2]);
             _ui = host.AddComponent<AudioSource>();
             _ui.playOnAwake = false; _ui.spatialBlend = 0;
-            _click = Click(rng);
-            _ageUp = Tone();
+            _click = _clips[3];
+            _ageUp = _clips[4];
         }
+
+        static AudioClip[] _clips;
+        public static readonly string[] Names = { "wind", "river", "fire", "click", "ageup" };
+
+        /// <summary>The sample buffers (mono, 44.1 kHz): the three ambience loops, the click and the age-up tone.</summary>
+        public static float[][] Buffers()
+        {
+            var rng = new System.Random(1234);
+            return new[] { Wind(rng), River(rng), Fire(rng), Click(rng), Tone() };
+        }
+
+        /// <summary>
+        /// -soundcheck: the generated buffers measured (they can't be listened to in a test): peak, RMS, DC offset, NaN,
+        /// and for the loops the step where the end joins the start, against the typical step between samples.
+        /// </summary>
+        public static string Check(out bool ok)
+        {
+            var sb = new System.Text.StringBuilder();
+            ok = true;
+            var b = Buffers();
+            for (int i = 0; i < b.Length; i++)
+            {
+                var d = b[i]; double sum = 0, sq = 0, step = 0; float peak = 0; int bad = 0;
+                for (int k = 0; k < d.Length; k++)
+                {
+                    if (!float.IsFinite(d[k])) { bad++; continue; }
+                    sum += d[k]; sq += d[k] * d[k]; peak = math.max(peak, math.abs(d[k]));
+                    if (k > 0) step += math.abs(d[k] - d[k - 1]);
+                }
+                double mean = sum / d.Length, rms = math.sqrt(sq / d.Length), avgStep = step / (d.Length - 1);
+                bool loop = i < 3;
+                float join = math.abs(d[0] - d[d.Length - 1]);
+                bool good = bad == 0 && peak <= 0.95f && math.abs(mean) < 0.02 && rms > 0.01 && (!loop || join <= avgStep * 6 + 1e-4);
+                ok &= good;
+                sb.AppendLine($"{Names[i]}: {d.Length / (float)Rate:F2} s, peak {peak:F3}, rms {rms:F3}, dc {mean:F4}, nan {bad}" + (loop ? $", loop join step {join:F4} (typical {avgStep:F4})" : "") + (good ? "" : "  <-- BAD"));
+            }
+            // The worst case mix: every loop at its loudest volume at once, plus a click and the age-up tone.
+            float worst = 0.8f * (0.44f + 0.38f + 0.32f) + 0.5f * Peak(b[3]) + 0.6f * Peak(b[4]);
+            sb.AppendLine($"worst-case sum of peaks at full volume: {worst:F2}" + (worst > 1.2f ? "  <-- may clip" : ""));
+            return sb.ToString();
+        }
+
+        static float Peak(float[] d) { float p = 0; foreach (var v in d) p = math.max(p, math.abs(v)); return p; }
 
         static AudioSource Loop(GameObject host, AudioClip clip)
         {
@@ -98,23 +152,25 @@ namespace Firstlight.Game
         // ------------------------------------------------------------------ synthesis
 
         /// <summary>A loop with its ends cross-faded so it repeats without a click.</summary>
-        static AudioClip Make(string name, float[] d)
+        static float[] Make(float[] d)
         {
+            // Equal-power cross-fade of the end into the start (the two are unrelated noise, so a straight blend would dip
+            // by 3 dB once per loop), the DC offset taken out, and the peak set to 0.8.
             int fade = Rate / 2, n = d.Length - fade;
             var o = new float[n];
             for (int i = 0; i < n; i++) o[i] = d[i];
-            for (int i = 0; i < fade; i++) { float k = i / (float)fade; o[i] = d[i] * k + d[n + i] * (1 - k); }
+            for (int i = 0; i < fade; i++) { float k = i / (float)fade; o[i] = d[i] * math.sqrt(k) + d[n + i] * math.sqrt(1 - k); }
+            double mean = 0; foreach (var v in o) mean += v; mean /= n;
+            for (int i = 0; i < n; i++) o[i] -= (float)mean;
             float peak = 0.0001f; foreach (var v in o) peak = math.max(peak, math.abs(v));
             for (int i = 0; i < n; i++) o[i] *= 0.8f / peak;
-            var clip = AudioClip.Create(name, n, 1, Rate, false);
-            clip.SetData(o, 0);
-            return clip;
+            return o;
         }
 
         static float Noise(System.Random r) => (float)(r.NextDouble() * 2 - 1);
 
         /// <summary>Wind: brown noise through a gentle low-pass, swelling and easing every few seconds.</summary>
-        static AudioClip Wind(System.Random r)
+        static float[] Wind(System.Random r)
         {
             int n = Rate * 9; var d = new float[n];
             float brown = 0, lp = 0;
@@ -126,11 +182,11 @@ namespace Firstlight.Game
                 float swell = 0.55f + 0.3f * math.sin(t * 0.7f) + 0.15f * math.sin(t * 1.9f + 1.3f);
                 d[i] = lp * swell;
             }
-            return Make("wind", d);
+            return Make(d);
         }
 
         /// <summary>River: band-limited noise (a soft rush) with a slow, small burble.</summary>
-        static AudioClip River(System.Random r)
+        static float[] River(System.Random r)
         {
             int n = Rate * 7; var d = new float[n];
             float lp1 = 0, lp2 = 0, hp = 0, prev = 0;
@@ -142,11 +198,11 @@ namespace Firstlight.Game
                 float t = i / (float)Rate;
                 d[i] = hp * (0.8f + 0.2f * math.sin(t * 5.1f) * math.sin(t * 2.3f));
             }
-            return Make("river", d);
+            return Make(d);
         }
 
         /// <summary>Fire: a low breathing rumble with short random crackles.</summary>
-        static AudioClip Fire(System.Random r)
+        static float[] Fire(System.Random r)
         {
             int n = Rate * 6; var d = new float[n];
             float lp = 0, env = 0;
@@ -157,20 +213,20 @@ namespace Firstlight.Game
                 env *= 0.9965f;
                 d[i] = lp * 0.5f + Noise(r) * env * env * 0.5f;
             }
-            return Make("fire", d);
+            return Make(d);
         }
 
         /// <summary>A soft click: a few milliseconds of filtered noise with a fast decay.</summary>
-        static AudioClip Click(System.Random r)
+        static float[] Click(System.Random r)
         {
             int n = Rate / 25; var d = new float[n];
             float lp = 0;
             for (int i = 0; i < n; i++) { lp += (Noise(r) - lp) * 0.35f; d[i] = lp * math.exp(-i / (Rate * 0.006f)) * 0.6f; }
-            var c = AudioClip.Create("click", n, 1, Rate, false); c.SetData(d, 0); return c;
+            return d;
         }
 
         /// <summary>The age-up tone: a low fifth with a slow swell and fade.</summary>
-        static AudioClip Tone()
+        static float[] Tone()
         {
             int n = (int)(Rate * 2.4f); var d = new float[n];
             for (int i = 0; i < n; i++)
@@ -179,7 +235,7 @@ namespace Firstlight.Game
                 float env = math.saturate(t / 0.35f) * math.exp(-math.max(0, t - 0.35f) * 1.6f);
                 d[i] = env * 0.35f * (math.sin(t * 2 * math.PI * 110f) + 0.6f * math.sin(t * 2 * math.PI * 165f) + 0.25f * math.sin(t * 2 * math.PI * 220f));
             }
-            var c = AudioClip.Create("ageup", n, 1, Rate, false); c.SetData(d, 0); return c;
+            return d;
         }
     }
 }
