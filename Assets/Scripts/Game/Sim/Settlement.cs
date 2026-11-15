@@ -33,6 +33,7 @@ namespace Firstlight.Game
         public readonly List<SimEvent> Events = new();
         public readonly List<string> Warnings = new();
         readonly Dictionary<string, int> _warnSeen = new();   // warning key -> last day it was showing
+        readonly HashSet<string> _warnLogInfo = new();         // standing warnings logged as Info, not Warning (this hour's)
 
         // ------------------------------------------------------------------ calendar
         public float Time { get; private set; }            // game seconds since the campfire was lit
@@ -471,11 +472,8 @@ namespace Firstlight.Game
                 Warnings.Add($"Not enough firewood for winter ({StockTotals[_fuel]:F0} of about {fuelNeed:F0}).");
             int homeless = Homeless;
             if (homeless > 0) Warnings.Add($"{homeless} {(homeless == 1 ? "person has" : "people have")} no home.");
-            int cap = StorageCapacity;
-            if (cap > 0 && StorageUsed > cap * 0.9f) Warnings.Add("Storage is nearly full.");
-            int noTools = 0;
-            foreach (var c in Citizens) if (c.Job != null && c.Job.Def.usesTools && c.Tool < 0) noTools++;
-            if (noTools > 0) Warnings.Add(noTools == 1 ? "1 worker has no tools." : $"{noTools} workers have no tools.");
+            StorageWarning();
+            ToolsWarning();
             int sick = 0;
             foreach (var c in Citizens) if (!c.Gone && c.Sick) sick++;
             if (sick >= math.max(3, Population / 6)) Warnings.Add($"{sick} people are sick.");
@@ -502,9 +500,60 @@ namespace Firstlight.Game
             foreach (var w in Warnings)
             {
                 string key = w.Length > 14 ? w.Substring(0, 14) : w;
-                if (!_warnSeen.TryGetValue(key, out int seen) || Day - seen > 3) Log(Severity.Warning, w);
+                if (!_warnSeen.TryGetValue(key, out int seen) || Day - seen > 3) Log(_warnLogInfo.Contains(w) ? Severity.Info : Severity.Warning, w);
                 _warnSeen[key] = Day;
             }
+            _warnLogInfo.Clear();
+        }
+
+        /// <summary>
+        /// Storage nearly full. Before any storage building of its own the settlement has only the campfire's small store,
+        /// filled in the first minute (it used to read as a problem then, with no hint of what to do): that wording names
+        /// the campfire and the Storage Pile and is logged as Info. Later it says goods wait at the workplaces.
+        /// </summary>
+        void StorageWarning()
+        {
+            int cap = StorageCapacity;
+            float used = StorageUsed;
+            if (cap <= 0 || used <= cap * 0.9f) return;
+            bool ownStore = false;
+            foreach (var b in Buildings) if (b.Active && b.IsStorage && b != TownCenter) { ownStore = true; break; }
+            if (!ownStore)
+            {
+                const string w = "The campfire's store is nearly full: build a Storage Pile (Storage).";
+                Warnings.Add(w); _warnLogInfo.Add(w);
+                return;
+            }
+            float food = FoodStock;
+            Warnings.Add(food > used * 0.6f
+                ? $"Storage is nearly full ({used:0} of {cap}), most of it food: goods are waiting at workplaces. Build another Storage Pile or a Granary."
+                : $"Storage is nearly full ({used:0} of {cap}): goods are waiting at workplaces. Build another Storage Pile.");
+        }
+
+        /// <summary>
+        /// Workers without tools. Before Basic Tools is known nothing can be done about it (it was the first amber chip of
+        /// every game, from day 4), so it is said once, as Info. While tools are in store the gap is only the hand-out
+        /// (a worker picks one up at the next visit), so no chip. A chip only when none are in store.
+        /// </summary>
+        void ToolsWarning()
+        {
+            int noTools = 0;
+            foreach (var c in Citizens) if (c.Job != null && c.Job.Def.usesTools && c.Tool < 0) noTools++;
+            if (noTools == 0) return;
+            float inStore = 0;
+            foreach (int r in _toolsBest) inStore += StockTotals[r];
+            if (!IsResearched("basic_tools") && inStore < 1f)
+            {
+                const string once = "~info:no tools yet";
+                if (!_warnSeen.ContainsKey(once))
+                {
+                    _warnSeen[once] = Day;
+                    Log(Severity.Info, $"Workers without tools work at {B.noToolWorkSpeed:P0} speed. Research Basic Tools, then build a Toolmaker.");
+                }
+                return;
+            }
+            if (inStore >= 1f) return;
+            Warnings.Add(noTools == 1 ? "1 worker has no tools and none are in store: build or staff a Toolmaker." : $"{noTools} workers have no tools and none are in store: build or staff a Toolmaker.");
         }
 
         /// <summary>

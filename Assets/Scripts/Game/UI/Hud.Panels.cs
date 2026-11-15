@@ -189,19 +189,25 @@ namespace Firstlight.Game.UI
             return false;
         }
         float[] _feedTime = new float[0];
+        GUIStyle _chipWrap;
+        const float ChipMaxW = 470;
 
         void DrawFeed()
         {
             float y = TopBarHeight + 8;
             // Standing problems, as chips.
+            // Long ones (a cause and a remedy) wrap onto a second line.
+            _chipWrap ??= new GUIStyle(UiTheme.Chip) { wordWrap = true, padding = new RectOffset(10, 10, 4, 4) };
             foreach (var w in S.Warnings)
             {
                 bool bad = w.StartsWith("There is no food") || w.Contains("run out in 1 ") || w.Contains("run out in 2 ");
                 var c = new GUIContent(Col(w, bad ? Bad : Warn));
-                float wd = math.min(460, UiTheme.Chip.CalcSize(c).x + 4);
-                var r = Box(new Rect(10, y, wd, 26), UiTheme.Chip);
-                GUI.Label(r, c, UiTheme.Chip);
-                y += 30;
+                float one = UiTheme.Chip.CalcSize(c).x + 4;
+                float wd = math.min(ChipMaxW, one);
+                float hh = one <= ChipMaxW ? 26 : math.max(26, _chipWrap.CalcHeight(c, wd));
+                var r = Box(new Rect(10, y, wd, hh), UiTheme.Chip);
+                GUI.Label(r, c, one <= ChipMaxW ? UiTheme.Chip : _chipWrap);
+                y += hh + 4;
             }
             // Recent events: newest at the bottom of a short list; they fade after a while. Click one to go there.
             if (_feedTime.Length < S.Events.Count) System.Array.Resize(ref _feedTime, S.Events.Count + 256);
