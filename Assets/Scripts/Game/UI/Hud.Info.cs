@@ -113,7 +113,7 @@ namespace Firstlight.Game.UI
         void DrawSite(Building b)
         {
             Row(Col("Under construction", Warn), Bold);
-            if (!string.IsNullOrEmpty(b.Def.onDeposit)) Row(Col($"On {S.DepositCells(b.Def, b.Origin, b.Rot)} cells of the {b.Def.onDeposit} deposit", Dim), Small, 20);
+            if (!string.IsNullOrEmpty(b.Def.onDeposit)) Row(Col($"On {Many(S.DepositCells(b.Def, b.Origin, b.Rot), "cell", "cells")} of the {b.Def.onDeposit} deposit", Dim), Small, 20);
             // "Overall": materials and build work together (it read as a second, different progress bar).
             BarRow("Overall", b.Progress, Accent, $"{b.Progress:P0}");
             for (int i = 0; i < b.Def.cost.Length; i++)
@@ -241,7 +241,7 @@ namespace Firstlight.Game.UI
             Row(warm ? "Within the campfire's warmth" : b.Def.homeWarmth >= 0.6f ? Col("Outside the campfire's warmth (warm enough when heated)", Dim) : Col("Outside the campfire's warmth", Warn), Small, 20);
             var has = new List<string>();
             if (S.NeedActive("water")) has.Add(b.HasWater ? Col("clean water", Good) : Col("no clean water nearby", Bad));
-            if (S.NeedActive("goods")) has.Add(b.GoodsLife > 0 ? Col($"pots in use ({b.GoodsLife:0} days left)", Good) : Col("no pots", Warn));
+            if (S.NeedActive("goods")) has.Add(b.GoodsLife > 0 ? Col($"pots in use ({Days(b.GoodsLife, "0")} left)", Good) : Col("no pots", Warn));
             if (S.NeedActive("faith")) has.Add(b.HasFaith ? Col("a shaman in reach", Good) : Col("no shaman in reach", Warn));
             if (has.Count > 0) Row("Household  " + string.Join(", ", has), Small, 20);
             var who = S.Citizens.Where(c => c.Home == b).Select(c => c.Age < D.Balance.adultAge ? $"{c.Name} ({(int)c.Age})" : c.Name).ToList();
@@ -320,12 +320,12 @@ namespace Firstlight.Game.UI
             if (c.Home == null) needs.Add(Col("no home", Warn));
             if (c.Hungry) needs.Add(Col("hungry", Bad));
             if (c.Cold) needs.Add(Col("cold", Bad));
-            if (c.Sick) needs.Add(Col($"sick for {c.SickDays} more days" + (c.Treated ? ", treated" : ""), Warn));
+            if (c.Sick) needs.Add(Col($"sick for {c.SickDays} more {(c.SickDays == 1 ? "day" : "days")}" + (c.Treated ? ", treated" : ""), Warn));
             if (c.NoWater) needs.Add(Col("no clean water", Warn));
             if (c.NoGoods) needs.Add(Col("no pots at home", Warn));
             if (c.NoFaith) needs.Add(Col("no faith", Warn));
-            if (c.DisputeDays > 0) needs.Add(Col($"in a dispute ({c.DisputeDays} days off work)", Warn));
-            if (c.UnhappyDays > 0) needs.Add(Col($"unhappy {c.UnhappyDays} days, may leave", Bad));
+            if (c.DisputeDays > 0) needs.Add(Col($"in a dispute ({Many(c.DisputeDays, "day", "days")} off work)", Warn));
+            if (c.UnhappyDays > 0) needs.Add(Col($"unhappy {Many(c.UnhappyDays, "day", "days")}, may leave", Bad));
             if (needs.Count > 0) Para(string.Join(", ", needs)); else Row(Col("Fed, warm and well" + (S.Age.order >= 1 ? ", with all it needs" : ""), Good), Small, 20);
             // What holds happiness down, from the sim's own weighing of the needs (shown while the bar is not green).
             if (c.Happiness < 0.6f)
@@ -341,8 +341,8 @@ namespace Firstlight.Game.UI
                 }
             }
             Gap(4);
-            Row("Tool  " + (c.Tool >= 0 ? $"{D.Resources[c.Tool].name}, {c.ToolLife:0} work days left" : Col("none", Warn)), Small, 20);
-            Row("Clothing  " + (c.ClothingLife > 0 ? $"{c.ClothingLife:0} cold days left" : Col("none", Dim)), Small, 20);
+            Row("Tool  " + (c.Tool >= 0 ? $"{D.Resources[c.Tool].name}, {c.ToolLife:0} work {(c.ToolLife.ToString("0") == "1" ? "day" : "days")} left" : Col("none", Warn)), Small, 20);
+            Row("Clothing  " + (c.ClothingLife > 0 ? $"{c.ClothingLife:0} cold {(c.ClothingLife.ToString("0") == "1" ? "day" : "days")} left" : Col("none", Dim)), Small, 20);
             Gap(6);
             float bx = _lx;
             if (c.Job != null && GUI.Button(new Rect(bx, _ly, 130, 28), "Workplace", Button)) { var j = c.Job; Select(j); JumpTo(j.Center); }

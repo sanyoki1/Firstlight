@@ -176,7 +176,7 @@ namespace Firstlight.Game.UI
             if (can)
             {
                 var h = latest.Value.h;
-                GUI.Label(new Rect(x + 4, y + 52, 520, 22), Col($"{h.Name}  ·  {h.Age}, year {h.Year} {h.Season}  ·  {h.Population} people  ·  {h.SavedLocal:d MMM yyyy, HH:mm}", Dim), Small);
+                GUI.Label(new Rect(x + 4, y + 52, 520, 22), Col($"{h.Name}  ·  {h.Age}, year {h.Year} {h.Season}  ·  {(h.Population == 1 ? "1 person" : $"{h.Population} people")}  ·  {h.SavedLocal:d MMM yyyy, HH:mm}", Dim), Small);
             }
             y += 84;
             if (MenuButton(new Rect(x, y, 420, 50), "New game")) ShowScreen(MenuScreen.NewGame);
@@ -292,7 +292,7 @@ namespace Firstlight.Game.UI
                 if (hd != null)
                 {
                     GUI.Label(new Rect(306, row.y + 2, 250, 22), $"{hd.Age}, year {hd.Year} {hd.Season}", Label);
-                    GUI.Label(new Rect(306, row.y + 22, 250, 18), Col($"{hd.Population} people · {D.Balance.difficulties.ElementAtOrDefault(hd.Difficulty)?.name ?? ""}", Dim), Small);
+                    GUI.Label(new Rect(306, row.y + 22, 250, 18), Col($"{(hd.Population == 1 ? "1 person" : $"{hd.Population} people")} · {D.Balance.difficulties.ElementAtOrDefault(hd.Difficulty)?.name ?? ""}", Dim), Small);
                     GUI.Label(new Rect(566, row.y + 2, 200, 22), $"{hd.SavedLocal:d MMM yyyy}", Label);
                     GUI.Label(new Rect(566, row.y + 22, 200, 18), Col($"{hd.SavedLocal:HH:mm}", Dim), Small);
                 }

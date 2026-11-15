@@ -105,19 +105,19 @@ namespace Firstlight.Game.UI
             {
                 float r = d.waterRadius * S.Effect("water.radius");
                 Gap(4);
-                Row($"Clean water for homes within {r:0}  " + Col($"· {Count(r)} homes in reach", Good), Label);
+                Row($"Clean water for homes within {r:0}  " + Col($"· {Many(Count(r), "home", "homes")} in reach", Good), Label);
                 if (!S.NeedActive("water")) Para(Col("Water becomes a need in the Agricultural Age.", Dim));
             }
             if (d.healthRadius > 0)
             {
                 Gap(4);
-                Row($"Treats the sick within {d.healthRadius}  " + Col($"· {Count(d.healthRadius)} homes in reach", b.Workers > 0 ? Good : Warn), Label);
+                Row($"Treats the sick within {d.healthRadius}  " + Col($"· {Many(Count(d.healthRadius), "home", "homes")} in reach", b.Workers > 0 ? Good : Warn), Label);
                 Para(Col($"In reach: sickness {1f - d.healChance:P0} less likely, {1f - d.healDamage:P0} less harmful (with herbs in store)." + (b.Workers == 0 ? " Needs a worker." : ""), Dim));
             }
             if (d.faithRadius > 0)
             {
                 Gap(4);
-                Row($"Faith for homes within {d.faithRadius}  " + Col($"· {Count(d.faithRadius)} homes in reach", b.Workers > 0 ? Good : Warn), Label);
+                Row($"Faith for homes within {d.faithRadius}  " + Col($"· {Many(Count(d.faithRadius), "home", "homes")} in reach", b.Workers > 0 ? Good : Warn), Label);
                 if (!S.NeedActive("faith")) Para(Col("Faith becomes a need once Shamanism is known.", Dim));
                 else if (b.Workers == 0) Para(Col("Needs a shaman to keep the rites.", Warn));
             }
@@ -143,7 +143,7 @@ namespace Firstlight.Game.UI
             if (!string.IsNullOrEmpty(d.onDeposit))
             {
                 Gap(2);
-                Para(Col($"Stands on {S.DepositCells(d, b.Origin)} cells of the {d.onDeposit} deposit; {b.FeatureLeft:0} in working reach.", Dim));
+                Para(Col($"Stands on {Many(S.DepositCells(d, b.Origin), "cell", "cells")} of the {d.onDeposit} deposit; {b.FeatureLeft:0} in working reach.", Dim));
             }
         }
 
@@ -261,8 +261,8 @@ namespace Firstlight.Game.UI
                 ("Born / arrived", $"{S.Births} born, {S.Migrants} came to stay"),
                 ("Left / died", $"{S.Leavers} left, {S.TotalDeaths} died"),
                 ("Deaths by cause", S.TotalDeaths > 0 ? DeathsByCause() : "none"),
-                ("Buildings", $"{buildings}, {S.PathCount} path tiles"),
-                ("Research", $"{S.ResearchLog.Count} topics learned"),
+                ("Buildings", $"{buildings}, {Many(S.PathCount, "path tile", "path tiles")}"),
+                ("Research", $"{Many(S.ResearchLog.Count, "topic", "topics")} learned"),
                 ("Winters", $"{S.WintersSurvived} survived"),
                 ("Food in store", $"{S.FoodStock:0} ({FoodDaysText(S.FoodDays)})"),
             };
@@ -323,7 +323,7 @@ namespace Firstlight.Game.UI
                 ("Left / died", $"{S.Leavers} left, {S.TotalDeaths} died"),
                 ("Deaths by cause", S.TotalDeaths > 0 ? DeathsByCause() : "none"),
                 ("Winters", $"{S.WintersSurvived} survived"),
-                ("Research", $"{S.ResearchLog.Count} topics learned"),
+                ("Research", $"{Many(S.ResearchLog.Count, "topic", "topics")} learned"),
             };
             foreach (var (k, v) in lines)
             {
