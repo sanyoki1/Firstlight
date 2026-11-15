@@ -200,6 +200,21 @@ namespace Firstlight.Game
             return p;
         }
 
+        /// <summary>
+        /// Serializes the game into the save buffers and throws the result away, starts one empty worker task and looks
+        /// at the autosave slots: no file is written. The first autosave of a run spent ~10 ms more in its frame than
+        /// later saves (the save code compiled on first use, the buffer grown, the thread pool started, the slot lookup);
+        /// the game calls this once, in a frame that is long anyway (the first frame after a load or the campfire's).
+        /// </summary>
+        public static void Warm(Settlement s, AutoPlayer auto, WaterSim water, byte[] game)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            Serialize(HeaderFor(s, "", "warm"), s, auto, water, game, null);
+            System.Threading.Tasks.Task.Run(() => { }).Wait();   // the thread pool's first task cost ~3 ms in the first autosave's frame
+            NextAutosave();                                         // as did the first look at the autosave slots (~2.5 ms)
+            Debug.Log($"[Save] save code warmed up in {sw.Elapsed.TotalMilliseconds:F1} ms (nothing written)");
+        }
+
         /// <summary>The header and the uncompressed body, as the file will hold them (the body is gzipped by Commit).</summary>
         static (MemoryStream head, MemoryStream body) Serialize(Header h, Settlement s, AutoPlayer auto, WaterSim water, byte[] game, byte[] test)
         {

@@ -177,6 +177,7 @@ namespace Firstlight.Game
             if (View == null) return;     // -autotest runs headless from Start
             if (PerfProbe.On) PerfFrame();   // PERF PROBE: closes the previous frame's measurements
             PollBackgroundSave();            // an autosave or quicksave written on a worker thread: report it once it is on disk
+            WarmSaveOnce();
             var kb = Keyboard.current;
             if (kb != null)
             {

@@ -160,6 +160,16 @@ namespace Firstlight.Game
             if (_bgDone != null) Hud?.Toast(_bgDone);
         }
 
+        bool _saveWarm;
+        /// <summary>Once a game is running (after a load, or once the campfire is lit): the save code is run once without writing, so the first autosave's frame is as short as the later ones.</summary>
+        void WarmSaveOnce()
+        {
+            if (_saveWarm || InMenu || _demo || Sim == null || Sim.NeedsCampfire || _faulted) return;
+            _saveWarm = true;
+            try { SaveGame.Warm(Sim, Auto, Water, WriteGameBlock()); }
+            catch (Exception e) { Debug.LogWarning($"[Save] warm-up failed (the next save will report it): {e.Message}"); }
+        }
+
         /// <summary>Waits for a background save still being written and reports it (before another save, a load, leaving the game).</summary>
         void FinishBackgroundSave()
         {
