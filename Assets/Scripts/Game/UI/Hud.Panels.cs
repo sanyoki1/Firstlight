@@ -194,6 +194,48 @@ namespace Firstlight.Game.UI
         GUIStyle _chipWrap;
         const float ChipMaxW = 470;
 
+        // ------------------------------------------------------------------ clickable chips
+
+        readonly System.Collections.Generic.List<(float2 at, Building b, Citizen c)> _chipTargets = new();
+        readonly System.Collections.Generic.Dictionary<string, int> _chipCycle = new();
+        string _chipTargetName = "";
+
+        /// <summary>The places a standing warning is about (by its wording, as the sim words it), for the chip's click.</summary>
+        void ChipTargets(string w, System.Collections.Generic.List<(float2 at, Building b, Citizen c)> into)
+        {
+            into.Clear(); _chipTargetName = "";
+            void People(System.Func<Citizen, bool> f, string name) { _chipTargetName = name; foreach (var c in S.Citizens) if (!c.Gone && f(c)) into.Add((c.Pos, null, c)); }
+            void Places(System.Func<Building, bool> f, string name) { _chipTargetName = name; foreach (var b in S.Buildings) if (b.Active && f(b)) into.Add((b.Center, b, null)); }
+            if (w.Contains("have no tools") || w.Contains("has no tools"))
+            {
+                _chipTargetName = "workplaces";
+                foreach (var c in S.Citizens)
+                    if (!c.Gone && c.Job != null && c.Job.Def.usesTools && c.Tool < 0 && !into.Exists(t => t.b == c.Job)) into.Add((c.Job.Center, c.Job, null));
+            }
+            else if (w.Contains("no home")) People(c => c.Home == null, "people without a home");
+            else if (w.Contains("are sick")) People(c => c.Sick, "sick people");
+            else if (w.Contains("unhappy")) People(c => c.UnhappyDays > 0, "unhappy people");
+            else if (w.Contains("no clean water")) Places(b => b.Def.housing > 0 && b.Residents > 0 && !b.HasWater, "homes without water");
+            else if (w.Contains("nearly full")) Places(b => b.IsStorage && b.Stored > S.Capacity(b) * 0.9f, "full stores");
+            else if (w.StartsWith("Not enough firewood")) Places(b => b.Def.IsWorkplace && System.Array.Exists(b.Def.outputs, o => o.id == D.Balance.fuelResource), "woodcutters");
+            else if (w.StartsWith("Expected harvest")) Places(b => b.Def.crop, "fields");
+            else if (w.StartsWith("Unrest")) Places(b => b.Def.orderPower > 0, "councils");
+            else if (w.StartsWith("Food") || w.StartsWith("There is no food"))
+                Places(b => b.Def.IsWorkplace && !b.Def.crop && System.Array.Exists(b.Def.outputs, o => S.ResIndex(o.id) >= 0 && D.Resources[S.ResIndex(o.id)].isFood), "food workplaces");
+        }
+
+        void CycleChip(string w)
+        {
+            string key = w.Length > 14 ? w.Substring(0, 14) : w;
+            ChipTargets(w, _chipTargets);
+            if (_chipTargets.Count == 0) return;
+            int i = _chipCycle.TryGetValue(key, out int k) ? (k + 1) % _chipTargets.Count : 0;
+            _chipCycle[key] = i;
+            var t = _chipTargets[i];
+            if (t.b != null) Select(t.b); else if (t.c != null) SelectCitizen(t.c);
+            JumpTo(t.at);
+        }
+
         // Whether the next age can be reached now (looked up twice a second, not every frame: it builds lists).
         bool _ageReady; float _ageReadyAt = -1;
         bool AgeReady
@@ -234,6 +276,14 @@ namespace Firstlight.Game.UI
                 float hh = one <= ChipMaxW ? 26 : math.max(26, _chipWrap.CalcHeight(c, wd));
                 var r = Box(new Rect(10, y, wd, hh), UiTheme.Chip);
                 GUI.Label(r, c, one <= ChipMaxW ? UiTheme.Chip : _chipWrap);
+                // Click: the camera goes to the buildings or people concerned, the next one at each click.
+                ChipTargets(w, _chipTargets);
+                if (_chipTargets.Count > 0)
+                {
+                    if (r.Contains(Event.current.mousePosition)) Fill(r, new Color(1, 1, 1, 0.04f));
+                    if (GUI.Button(r, GUIContent.none, GUIStyle.none)) CycleChip(w);
+                    Tip(r, _chipTargets.Count == 1 ? $"Click to go to {_chipTargetName}." : $"Click to go to the {_chipTargets.Count} {_chipTargetName}, one at each click.");
+                }
                 y += hh + 4;
             }
             // Recent events: newest at the bottom of a short list; they fade after a while. Click one to go there.
@@ -261,13 +311,14 @@ namespace Firstlight.Game.UI
                 string line = repeats > 1 ? $"{e.Text}  {Col($"x{repeats}", Faint)}" : e.Text;
                 var content = new GUIContent(line);
                 var style = new GUIStyle(Label) { fontSize = 14, wordWrap = true };
-                float wd = math.min(520, style.CalcSize(content).x + 26);
-                float hh = math.max(24, style.CalcHeight(content, wd - 14) + 6);
+                float wd = math.min(520, style.CalcSize(content).x + 26 + (e.HasPlace ? 14 : 0));
+                float hh = math.max(24, style.CalcHeight(content, wd - 14 - (e.HasPlace ? 14 : 0)) + 6);
                 var r = new Rect(10, y, wd, hh);
                 var old = GUI.color; GUI.color = new Color(1, 1, 1, a);
                 Box(r, UiTheme.Header);
                 Fill(new Rect(r.x + 1, r.y + 1, 4, r.height - 2), col);
-                GUI.Label(new Rect(r.x + 12, r.y + 3, wd - 14, hh - 6), repeats > 1 ? Col(e.Text, col) + "  " + Col($"x{repeats}", Faint) : Col(e.Text, col), style);
+                GUI.Label(new Rect(r.x + 12, r.y + 3, wd - 14 - (e.HasPlace ? 14 : 0), hh - 6), repeats > 1 ? Col(e.Text, col) + "  " + Col($"x{repeats}", Faint) : Col(e.Text, col), style);
+                if (e.HasPlace) GUI.Label(new Rect(r.xMax - 16, r.y + 2, 12, hh - 4), Col("›", Dim), style);   // clickable: goes there
                 if (e.HasPlace && GUI.Button(r, GUIContent.none, GUIStyle.none)) JumpTo(e.Place);
                 if (e.HasPlace) Tip(r, $"Day {e.Day + 1}. Click to go there.");
                 GUI.color = old;

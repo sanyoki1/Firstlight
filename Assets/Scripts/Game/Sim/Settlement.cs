@@ -466,20 +466,20 @@ namespace Firstlight.Game
             Warnings.Clear();
             if (TownCenter == null) { Warnings.Add("Choose a site for the campfire."); return; }
             float fd = FoodDays;
-            if (fd < B.foodWarnDays) { int n = math.max(1, (int)math.round(fd)); Warnings.Add(fd < 0.5f ? "There is no food left." : $"Food will run out in {n} day{(n == 1 ? "" : "s")}."); }
+            if (fd < B.foodWarnDays) { int n = math.max(1, (int)math.round(fd)); Warnings.Add(fd < 0.5f ? "There is no food left: people go hungry, then leave or die. More gatherers, hunters or fishers." : $"Food will run out in {n} day{(n == 1 ? "" : "s")}: more gatherers, hunters or fishers."); }
             float fuelNeed = FuelNeedUntilSpring();
             if (fuelNeed > 0 && StockTotals[_fuel] < fuelNeed * 0.7f && Season >= 2)
                 Warnings.Add($"Not enough firewood for winter ({StockTotals[_fuel]:F0} of about {fuelNeed:F0}): set a woodcutter to Firewood.");
             int homeless = Homeless;
-            if (homeless > 0) Warnings.Add($"{homeless} {(homeless == 1 ? "person has" : "people have")} no home.");
+            if (homeless > 0) Warnings.Add($"{homeless} {(homeless == 1 ? "person has" : "people have")} no home: build more homes (Housing).");
             StorageWarning();
             ToolsWarning();
             int sick = 0;
             foreach (var c in Citizens) if (!c.Gone && c.Sick) sick++;
-            if (sick >= math.max(3, Population / 6)) Warnings.Add($"{sick} people are sick.");
+            if (sick >= math.max(3, Population / 6)) Warnings.Add($"{sick} people are sick: a herbalist or healer with herbs treats them.");
             int unhappy = 0;
             foreach (var c in Citizens) if (!c.Gone && c.UnhappyDays > 0) unhappy++;
-            if (unhappy > 0 && unhappy >= Population / 4) Warnings.Add(unhappy == 1 ? "1 person is unhappy and may leave." : $"{unhappy} people are unhappy and may leave.");
+            if (unhappy > 0 && unhappy >= Population / 4) Warnings.Add((unhappy == 1 ? "1 person is unhappy and may leave" : $"{unhappy} people are unhappy and may leave") + UnhappyCause() + ".");
             // Heading into winter without the food to get through it (and the lean spring after).
             if (Season == 3 || Season == 2 && DayOfSeason >= B.daysPerSeason / 2)
             {
@@ -488,13 +488,16 @@ namespace Firstlight.Game
             }
             string harvest = HarvestWarning();
             if (harvest != null) Warnings.Add(harvest);
-            if (Unrest >= B.unrestWarn) Warnings.Add($"Unrest is {(Unrest >= B.theftAt ? "high" : "rising")} ({Unrest:P0}): disputes and theft are likely.");
+            // With its real thresholds (it said "disputes and theft are likely" at 20 %, when neither happens below 25 %).
+            if (Unrest >= B.unrestWarn)
+                Warnings.Add($"Unrest stands at {Unrest:P0}: disputes start at {B.disputeAt:P0}, theft at {B.theftAt:P0}." +
+                             (CouncilStaffed(out _) ? " The council is already calming it: more homes, food and faith lower it." : " A staffed Tribal Council halves it."));
             if (OutbreakRisk >= B.outbreakWarn) Warnings.Add(OutbreakWarning());
             if (_needWater)
             {
                 int dry = 0;
                 foreach (var c in Citizens) if (!c.Gone && c.NoWater) dry++;
-                if (dry > 0 && dry >= Population / 5) Warnings.Add(dry == 1 ? "1 person has no clean water nearby." : $"{dry} people have no clean water nearby.");
+                if (dry > 0 && dry >= Population / 5) Warnings.Add((dry == 1 ? "1 person has no clean water nearby" : $"{dry} people have no clean water nearby") + ": a well within reach of their homes brings it.");
             }
 
             // Log a warning when it appears, but not again while it keeps flickering on and off within a few days
@@ -517,6 +520,27 @@ namespace Firstlight.Game
                     Log(Severity.Info, $"Everything is ready for the {Data.Age(Age.next)?.name ?? Age.next}: open Goals (G) to advance.");
                 }
             }
+        }
+
+        /// <summary>": most lack a home" - the commonest unmet need among the unhappy (what the citizen panel lists).</summary>
+        string UnhappyCause()
+        {
+            int food = 0, warmth = 0, home = 0, health = 0, water = 0, pots = 0, faith = 0;
+            foreach (var c in Citizens)
+            {
+                if (c.Gone || c.UnhappyDays <= 0) continue;
+                if (c.Hungry) food++;
+                if (c.Cold) warmth++;
+                if (c.Home == null) home++;
+                if (c.Sick) health++;
+                if (c.NoWater) water++;
+                if (c.NoGoods) pots++;
+                if (c.NoFaith) faith++;
+            }
+            var counts = new (int n, string what)[] { (food, "food"), (warmth, "warmth"), (home, "a home"), (health, "health"), (water, "clean water"), (pots, "pottery"), (faith, "faith") };
+            int best = -1;
+            for (int i = 0; i < counts.Length; i++) if (counts[i].n > 0 && (best < 0 || counts[i].n > counts[best].n)) best = i;
+            return best < 0 ? "" : $": most lack {counts[best].what}";
         }
 
         /// <summary>

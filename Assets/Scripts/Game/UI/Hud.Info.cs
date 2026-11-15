@@ -62,7 +62,7 @@ namespace Firstlight.Game.UI
                 string status = !string.IsNullOrEmpty(b.Status) ? b.Status : d.IsWorkplace ? (b.Workers > 0 ? "Working" : "No workers") : "";
                 if (d.warmthRadius > 0) status = b.Fueled ? "The fire is burning" : "Out of firewood: the fire is out";
                 if (b.Flooded) status = "Under flood water";
-                if (status.Length > 0) Row(Col(status, b.Flooded ? Bad : status == "Working" || b.Fueled && d.warmthRadius > 0 ? Good : Warn), Bold);
+                if (status.Length > 0) Row(Col(StatusText(b, status), b.Flooded ? Bad : status == "Working" || b.Fueled && d.warmthRadius > 0 ? Good : Warn), Bold);
                 if (b.Flooded) Para(Col("No work, no storing and a cold home here until the river goes down; goods stored here were partly spoiled.", Warn));
                 else if (S.FloodCells != null && UnderFlood(b) && !S.Flooding) Para(Col("On the low ground the river will flood tomorrow.", Warn));
                 Para(d.description);
@@ -83,6 +83,31 @@ namespace Firstlight.Game.UI
                 _ly += 32;
             }
             EndInfo(r);
+        }
+
+        /// <summary>
+        /// A workplace status that names the cause: "Waiting for inputs" says which input and whether any is in store, and
+        /// "Needs tools" says when none are in store. (The sim's own strings stay as they are: the auto-player reads them.)
+        /// </summary>
+        string StatusText(Building b, string status)
+        {
+            var d = b.Def;
+            if (status == "Waiting for inputs" && d.inputs.Length > 0)
+            {
+                var empty = new List<string>();
+                bool noneInStore = true;
+                for (int i = 0; i < d.inputs.Length; i++)
+                {
+                    float have = 0, store = 0;
+                    foreach (var id in d.inputs[i].ids) { int r = S.ResIndex(id); if (r >= 0) { have += b.In[r]; store += S.StockTotals[r]; } }
+                    if (have > 0.001f) continue;
+                    empty.Add(string.Join(" or ", d.inputs[i].ids.Select(ResName)).ToLower());
+                    if (store >= 0.5f) noneInStore = false;
+                }
+                if (empty.Count > 0) return $"Waiting for {string.Join(" and ", empty)}" + (noneInStore ? " (none in store)" : " (on its way from storage)");
+            }
+            if (status == "Needs tools" && ToolsInStore() < 1f) return "Needs tools (none in store: a Toolmaker makes them)";
+            return status;
         }
 
         void DrawSite(Building b)
