@@ -65,7 +65,7 @@
 
   "migrantMinFreeHousing": 2,
   "migrantMinFoodDays": 5,
-  "migrantMinHappiness": 0.5,
+  "migrantMinHappiness": 0.8,
   "migrantsMin": 2,
   "migrantsMax": 4,
 
