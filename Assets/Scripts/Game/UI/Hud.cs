@@ -124,7 +124,16 @@ namespace Firstlight.Game.UI
             }
             if (Mode == ToolMode.Demolish)
             {
-                if (HoverBuilding != null && S.Demolish(HoverBuilding, out _) && !keepTool) Mode = ToolMode.None;
+                // A finished building takes a second click on it within 2 s (the tip says what goes with it); sites and
+                // path tiles go at once (a site's delivered materials go back to storage).
+                var hb = HoverBuilding;
+                if (hb != null && !hb.IsSite && hb != S.TownCenter && !ToolConfirmPending(hb))
+                {
+                    _toolConfirm = hb.Id; _toolConfirmAt = Time.unscaledTime;
+                    return;
+                }
+                _toolConfirm = -1;
+                if (hb != null && S.Demolish(hb, out _) && !keepTool) Mode = ToolMode.None;
                 else if (HoverBuilding == null && S.RemovePath(HoverCell) && !keepTool) Mode = ToolMode.None;
                 return;
             }
@@ -132,6 +141,22 @@ namespace Firstlight.Game.UI
             if (person != null) { SelectCitizen(person); return; }
             Select(HoverBuilding);
             if (HoverBuilding == null) SelectCitizen(null);
+        }
+
+        // The demolish tool's pending confirm: which building was clicked once, and when.
+        int _toolConfirm = -1; float _toolConfirmAt;
+        bool ToolConfirmPending(Building b) => b != null && _toolConfirm == b.Id && Time.unscaledTime - _toolConfirmAt <= 2f;
+
+        /// <summary>What goes with a building pulled down: "8 live here; half the materials come back".</summary>
+        string DemolishLoss(Building b)
+        {
+            var parts = new List<string>(3);
+            if (b.Def.housing > 0 && b.Residents > 0) parts.Add($"{b.Residents} live{(b.Residents == 1 ? "s" : "")} here");
+            if (b.Def.IsWorkplace && b.Workers > 0) parts.Add($"{b.Workers} work{(b.Workers == 1 ? "s" : "")} here");
+            if (b.Store != null && b.Stored >= 1f) parts.Add($"{b.Stored:0} goods move to other stores if there is room");
+            float refund = D.Balance.demolishRefund;
+            parts.Add(math.abs(refund - 0.5f) < 0.01f ? "half the materials come back" : $"{refund:P0} of the materials come back");
+            return string.Join("; ", parts);
         }
 
         public void Demolish(Building b)
@@ -530,9 +555,17 @@ namespace Firstlight.Game.UI
         {
             if (Mode == ToolMode.Demolish)
             {
-                var r0 = Box(new Rect(VW / 2 - 250, VH - 150, 500, 34), UiTheme.Header);
-                string what = HoverBuilding != null ? (HoverBuilding == S.TownCenter ? Col("The campfire can't be removed", Bad) : $"Remove {HoverBuilding.Def.name}") : "Click a building to remove it";
-                GUI.Label(new Rect(r0.x + 12, r0.y, 476, 34), what + Col("   (right-click or Esc to stop)", Dim), Label);
+                var hb = HoverBuilding;
+                string what, sub;
+                if (hb == null) { what = "Click a building or path to remove it"; sub = null; }
+                else if (hb == S.TownCenter) { what = Col("The campfire can't be removed", Bad); sub = null; }
+                else if (hb.IsSite) { what = $"Remove the {hb.Def.name} site"; sub = "Delivered materials go back to storage."; }
+                else if (ToolConfirmPending(hb)) { what = Col($"Click again to remove the {hb.Def.name}", Bad); sub = Cap(DemolishLoss(hb)) + "."; }
+                else { what = $"Remove the {hb.Def.name}: click twice"; sub = Cap(DemolishLoss(hb)) + "."; }
+                float h0 = sub != null ? 56 : 34;
+                var r0 = Box(new Rect(VW / 2 - 320, VH - 128 - h0, 640, h0), UiTheme.Header);
+                GUI.Label(new Rect(r0.x + 12, r0.y + (sub != null ? 4 : 0), 616, 28), what + Col("   (right-click or Esc to stop)", Dim), Label);
+                if (sub != null) GUI.Label(new Rect(r0.x + 12, r0.y + 30, 616, 22), sub, Small);
                 return;
             }
             if (Mode != ToolMode.Place || PlaceDef == null || !HoverValid || PointerOverUI) return;

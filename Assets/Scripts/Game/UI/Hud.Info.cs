@@ -79,7 +79,7 @@ namespace Firstlight.Game.UI
                 bool confirm = _confirmDemolish == b.Id;
                 var br = new Rect(_lx, _ly, 200, 28);
                 if (GUI.Button(br, confirm ? Col("Click again to remove", Bad) : "Demolish", Button)) Demolish(b);
-                Tip(br, b.IsSite ? "Pull down the site. Delivered materials go back to storage." : $"Pull it down. {D.Balance.demolishRefund:P0} of the materials come back.");
+                if (br.Contains(Event.current.mousePosition)) Tip(br, b.IsSite ? "Pull down the site. Delivered materials go back to storage." : $"Pull it down: {DemolishLoss(b)}.");
                 _ly += 32;
             }
             EndInfo(r);
