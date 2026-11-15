@@ -11,8 +11,8 @@ namespace Firstlight.Game
     /// Save files. Layout: "FLSV", format version, a small uncompressed header (what the load screen lists: name, kind,
     /// age, year, season, population, real date), then a gzip body: the map's changes, the settlement, the auto-player
     /// (if one runs), and two length-prefixed blocks for the game (camera, HUD, water) and the auto-test. The map itself
-    /// is regenerated from its seed on load. Files are written to a temporary name and moved into place, so a crash
-    /// mid-save never leaves a half-written save under the real name.
+    /// is regenerated from its seed on load. Files are written to a temporary name and swapped into place (File.Replace
+    /// over an existing save), so a crash or a failed move mid-save never leaves a half-written save or an empty slot.
     /// </summary>
     public static class SaveGame
     {
@@ -110,8 +110,34 @@ namespace Firstlight.Game
                 b.Str("end");
                 b.W.Flush();
             }
-            if (File.Exists(path)) File.Delete(path);
-            File.Move(tmp, path);
+            // Overwriting: swap the new file in with File.Replace, which keeps the old save (as .bak) until the new one is in
+            // place, so a failed move (a scanner or sync client holding the file) or a crash never leaves the slot empty.
+            // If it throws, the old save is untouched and the caller shows the reason.
+            if (File.Exists(path))
+            {
+                string bak = path + ".bak";
+                File.Replace(tmp, path, bak);
+                try { File.Delete(bak); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
+            else File.Move(tmp, path);
+        }
+
+        /// <summary>
+        /// Tidies what an unfinished save can leave (on listing): a backup whose save is missing (a replace that failed
+        /// half way) is put back under its name; leftover .bak and .tmp files are deleted.
+        /// </summary>
+        internal static void CleanStale(string dir)
+        {
+            foreach (var bak in Directory.GetFiles(dir, "*" + Extension + ".bak"))
+            {
+                string save = bak.Substring(0, bak.Length - 4);
+                try { if (File.Exists(save)) File.Delete(bak); else File.Move(bak, save); }
+                catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
+            foreach (var tmp in Directory.GetFiles(dir, "*" + Extension + ".tmp"))
+            {
+                try { File.Delete(tmp); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            }
         }
 
         /// <summary>Reads only the header (for the load screen). Null with a reason for anything that is not a save this build can read.</summary>
@@ -209,6 +235,7 @@ namespace Firstlight.Game
         {
             var list = new List<(Header, string, string)>();
             if (!Directory.Exists(Dir)) return list;
+            CleanStale(Dir);
             foreach (var f in Directory.GetFiles(Dir, "*" + Extension))
             {
                 var h = ReadHeader(f, out string err);

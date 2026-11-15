@@ -564,6 +564,7 @@ namespace Firstlight.Game
             catch (Exception e) { ok = false; Debug.Log($"[SaveCheck] other map settings: EXCEPTION {e}"); }
             finally { data.Balance.copperDeposits = copper; }
 
+            ok &= OverwriteCheck(data, s, ap, outDir);
             ok &= GoodsByIdCheck(data, good, s);
             ok &= UnknownIdsCheck(data, good, s, outDir);
             foreach (var file in ArgsAfter("-compatsave")) ok &= CompatCheck(data, file, int.TryParse(ArgsAfter("-compatdays").FirstOrDefault(), out int cd) ? cd : 30, outDir);
@@ -631,6 +632,50 @@ namespace Firstlight.Game
             }
             catch (Exception e) { Debug.Log($"[SaveCheck] unknown research/law: EXCEPTION {e}"); return false; }
             finally { l?.Map.Dispose(); }
+        }
+
+        /// <summary>
+        /// Overwriting a save: the new one replaces the old; if the old file is held open (a scanner or sync client) the
+        /// save fails with an exception (the caller's toast) and the old save is still there and loads; listing the folder
+        /// then puts a lone backup back under its name and deletes leftover temporary files.
+        /// </summary>
+        static bool OverwriteCheck(GameData data, Settlement s, AutoPlayer ap, string outDir)
+        {
+            string dir = Path.Combine(outDir, "overwrite");
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+            Directory.CreateDirectory(dir);
+            string path = Path.Combine(dir, "slot" + SaveGame.Extension);
+            var notes = new List<string>();
+            bool ok = true;
+            try
+            {
+                SaveGame.Write(path, SaveGame.HeaderFor(s, "first", "test"), s, ap, null, null, null);
+                SaveGame.Write(path, SaveGame.HeaderFor(s, "second", "test"), s, ap, null, null, null);
+                var h = SaveGame.ReadHeader(path, out _);
+                bool replaced = h?.Name == "second" && !File.Exists(path + ".tmp") && !File.Exists(path + ".bak");
+                ok &= replaced; notes.Add($"overwrite {(replaced ? "replaced, no leftovers" : "WRONG")}");
+                bool threw = false;
+                using (new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))   // held open: no delete, no rename
+                {
+                    try { SaveGame.Write(path, SaveGame.HeaderFor(s, "third", "test"), s, ap, null, null, null); }
+                    catch (Exception e) { threw = true; notes.Add($"held file: save failed ({e.GetType().Name})"); }
+                }
+                SaveGame.CleanStale(dir);
+                var kept = SaveGame.ReadHeader(path, out _);
+                var l = SaveGame.Read(path, data, out string err);
+                bool intact = threw && kept?.Name == "second" && l != null && !File.Exists(path + ".tmp");
+                l?.Map.Dispose();
+                ok &= intact; notes.Add($"old save {(intact ? "intact and loads, .tmp cleaned" : "WRONG (" + (kept?.Name ?? err) + ")")}");
+                // A replace that stopped half way: only the backup is left.
+                File.Move(path, path + ".bak");
+                File.WriteAllText(path + ".tmp", "partial");
+                SaveGame.CleanStale(dir);
+                bool restored = SaveGame.ReadHeader(path, out _)?.Name == "second" && !File.Exists(path + ".bak") && !File.Exists(path + ".tmp");
+                ok &= restored; notes.Add($"lone backup {(restored ? "put back" : "WRONG")}");
+            }
+            catch (Exception e) { ok = false; notes.Add("EXCEPTION " + e); }
+            Debug.Log($"[SaveCheck] overwrite: {string.Join("; ", notes)}{(ok ? "" : "  <-- WRONG")}");
+            return ok;
         }
 
         static IEnumerable<string> ArgsAfter(string name)
