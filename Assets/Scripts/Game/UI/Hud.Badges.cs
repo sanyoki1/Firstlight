@@ -152,7 +152,8 @@ namespace Firstlight.Game.UI
                 if (text == null) { _problemSince.Remove(b.Id); continue; }
                 if (!_problemSince.TryGetValue(b.Id, out var seen) || !ReferenceEquals(seen.label, text)) { seen = (text, S.Time); _problemSince[b.Id] = seen; }
                 if (slow && S.Time - seen.since < (slowDay ? 24f : 2f) * hour) continue;
-                float top = b.IsSite ? 1.2f : 2.3f;
+                // Over the roof of a home (huts stand about 2.5 m), lower over the low workplaces and stores.
+                float top = b.IsSite ? 1.2f : b.Def.housing > 0 ? 2.3f : 1.5f;
                 var world = new Vector3(b.Center.x, M.HeightAt(b.Center.x, b.Center.y) + top, b.Center.y);
                 if ((world - eye).magnitude > BadgeRange) continue;
                 var at = cam.WorldToScreenPoint(world);
