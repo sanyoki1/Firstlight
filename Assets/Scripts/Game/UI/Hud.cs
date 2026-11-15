@@ -82,10 +82,10 @@ namespace Firstlight.Game.UI
 
         public void SelectCitizen(Citizen c) { SelectedCitizen = c; if (c != null) Selected = null; }
 
-        public void ToggleResearch() { ResearchOpen = !ResearchOpen; if (ResearchOpen) { GoalsOpen = JobsOpen = StocksOpen = HelpOpen = false; } }
-        public void ToggleGoals() { GoalsOpen = !GoalsOpen; if (GoalsOpen) JobsOpen = StocksOpen = LawsOpen = false; }
-        public void ToggleJobs() { JobsOpen = !JobsOpen; if (JobsOpen) GoalsOpen = StocksOpen = LawsOpen = false; }
-        public void ToggleStocks() { StocksOpen = !StocksOpen; if (StocksOpen) GoalsOpen = JobsOpen = LawsOpen = false; }
+        public void ToggleResearch() { ResearchOpen = !ResearchOpen; if (ResearchOpen) { GoalsOpen = JobsOpen = StocksOpen = HelpOpen = EventsOpen = false; } }
+        public void ToggleGoals() { GoalsOpen = !GoalsOpen; if (GoalsOpen) JobsOpen = StocksOpen = LawsOpen = EventsOpen = false; }
+        public void ToggleJobs() { JobsOpen = !JobsOpen; if (JobsOpen) GoalsOpen = StocksOpen = LawsOpen = EventsOpen = false; }
+        public void ToggleStocks() { StocksOpen = !StocksOpen; if (StocksOpen) GoalsOpen = JobsOpen = LawsOpen = EventsOpen = false; }
         public void ToggleHelp() => HelpOpen = !HelpOpen;
         public void OpenCategory(string cat) { BuildCategory = BuildCategory == cat ? null : cat; }
 
@@ -99,7 +99,7 @@ namespace Firstlight.Game.UI
             else if (HelpOpen) HelpOpen = false;
             else if (Mode != ToolMode.None && !S.NeedsCampfire) CancelTool();
             else if (BuildCategory != null) BuildCategory = null;
-            else if (GoalsOpen || JobsOpen || StocksOpen || LawsOpen) GoalsOpen = JobsOpen = StocksOpen = LawsOpen = false;
+            else if (GoalsOpen || JobsOpen || StocksOpen || LawsOpen || EventsOpen) GoalsOpen = JobsOpen = StocksOpen = LawsOpen = EventsOpen = false;
             else if (Selected != null || SelectedCitizen != null) { Select(null); SelectCitizen(null); }
             else OpenMenu();                       // nothing left to close: the game menu
         }
@@ -248,6 +248,7 @@ namespace Firstlight.Game.UI
             if (S.NeedsCampfire) return;
             if (kb.gKey.wasPressedThisFrame) ToggleGoals();
             if (kb.jKey.wasPressedThisFrame) ToggleJobs();
+            if (kb.vKey.wasPressedThisFrame) ToggleEvents();
             if (kb.tKey.wasPressedThisFrame) ToggleStocks();
             if (kb.bKey.wasPressedThisFrame) OpenCategory(BuildCategory == null ? Categories[0] : BuildCategory);
             if (Mode == ToolMode.Place && PlaceDef != null && !PlaceDef.path)
@@ -415,6 +416,7 @@ namespace Firstlight.Game.UI
                 if (JobsOpen) DrawJobs();
                 if (StocksOpen) DrawStocks();
                 if (LawsOpen) DrawLaws();
+                if (EventsOpen) DrawEvents();
                 PerfProbe.End(PerfProbe.S.GuiPanels);
                 DrawPlacementTip();
                 PerfProbe.Begin(PerfProbe.S.GuiTopBar); DrawTopBar(); PerfProbe.End(PerfProbe.S.GuiTopBar);

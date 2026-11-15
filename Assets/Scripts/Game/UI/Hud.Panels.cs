@@ -138,7 +138,7 @@ namespace Firstlight.Game.UI
 
         void DrawHelp()
         {
-            var r = Box(new Rect(VW / 2 - 330, VH / 2 - 370, 660, 740));
+            var r = Box(new Rect(VW / 2 - 330, VH / 2 - 390, 660, 780));
             GUI.Label(new Rect(r.x + 20, r.y + 12, 400, 28), "Controls", Title);
             if (GUI.Button(new Rect(r.xMax - 34, r.y + 12, 24, 22), "x", Button)) HelpOpen = false;
             string[,] keys =
@@ -160,6 +160,7 @@ namespace Firstlight.Game.UI
                 { "R", "Research tree" },
                 { "G", "Goals for the next age" },
                 { "J", "Jobs overview" },
+                { "V", "Events: what happened, newest first; Topics: hints seen" },
                 { "L", "Laws (once there is a Tribal Council)" },
                 { "T", "Goods in store" },
                 { "F1", "This help" },
@@ -173,6 +174,7 @@ namespace Firstlight.Game.UI
                 GUI.Label(new Rect(r.x + 240, y, 400, 26), keys[i, 1], Label);
                 y += 28;
             }
+            GUI.Label(new Rect(r.x + 24, y + 2, 612, 22), Col("Hover any number for what moves it; click an event (›) to go there.", Dim), Small);
             if (GUI.Button(new Rect(r.x + 24, r.yMax - 46, 160, 30), "Game menu (Esc)", Button)) { HelpOpen = false; OpenMenu(); }
             GUI.Label(new Rect(r.x + 200, r.yMax - 46, 440, 30), Col("Saves itself at the start of every season.", Faint), Small);
         }

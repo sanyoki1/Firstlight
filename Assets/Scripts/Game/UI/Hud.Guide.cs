@@ -170,6 +170,16 @@ namespace Firstlight.Game.UI
 
         sealed class HintDef { public string Id, Title, Text; public Func<Hud, string> TextNow; public Func<Hud, bool> When; public Func<Hud, float2?> Where; }
 
+        /// <summary>The newest death in the events ("Mara (31) died of cold."), or null.</summary>
+        string LastDeath() { int i = LastDeathIndex(); return i >= 0 ? S.Events[i].Text : null; }
+        float2? LastDeathPlace() { int i = LastDeathIndex(); return i >= 0 && S.Events[i].HasPlace ? S.Events[i].Place : null; }
+        int LastDeathIndex()
+        {
+            for (int i = S.Events.Count - 1; i >= 0 && i >= S.Events.Count - 400; i--)
+                if (S.Events[i].Text.Contains(" died of ")) return i;
+            return -1;
+        }
+
         /// <summary>A hint's text with its live numbers (when it has them).</summary>
         string HintText(HintDef h) => h.TextNow?.Invoke(this) ?? h.Text;
 
@@ -179,7 +189,9 @@ namespace Firstlight.Game.UI
             // numbers. The id stays "winter" so a save that has seen the old hint does not show this one again.
             new() { Id = "winter", Title = "Winter is coming", Text = "Nothing grows in winter and little is gathered. Homes burn firewood every day; people without warmth, food or a roof lose health. Before it comes: set a woodcutter to Firewood and keep gatherers and hunters busy.",
                     TextNow = h => h.WinterHintText(), When = h => h.S.Season >= 2 },
-            new() { Id = "death", Title = "Someone has died", Text = "The event list says why. Cold means not enough firewood, homes or clothing; hunger means too little food; sickness spreads in crowded homes. Old age is natural.", When = h => h.S.TotalDeaths > 0 },
+            new() { Id = "death", Title = "Someone has died", Text = "Events (V) lists every death and its cause. Cold means not enough firewood, homes or clothing; hunger means too little food; sickness spreads in crowded homes. Old age is natural.",
+                    TextNow = h => h.LastDeath() is string d ? $"{d} Cold means not enough firewood, homes or clothing; hunger means too little food; sickness spreads in crowded homes. Old age is natural. Events (V) lists every death." : null,
+                    When = h => h.S.TotalDeaths > 0, Where = h => h.LastDeathPlace() },
             new() { Id = "need_water", Title = "A new need: clean water", Text = "Farming towns need clean water. Homes near the river have it; others need a well within reach. Without it people are less happy and fall sick more.", When = h => h.S.NeedActive("water") },
             new() { Id = "need_goods", Title = "A new need: pottery", Text = "Now that pottery is known every household wants pots. A clay pit and a potter keep them supplied; pots wear out over time.", When = h => h.S.NeedActive("goods") },
             new() { Id = "need_faith", Title = "A new need: faith", Text = "With Shamanism known, people want a staffed Shaman's Hut within reach of their homes. Unmet faith lowers happiness and adds to unrest.", When = h => h.S.NeedActive("faith") },
@@ -216,18 +228,23 @@ namespace Firstlight.Game.UI
             // A hint whose moment has passed goes by itself (an undismissed "Winter has come" stood into the summer of
             // year 12 in the screenshot run, and held back every later hint).
             if (_hint != null && !_hintForced && !_hint.When(this)) _hint = null;
+            // One left open closes by itself after about two game days on screen (it counts as seen and can be read again
+            // under Events > Topics): an undismissed card held back every later hint.
+            if (_hint != null && !_hintForced && S.Time - _hintShownAt > HintGameDays * D.Balance.dayLengthSeconds) _hint = null;
             if (!GameSettings.Current.hints || _hint != null || S.NeedsCampfire) return;
             foreach (var h in Hints)
-                if (!_hintsSeen.Contains(h.Id) && h.When(this)) { _hint = h; _hintForced = false; _hintsSeen.Add(h.Id); return; }
+                if (!_hintsSeen.Contains(h.Id) && h.When(this)) { _hint = h; _hintForced = false; _hintShownAt = S.Time; _hintsSeen.Add(h.Id); return; }
         }
 
         /// <summary>-p4shots: show a hint as if it had just come up.</summary>
         public void ShowHint(string id) { _hint = Hints.FirstOrDefault(h => h.Id == id); _hintForced = _hint != null; if (_hint != null) _hintsSeen.Add(id); }
         bool _hintForced;
+        float _hintShownAt;
+        const float HintGameDays = 2f;
 
         void DrawHint()
         {
-            if (_hint == null || ResearchOpen || EndOpen || GoneOpen || GoalsOpen || JobsOpen || StocksOpen || LawsOpen) return;   // the side panels sit where the card is
+            if (_hint == null || ResearchOpen || EndOpen || GoneOpen || GoalsOpen || JobsOpen || StocksOpen || LawsOpen || EventsOpen) return;   // the side panels sit where the card is
             float w = 520;
             string body = HintText(_hint);
             var text = new GUIContent(body);
@@ -238,6 +255,7 @@ namespace Firstlight.Game.UI
             GUI.Label(new Rect(r.x + 16, r.y + 12, w - 32, 24), $"<b>{_hint.Title}</b>", Label);
             GUI.Label(new Rect(r.x + 16, r.y + 40, w - 32, th), body, SmallWrap);
             if (GUI.Button(new Rect(r.x + 16, r.yMax - 40, 120, 28), "Got it", Button)) _hint = null;
+            if (_hint != null) Tip(new Rect(r.x + 16, r.yMax - 40, 120, 28), "Close it. Every hint can be read again under Events (V) > Topics; one left open closes by itself after two days.");
             var where = _hint?.Where?.Invoke(this);
             if (where != null && GUI.Button(new Rect(r.x + 146, r.yMax - 40, 120, 28), "Show me", Button)) JumpTo(where.Value);
             if (GUI.Button(new Rect(r.xMax - 176, r.yMax - 40, 160, 28), Col("No more hints", Dim), Button)) { _hint = null; GameSettings.Current.hints = false; GameSettings.Save(); }

@@ -103,7 +103,8 @@ namespace Firstlight.Game.UI
             GUI.Label(new Rect(x, 5, 236, 22), $"<b>{S.Population}</b> people  " + (S.Homeless > 0 ? Col($"{S.Homeless} homeless", Warn) : free > 0 ? Col($"{free} beds free", Dim) : Col("no free beds", Dim)), Label);
             GUI.Label(new Rect(x, 27, 236, 20), $"{adults} adults · {kids} children · {elders} elders", Small);
             Tip(pr, $"People: {S.Population}, housing for {S.HousingCapacity}. Babies are born to families with a home, free beds and food in store; migrants come when there are free beds, food and good spirits. Unhappy or starving people leave.\n\n" +
-                    $"Happiness {S.AverageHappiness:P0}: the average and the worst of food, warmth, shelter, health (and later water, pottery and faith). It sets how fast people work.\n\nBorn {S.Births}, arrived {S.Migrants}, left {S.Leavers}, died {S.TotalDeaths}.");
+                    $"Happiness {S.AverageHappiness:P0}: the average and the worst of food, warmth, shelter, health (and later water, pottery and faith). It sets how fast people work.\n\nBorn {S.Births}, arrived {S.Migrants}, left {S.Leavers}, died {S.TotalDeaths}." +
+                    (S.TotalDeaths > 0 ? $"\nDeaths: {DeathsByCause()}. Events (V) says who." : ""));
             x += 240;
 
             // Food.
@@ -120,9 +121,9 @@ namespace Firstlight.Game.UI
             // Research progress (right side), then the panel buttons.
             // Narrow (a large interface size): smaller panel buttons without their keys and a shorter research box, so
             // they don't run over the food figure.
-            bool narrow = VW - 4 * 100 - 6 - 236 < x + 156;
+            bool narrow = VW - 5 * 100 - 6 - 236 < x + 156;
             float bw = narrow ? 80 : 100, rw = narrow ? 180 : 228;
-            float bx = VW - 4 * bw - 6;
+            float bx = VW - 5 * bw - 6;
             float rx = bx - rw - 8;
             var rr = new Rect(rx, 6, rw, 40);
             string cur = S.CurrentResearch;
@@ -145,18 +146,19 @@ namespace Firstlight.Game.UI
                     $"\n\nKnowledge {_knowPerDay:0.#} a day, from the elders at staffed Elders' Fires (old people count more). More fires and more elders on them research faster. Open the research tree (R)." +
                     (stalled != null ? $"\n\n{stalled}: nothing makes knowledge now." : ""));
 
-            string[] labels = { "Research", "Goals", "Jobs", "Help" };
-            string[] keys = { "R", "G", "J", "F1" };
-            bool[] open = { ResearchOpen, GoalsOpen, JobsOpen, HelpOpen };
-            string[] tips = { "Research tree: choose what to learn next.", "Goals: the key research and milestones for the next age.", "Jobs: how many work where; set priorities on each building.", "Controls and keys." };
-            for (int i = 0; i < 4; i++)
+            string[] labels = { "Research", "Goals", "Jobs", "Events", "Help" };
+            string[] keys = { "R", "G", "J", "V", "F1" };
+            bool[] open = { ResearchOpen, GoalsOpen, JobsOpen, EventsOpen, HelpOpen };
+            string[] tips = { "Research tree: choose what to learn next.", "Goals: the key research and milestones for the next age.", "Jobs: how many work where; set priorities on each building.",
+                              "Events: everything that has happened, newest first (who died and of what, who left, shortages), and Topics: the hints seen so far.", "Controls and keys." };
+            for (int i = 0; i < 5; i++)
             {
                 var r = new Rect(bx + i * bw, 9, bw - 4, 34);
                 // Goals is lit while the next age is ready (nothing else says the age-up is a manual step).
                 bool lit = open[i] || i == 1 && AgeReady;
                 if (GUI.Button(r, narrow ? labels[i] : $"{labels[i]} {Col(keys[i], Dim)}", lit ? ButtonOn : Button))
                 {
-                    if (i == 0) ToggleResearch(); else if (i == 1) ToggleGoals(); else if (i == 2) ToggleJobs(); else ToggleHelp();
+                    if (i == 0) ToggleResearch(); else if (i == 1) ToggleGoals(); else if (i == 2) ToggleJobs(); else if (i == 3) ToggleEvents(); else ToggleHelp();
                 }
                 Tip(r, tips[i] + (narrow ? $" ({keys[i]})" : "") + (i == 1 && AgeReady ? " Everything for the next age is in place: advance from here." : ""));
             }
@@ -208,6 +210,9 @@ namespace Firstlight.Game.UI
             if (workers == 0) return fires == 1 ? "The Elders' Fire has no elders" : "The Elders' Fires have no elders";
             return null;
         }
+
+        /// <summary>"cold 3, starvation 1, old age 2" (most first).</summary>
+        string DeathsByCause() => string.Join(", ", S.Deaths.Where(kv => kv.Value > 0).OrderByDescending(kv => kv.Value).Select(kv => $"{kv.Key} {kv.Value}"));
 
         /// <summary>People as the top bar splits them: adults (not counting elders), elders and children.</summary>
         (int adults, int elders, int children) PeopleSplit()

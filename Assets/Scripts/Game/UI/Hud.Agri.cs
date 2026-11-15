@@ -12,7 +12,7 @@ namespace Firstlight.Game.UI
     public sealed partial class Hud
     {
         public bool LawsOpen;
-        public void ToggleLaws() { LawsOpen = !LawsOpen; if (LawsOpen) GoalsOpen = JobsOpen = StocksOpen = false; }
+        public void ToggleLaws() { LawsOpen = !LawsOpen; if (LawsOpen) GoalsOpen = JobsOpen = StocksOpen = EventsOpen = false; }
 
         // ------------------------------------------------------------------ building panel sections
 
