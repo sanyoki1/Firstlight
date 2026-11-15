@@ -151,11 +151,13 @@ namespace Firstlight.Game.UI
             for (int i = 0; i < 4; i++)
             {
                 var r = new Rect(bx + i * bw, 9, bw - 4, 34);
-                if (GUI.Button(r, narrow ? labels[i] : $"{labels[i]} {Col(keys[i], Dim)}", open[i] ? ButtonOn : Button))
+                // Goals is lit while the next age is ready (nothing else says the age-up is a manual step).
+                bool lit = open[i] || i == 1 && AgeReady;
+                if (GUI.Button(r, narrow ? labels[i] : $"{labels[i]} {Col(keys[i], Dim)}", lit ? ButtonOn : Button))
                 {
                     if (i == 0) ToggleResearch(); else if (i == 1) ToggleGoals(); else if (i == 2) ToggleJobs(); else ToggleHelp();
                 }
-                Tip(r, tips[i] + (narrow ? $" ({keys[i]})" : ""));
+                Tip(r, tips[i] + (narrow ? $" ({keys[i]})" : "") + (i == 1 && AgeReady ? " Everything for the next age is in place: advance from here." : ""));
             }
 
             // Row two: key stocks, then the needs and unrest (they keep their order and drop from the right when narrow).

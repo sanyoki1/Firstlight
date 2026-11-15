@@ -504,6 +504,17 @@ namespace Firstlight.Game
                 _warnSeen[key] = Day;
             }
             _warnLogInfo.Clear();
+
+            // The age-up is a manual step (Goals): say so once, when everything it needs is in place.
+            if (Age != null && !string.IsNullOrEmpty(Age.next) && CanAdvanceAge())
+            {
+                string key = "~info:ready " + Age.next;
+                if (!_warnSeen.ContainsKey(key))
+                {
+                    _warnSeen[key] = Day;
+                    Log(Severity.Info, $"Everything is ready for the {Data.Age(Age.next)?.name ?? Age.next}: open Goals (G) to advance.");
+                }
+            }
         }
 
         /// <summary>

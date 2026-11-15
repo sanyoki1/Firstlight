@@ -18,9 +18,9 @@ namespace Firstlight.Game.UI
         public static readonly Color Accent = new(0.86f, 0.74f, 0.50f);
         public static readonly Color Info = new(0.62f, 0.75f, 0.86f);
 
-        public static GUIStyle Panel, Header, Label, Small, Bold, Title, Big, Banner, Button, ButtonOn, ButtonDim, Tip, Chip, Center, Right, Wrap, SmallWrap;
+        public static GUIStyle Panel, Header, Label, Small, Bold, Title, Big, Banner, Button, ButtonOn, ButtonDim, Tip, Chip, ChipGood, Center, Right, Wrap, SmallWrap;
         public static Texture2D White;
-        static Texture2D _panel, _header, _btn, _btnHover, _btnActive, _btnOn, _btnOnHover, _tip, _chip;
+        static Texture2D _panel, _header, _btn, _btnHover, _btnActive, _btnOn, _btnOnHover, _tip, _chip, _chipGood;
         static bool _ready;
 
         /// <summary>Scale from virtual (1080 high) to real pixels.</summary>
@@ -85,6 +85,10 @@ namespace Firstlight.Game.UI
             Tip.normal.background = _tip;
             Chip = new GUIStyle(Style(15, Warn, TextAnchor.MiddleLeft)) { border = new RectOffset(1, 1, 1, 1), padding = new RectOffset(10, 10, 0, 0) };
             Chip.normal.background = _chip;
+            // A chip for good news (the next age is ready): the same shape, green.
+            _chipGood = Box(new Color(0.09f, 0.14f, 0.09f, 0.94f), new Color(0.42f, 0.64f, 0.36f, 1f));
+            ChipGood = new GUIStyle(Chip);
+            ChipGood.normal.background = _chipGood; ChipGood.normal.textColor = ChipGood.hover.textColor = Good;
             Label = Style(16, Text);
             Small = Style(14, Dim);
             Bold = Style(16, Text, TextAnchor.MiddleLeft, FontStyle.Bold);

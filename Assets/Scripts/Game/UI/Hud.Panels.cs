@@ -61,7 +61,7 @@ namespace Firstlight.Game.UI
             _goalsH = _ly - r.y + 10;
         }
 
-        public void AdvanceAge() => S.AdvanceAge();
+        public void AdvanceAge() { S.AdvanceAge(); AgeReadyRefresh(); }
 
         static string Tick(bool done) => done ? Col("[x]", Good) : Col("[  ]", Faint);
 
@@ -192,10 +192,35 @@ namespace Firstlight.Game.UI
         GUIStyle _chipWrap;
         const float ChipMaxW = 470;
 
+        // Whether the next age can be reached now (looked up twice a second, not every frame: it builds lists).
+        bool _ageReady; float _ageReadyAt = -1;
+        bool AgeReady
+        {
+            get
+            {
+                if (S.NeedsCampfire) return false;
+                if (_ageReadyAt < 0 || Time.unscaledTime - _ageReadyAt > 0.5f) { _ageReadyAt = Time.unscaledTime; _ageReady = S.CanAdvanceAge(); }
+                return _ageReady;
+            }
+        }
+        void AgeReadyRefresh() => _ageReadyAt = -1;
+
         void DrawFeed()
         {
             float y = TopBarHeight + 8;
             // Standing problems, as chips.
+            // Good news first: everything the next age needs is in place (the age-up is a manual step in Goals).
+            if (AgeReady && !EndOpen)
+            {
+                var next = D.Age(S.Age.next);
+                var c = new GUIContent(Col($"Ready to advance to the {next?.name} (G)", Good));
+                float wd = math.min(ChipMaxW, UiTheme.ChipGood.CalcSize(c).x + 4);
+                var r = Box(new Rect(10, y, wd, 26), UiTheme.ChipGood);
+                GUI.Label(r, c, UiTheme.ChipGood);
+                if (GUI.Button(r, GUIContent.none, GUIStyle.none)) { if (!GoalsOpen) ToggleGoals(); }
+                Tip(r, "Every key research topic and milestone is done. Open Goals (G) and press Advance when you are ready.");
+                y += 30;
+            }
             // Long ones (a cause and a remedy) wrap onto a second line.
             _chipWrap ??= new GUIStyle(UiTheme.Chip) { wordWrap = true, padding = new RectOffset(10, 10, 4, 4) };
             foreach (var w in S.Warnings)
