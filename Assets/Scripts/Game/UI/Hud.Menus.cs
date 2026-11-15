@@ -28,6 +28,10 @@ namespace Firstlight.Game.UI
         int _saveSel = -1;
         Vector2 _saveScroll;
         string _menuMsg;
+        // The title screen's Continue line: the newest save, read once when the screen opens (finding every save and
+        // reading each header on every OnGUI call cost about 3 ms a frame) and again after a save or a delete.
+        (SaveGame.Header h, string file)? _latest;
+        bool _latestRead;
         float _settingsH = 760;
 
         // ------------------------------------------------------------------ actions
@@ -37,7 +41,7 @@ namespace Firstlight.Game.UI
 
         public void ShowScreen(MenuScreen s)
         {
-            _screen = s; _confirmText = null; _menuMsg = null;
+            _screen = s; _confirmText = null; _menuMsg = null; _latestRead = false;
             if (s == MenuScreen.Load || s == MenuScreen.Save) { _saves = SaveGame.List(); _saveSel = s == MenuScreen.Load && _saves.Count > 0 && _saves[0].h != null ? 0 : -1; _saveScroll = default; }
             if (s == MenuScreen.Save) _saveName = $"{S.Age?.name}, year {S.Year + 1} {S.SeasonName}";
             if (s == MenuScreen.NewGame) { _seedText = UnityEngine.Random.Range(1, 99999).ToString(); _difficulty = 1; }
@@ -58,6 +62,7 @@ namespace Firstlight.Game.UI
         public string MenuSave(string name)
         {
             string err = G.SaveTo(SaveGame.PathFor(name), name, "manual");
+            _latestRead = false;
             Toast(err ?? $"Saved: {name}");
             if (err == null) { CloseMenu(); }
             return err;
@@ -81,7 +86,7 @@ namespace Firstlight.Game.UI
         void MenuBack()
         {
             if (_confirmText != null) { _confirmText = null; return; }
-            if (G.InMenu) { _screen = MenuScreen.Main; return; }
+            if (G.InMenu) { _screen = MenuScreen.Main; _latestRead = false; return; }
             if (_screen != MenuScreen.None) { _screen = MenuScreen.None; return; }
             CloseMenu();
         }
@@ -165,7 +170,8 @@ namespace Firstlight.Game.UI
             GUI.Label(new Rect(x, y, 520, 80), "Firstlight", _titleBig);
             GUI.Label(new Rect(x + 4, y + 78, 520, 28), "From the first campfire to the Bronze Age", _sub);
             y += 150;
-            var latest = SaveGame.Latest();
+            if (!_latestRead) { _latest = SaveGame.Latest(); _latestRead = true; }
+            var latest = _latest;
             bool can = latest != null;
             if (MenuButton(new Rect(x, y, 420, 50), "Continue", can) && can) G.LoadGame(latest.Value.file);
             if (can)
@@ -306,7 +312,7 @@ namespace Firstlight.Game.UI
                 Confirm($"Delete \"{hd?.Name ?? Path.GetFileName(file)}\"? This can't be undone.", () =>
                 {
                     try { File.Delete(file); } catch (Exception e) { _menuMsg = e.Message; }
-                    _saves = SaveGame.List(); _saveSel = -1;
+                    _saves = SaveGame.List(); _saveSel = -1; _latestRead = false;
                 });
             }
             if (GUI.Button(new Rect(r.xMax - 184, by, 160, 38), "Back", Button)) MenuBack();
