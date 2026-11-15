@@ -62,6 +62,7 @@ namespace Firstlight.Game
 
         void Reload()
         {
+            FinishBackgroundSave();         // a save still being written is finished (and reported) before the scene goes
             OrbitCamera.InputLocked = OrbitCamera.KeyboardCaptured = false;
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }
@@ -75,10 +76,11 @@ namespace Firstlight.Game
         public bool Unsaved => !Sim.NeedsCampfire && (_savedAt < 0 || Sim.Time - _savedAt > 1f);
         public float SecondsSinceSave => _savedAt < 0 ? Sim.Time : Sim.Time - _savedAt;
 
-        /// <summary>Writes the game to a file. Returns an error message, or null.</summary>
+        /// <summary>Writes the game to a file now (the save screen, the fault screen, the probe). Returns an error message, or null.</summary>
         public string SaveTo(string path, string name, string kind)
         {
             if (Sim.NeedsCampfire) return "Nothing to save until the campfire is lit.";
+            FinishBackgroundSave();
             try
             {
                 var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -89,7 +91,7 @@ namespace Firstlight.Game
                 _savedAt = Sim.Time;
                 double ms = sw.Elapsed.TotalMilliseconds;
                 Debug.Log($"[Save] {kind} save to {path} in {ms:F0} ms: day {Sim.Day}, population {Sim.Population}");
-                Debug.Log($"[SaveParts] {kind}: game block {blockMs:F1} ms; Write: {SaveGame.LastParts}; SaveTo {ms:F1} ms, {GC.CollectionCount(0) - gc0} gc");
+                Debug.Log($"[SaveParts] {kind}: game block {blockMs:F1} ms; {SaveGame.LastParts}; SaveTo {ms:F1} ms, {GC.CollectionCount(0) - gc0} gc");
                 if (PerfProbe.On) ProbeSaved(kind, ms, ms, gc0);
                 return null;
             }
@@ -100,14 +102,78 @@ namespace Firstlight.Game
             }
         }
 
+        // The autosave or quicksave being written on a worker thread, and what to say when it is done.
+        SaveGame.PendingSave _bgSave;
+        string _bgDone;
+        float _bgSavedAtBefore;
+        int _bgGc0, _bgDay, _bgPop;
+
+        /// <summary>
+        /// Autosave and quicksave: the game is serialized in this frame (one consistent moment); the file is compressed
+        /// and written on a worker thread. <paramref name="done"/> is toasted once it is on disk; a failure toasts
+        /// "Could not save: ..." as a save made in the frame does. Returns an error at once only if the serialize failed.
+        /// </summary>
+        string SaveInBackground(string path, string name, string kind, string done)
+        {
+            if (Sim.NeedsCampfire) return "Nothing to save until the campfire is lit.";
+            FinishBackgroundSave();
+            try
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                _bgGc0 = GC.CollectionCount(0);
+                var block = WriteGameBlock();
+                _bgSave = SaveGame.WriteInBackground(path, kind, SaveGame.HeaderFor(Sim, name, kind), Sim, Auto, Water, block, null);
+                _bgDone = done; _bgSavedAtBefore = _savedAt; _bgDay = Sim.Day; _bgPop = Sim.Population;
+                _savedAt = Sim.Time;
+                double ms = sw.Elapsed.TotalMilliseconds;
+                if (PerfProbe.On) ProbeSaved(kind, ms, -1, _bgGc0);
+                if (HasArg("-savedigest")) Debug.Log($"[SaveDigest] saved {path}: day {Sim.Day}, digest {StateDigest()}");   // test only: the state as saved
+                return null;
+            }
+            catch (Exception e)
+            {
+                _bgSave = null;
+                Debug.LogWarning($"[Save] could not save to {path}: {e}");
+                return $"Could not save: {e.Message}";
+            }
+        }
+
+        /// <summary>Each frame: reports a background save that has finished (log, toast; a failure also puts the unsaved-time clock back).</summary>
+        void PollBackgroundSave()
+        {
+            var p = _bgSave;
+            if (p == null || !p.Done) return;
+            _bgSave = null;
+            if (p.Error != null)
+            {
+                _savedAt = _bgSavedAtBefore;
+                Debug.LogWarning($"[Save] could not save to {p.Path}: {p.Error}");
+                Hud?.Toast($"Could not save: {p.Error.Message}");
+                return;
+            }
+            Debug.Log($"[Save] {p.Kind} save to {p.Path}: {p.MainMs:F1} ms in the frame, on disk after {p.DiskMs:F1} ms: day {_bgDay}, population {_bgPop}");
+            Debug.Log($"[SaveParts] {p.Kind}: {SaveGame.LastParts}; in the frame {p.MainMs:F1} ms (game block and serialize), {GC.CollectionCount(0) - _bgGc0} gc by now");
+            if (PerfProbe.On) ProbeSaveOnDisk(p.DiskMs);
+            if (_bgDone != null) Hud?.Toast(_bgDone);
+        }
+
+        /// <summary>Waits for a background save still being written and reports it (before another save, a load, leaving the game).</summary>
+        void FinishBackgroundSave()
+        {
+            if (_bgSave == null) return;
+            SaveGame.WaitPending();
+            PollBackgroundSave();
+        }
+
         public void QuickSave()
         {
-            string err = SaveTo(SaveGame.PathFor("quicksave"), "Quicksave", "quick");
-            Hud.Toast(err ?? "Quicksaved (F8 to load it)");
+            string err = SaveInBackground(SaveGame.PathFor("quicksave"), "Quicksave", "quick", "Quicksaved (F8 to load it)");
+            if (err != null) Hud.Toast(err);
         }
 
         public void QuickLoad()
         {
+            FinishBackgroundSave();         // F5 then F8 at once: the quicksave is on disk before it is looked for
             var p = SaveGame.PathFor("quicksave");
             if (!File.Exists(p)) { Hud.Toast("No quicksave yet (F5 saves one)"); return; }
             var h = SaveGame.ReadHeader(p, out string err);
@@ -138,11 +204,12 @@ namespace Firstlight.Game
             if (_autosaveDue < 0 || dayTicked || Time.realtimeSinceStartup < _autosaveDue) return;
             _autosaveDue = -1f;
             if (!GameSettings.Current.autosave) return;
+            FinishBackgroundSave();         // a quicksave still in flight: its file's time decides the next slot
             var sw = System.Diagnostics.Stopwatch.StartNew();
             string slot = SaveGame.NextAutosave();
             if (PerfProbe.On) Debug.Log($"[SaveParts] autosave slot chosen in {sw.Elapsed.TotalMilliseconds:F2} ms");
-            string err = SaveTo(slot, $"Autosave: {Sim.SeasonName}, year {Sim.Year + 1}", "auto");
-            Hud.Toast(err ?? "Autosaved");
+            string err = SaveInBackground(slot, $"Autosave: {Sim.SeasonName}, year {Sim.Year + 1}", "auto", "Autosaved");
+            if (err != null) Hud.Toast(err);
         }
 
         // ------------------------------------------------------------------ the game's own block in a save

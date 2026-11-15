@@ -116,6 +116,7 @@ namespace Firstlight.Game
                 Hud.Toast($"Loaded: {loaded.Header.Name}");
                 Sim.CommitWalkCosts(false);   // every door's path in one parallel batch now, not one by one in the first minute
                 SmokeAfterLoad();
+                if (HasArg("-savedigest")) Debug.Log($"[SaveDigest] loaded {launch.Path}: day {Sim.Day}, digest {StateDigest()}");   // test only
                 Debug.Log($"[Save] loaded {launch.Path}: day {Sim.Day}, population {Sim.Population}");
             }
             // -autoplay: the auto-player runs the settlement from the start (-simspeed N, -quitafter seconds for smoke tests).
@@ -175,6 +176,7 @@ namespace Firstlight.Game
         {
             if (View == null) return;     // -autotest runs headless from Start
             if (PerfProbe.On) PerfFrame();   // PERF PROBE: closes the previous frame's measurements
+            PollBackgroundSave();            // an autosave or quicksave written on a worker thread: report it once it is on disk
             var kb = Keyboard.current;
             if (kb != null)
             {

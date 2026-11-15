@@ -80,19 +80,76 @@ namespace Firstlight.Game
             Name = name, Kind = kind, Age = s.Age?.name ?? "", Season = s.NeedsCampfire ? "" : s.SeasonName, SavedUtcTicks = DateTime.UtcNow.Ticks,
         };
 
-        // Measurement (docs/pass2/perf.md): where the last Write's time went, per part, with the collections seen in each.
+        // ------------------------------------------------------------------ writing
+        //
+        // A save is made in two halves. Serialize: the whole game state into memory (the uncompressed header and body),
+        // on the main thread, in one go, so the state is one consistent moment: nothing steps the sim in between. Commit:
+        // compress the body and write it to "<save>.tmp", then swap it into place (File.Replace, keeping the old save until
+        // the new one is there). Write does both on the calling thread (the tests, the save screen); WriteInBackground
+        // does the commit on a worker thread (autosave, quicksave), so the frame only pays for the serialize. At most
+        // one save is in flight: every other save operation (a second save, a load, the save list, the next autosave
+        // slot, quitting) first waits for it (WaitPending), so nothing ever sees a half-written file. The bytes are the
+        // same either way (the -savecheck compares them).
+
+        /// <summary>A save being written on a worker thread. Read <see cref="Error"/> and <see cref="DiskMs"/> once <see cref="Done"/>.</summary>
+        public sealed class PendingSave
+        {
+            public string Path, Kind;
+            /// <summary>Main-thread ms spent on the request (serialize), and ms from the request until the file was in place.</summary>
+            public double MainMs, DiskMs;
+            /// <summary>Why the write failed (null: it is in place). Only meaningful once Done.</summary>
+            public Exception Error;
+            internal System.Threading.Tasks.Task Task;
+            public bool Done => Task == null || Task.IsCompleted;
+        }
+
+        static PendingSave _pending;
+        static readonly object _gate = new();
+
+        /// <summary>
+        /// Waits until the save in flight (if any) is on disk or has failed. Called by every save operation, and when the
+        /// game quits (Application.quitting) so the last autosave or quicksave is never lost. Its result stays with the
+        /// <see cref="PendingSave"/> for its owner to report.
+        /// </summary>
+        public static void WaitPending()
+        {
+            var p = _pending;
+            if (p == null || p.Done) return;
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            p.Task.Wait();
+            Debug.Log($"[Save] waited {sw.Elapsed.TotalMilliseconds:F1} ms for the {p.Kind} save to {p.Path} to finish");
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void HookQuit()
+        {
+            Application.quitting -= OnQuitting;
+            Application.quitting += OnQuitting;
+        }
+
+        static void OnQuitting()
+        {
+            WaitPending();
+            var p = _pending;
+            if (p != null && p.Error != null) Debug.LogWarning($"[Save] the {p.Kind} save to {p.Path} failed while quitting: {p.Error}");
+        }
+
+        // Measurement (docs/pass2/perf.md): where the last save's time went, per part, with the collections seen in each.
+        // Parts 0-5 are the serialize (main thread), 6-9 the commit (the worker thread for a background save).
         static readonly System.Diagnostics.Stopwatch _partSw = new();
-        static readonly string[] PartNames = { "open", "header", "map", "sim", "auto", "water", "blocks", "compress", "close", "replace" };
+        static readonly string[] PartNames = { "header", "map", "sim", "auto", "water", "blocks", "open", "compress", "close", "replace" };
+        const int FirstCommitPart = 6;
         static readonly double[] _partMs = new double[PartNames.Length];
         static readonly int[] _partGc = new int[PartNames.Length];
         static double _partLast; static int _partGcLast;
         static void PartsStart() { _partSw.Restart(); _partLast = 0; _partGcLast = GC.CollectionCount(0); Array.Clear(_partMs, 0, _partMs.Length); Array.Clear(_partGc, 0, _partGc.Length); }
+        static void PartsResume() { _partLast = _partSw.Elapsed.TotalMilliseconds; _partGcLast = GC.CollectionCount(0); }   // skip the wait for a worker
         static void Part(int i)
         {
             double t = _partSw.Elapsed.TotalMilliseconds; int gc = GC.CollectionCount(0);
             _partMs[i] += t - _partLast; _partGc[i] += gc - _partGcLast; _partLast = t; _partGcLast = gc;
         }
-        /// <summary>The last <see cref="Write"/>'s parts: "name ms (collections)", for the log (measurement only).</summary>
+        /// <summary>The last save's parts: "name ms (collections)", serialize and commit apart, for the log (measurement only).</summary>
         public static string LastParts
         {
             get
@@ -101,6 +158,8 @@ namespace Firstlight.Game
                 double total = 0; int gcs = 0;
                 for (int i = 0; i < PartNames.Length; i++)
                 {
+                    if (i == 0) sb.Append("serialize: ");
+                    if (i == FirstCommitPart) sb.Append($"= {total:F1} ms; commit: ");
                     total += _partMs[i]; gcs += _partGc[i];
                     sb.Append($"{PartNames[i]} {_partMs[i]:F1}{(_partGc[i] > 0 ? $" ({_partGc[i]} gc)" : "")}, ");
                 }
@@ -109,62 +168,104 @@ namespace Firstlight.Game
             }
         }
 
+        /// <summary>Writes a save on the calling thread (after any save in flight has finished). Throws if it cannot.</summary>
         public static void Write(string path, Header h, Settlement s, AutoPlayer auto, WaterSim water, byte[] game, byte[] test)
         {
+            var (head, body) = Serialize(h, s, auto, water, game, test);
+            Commit(path, head, body);
+        }
+
+        /// <summary>
+        /// Serializes the game now (on this thread, the main one) and writes the file on a worker thread. Returns at once
+        /// with the save in flight; a failure (disk full, file held) is in its <see cref="PendingSave.Error"/> when it is
+        /// Done. A serialize failure throws here, as <see cref="Write"/> does.
+        /// </summary>
+        public static PendingSave WriteInBackground(string path, string kind, Header h, Settlement s, AutoPlayer auto, WaterSim water, byte[] game, byte[] test)
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var (head, body) = Serialize(h, s, auto, water, game, test);
+            var p = new PendingSave { Path = path, Kind = kind };
+            p.Task = System.Threading.Tasks.Task.Run(() =>
+            {
+                try { Commit(path, head, body); }
+                catch (Exception e) { p.Error = e; }
+                p.DiskMs = sw.Elapsed.TotalMilliseconds;
+            });
+            _pending = p;
+            p.MainMs = sw.Elapsed.TotalMilliseconds;
+            return p;
+        }
+
+        /// <summary>The header and the uncompressed body, as the file will hold them (the body is gzipped by Commit).</summary>
+        static (MemoryStream head, MemoryStream body) Serialize(Header h, Settlement s, AutoPlayer auto, WaterSim water, byte[] game, byte[] test)
+        {
+            WaitPending();
             PartsStart();
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            string tmp = path + ".tmp";
-            using (var fs = File.Create(tmp))
+            var head = new MemoryStream(256);
+            var w = new SaveWriter(head);
+            w.W.Write(System.Text.Encoding.ASCII.GetBytes(Magic));
+            w.Int(Version);
+            w.Str(h.Name); w.Str(h.Kind); w.Int(h.Seed); w.Int(h.Day); w.Int(h.Year); w.Str(h.Season); w.Str(h.Age);
+            w.Int(h.Population); w.Int(h.Difficulty); w.Long(h.SavedUtcTicks);
+            w.W.Flush();
+            // The body is written into memory first and compressed in one call: written straight into the GZipStream it
+            // made ~200k tiny deflate writes (30-44 ms and ~10 collections a save). The bytes saved mean the same.
+            var body = new MemoryStream(256 * 1024);
+            var b = new SaveWriter(body);
+            b.Int(s.Map.W);
+            b.Int(MapGenHash(s.Data.Balance));
+            var goods = new List<string>(s.ResCount); foreach (var g in s.Data.Resources) goods.Add(g.id);
+            b.Strs(goods);
+            Part(0);
+            s.Map.Write(b);
+            Part(1);
+            s.Write(b);
+            Part(2);
+            b.Bool(auto != null);
+            auto?.Write(b);
+            Part(3);
+            float[] depth = null;
+            if (water != null) { depth = new float[water.Depth.Length]; water.Depth.CopyTo(depth); }
+            b.Floats(depth);
+            Part(4);
+            b.Block(game);
+            b.Block(test);
+            b.Str("end");
+            b.W.Flush();
+            Part(5);
+            return (head, body);
+        }
+
+        /// <summary>Compresses the body and puts the file in place. Touches only the two streams and the file system (any thread).</summary>
+        static void Commit(string path, MemoryStream head, MemoryStream body)
+        {
+            lock (_gate)
             {
-                Part(0);
-                var w = new SaveWriter(fs);
-                w.W.Write(System.Text.Encoding.ASCII.GetBytes(Magic));
-                w.Int(Version);
-                w.Str(h.Name); w.Str(h.Kind); w.Int(h.Seed); w.Int(h.Day); w.Int(h.Year); w.Str(h.Season); w.Str(h.Age);
-                w.Int(h.Population); w.Int(h.Difficulty); w.Long(h.SavedUtcTicks);
-                w.W.Flush();
-                // The body is written into memory first and compressed in one call: written straight into the GZipStream it
-                // made ~200k tiny deflate writes (30-44 ms and ~10 collections a save). The bytes saved mean the same.
-                var body = new MemoryStream(256 * 1024);
-                var b = new SaveWriter(body);
-                b.Int(s.Map.W);
-                b.Int(MapGenHash(s.Data.Balance));
-                var goods = new List<string>(s.ResCount); foreach (var g in s.Data.Resources) goods.Add(g.id);
-                b.Strs(goods);
-                Part(1);
-                s.Map.Write(b);
-                Part(2);
-                s.Write(b);
-                Part(3);
-                b.Bool(auto != null);
-                auto?.Write(b);
-                Part(4);
-                float[] depth = null;
-                if (water != null) { depth = new float[water.Depth.Length]; water.Depth.CopyTo(depth); }
-                b.Floats(depth);
-                Part(5);
-                b.Block(game);
-                b.Block(test);
-                b.Str("end");
-                b.W.Flush();
-                Part(6);
-                using var gz = new GZipStream(fs, System.IO.Compression.CompressionLevel.Fastest, true);
-                gz.Write(body.GetBuffer(), 0, (int)body.Length);
-                gz.Dispose();
-                Part(7);
+                PartsResume();
+                Directory.CreateDirectory(Path.GetDirectoryName(path));
+                string tmp = path + ".tmp";
+                using (var fs = File.Create(tmp))
+                {
+                    Part(6);
+                    fs.Write(head.GetBuffer(), 0, (int)head.Length);
+                    using var gz = new GZipStream(fs, System.IO.Compression.CompressionLevel.Fastest, true);
+                    gz.Write(body.GetBuffer(), 0, (int)body.Length);
+                    gz.Dispose();
+                    Part(7);
+                }
+                Part(8);
+                // Overwriting: swap the new file in with File.Replace, which keeps the old save (as .bak) until the new one is in
+                // place, so a failed move (a scanner or sync client holding the file) or a crash never leaves the slot empty.
+                // If it throws, the old save is untouched and the caller shows the reason.
+                if (File.Exists(path))
+                {
+                    string bak = path + ".bak";
+                    File.Replace(tmp, path, bak);
+                    try { File.Delete(bak); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+                }
+                else File.Move(tmp, path);
+                Part(9);
             }
-            Part(8);
-            // Overwriting: swap the new file in with File.Replace, which keeps the old save (as .bak) until the new one is in
-            // place, so a failed move (a scanner or sync client holding the file) or a crash never leaves the slot empty.
-            // If it throws, the old save is untouched and the caller shows the reason.
-            if (File.Exists(path))
-            {
-                string bak = path + ".bak";
-                File.Replace(tmp, path, bak);
-                try { File.Delete(bak); } catch (IOException) { } catch (UnauthorizedAccessException) { }
-            }
-            else File.Move(tmp, path);
-            Part(9);
         }
 
         /// <summary>
@@ -188,6 +289,7 @@ namespace Firstlight.Game
         /// <summary>Reads only the header (for the load screen). Null with a reason for anything that is not a save this build can read.</summary>
         public static Header ReadHeader(string path, out string error)
         {
+            WaitPending();
             try
             {
                 using var fs = File.OpenRead(path);
@@ -216,6 +318,7 @@ namespace Firstlight.Game
         /// </summary>
         public static Loaded Read(string path, GameData data, out string error)
         {
+            WaitPending();
             GameMap map = null;
             try
             {
@@ -278,6 +381,7 @@ namespace Firstlight.Game
         /// <summary>Every readable save, newest first (unreadable files are listed with their error).</summary>
         public static List<(Header h, string file, string error)> List()
         {
+            WaitPending();                      // never list (or tidy away as stale) a save still being written
             var list = new List<(Header, string, string)>();
             if (!Directory.Exists(Dir)) return list;
             CleanStale(Dir);
@@ -298,6 +402,7 @@ namespace Firstlight.Game
         /// <summary>The autosave slot to write next: the oldest of the three (or a free one).</summary>
         public static string NextAutosave()
         {
+            WaitPending();
             string best = null; DateTime oldest = DateTime.MaxValue;
             for (int i = 1; i <= 3; i++)
             {
