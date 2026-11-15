@@ -36,11 +36,34 @@ namespace Firstlight.Game
             var c = new Citizen
             {
                 Id = NewId(), Female = female, Age = age, Pos = pos,
-                Name = list != null && list.Length > 0 ? list[_rng.Next(list.Length)] : (female ? "Woman " : "Man ") + _nextId,
+                Name = list != null && list.Length > 0 ? PickName(list) : (female ? "Woman " : "Man ") + _nextId,
                 Happiness = 0.75f,
             };
             Citizens.Add(c);
             return c;
+        }
+
+        /// <summary>One random draw, as always (so the random sequence is unchanged); if a living person already has
+        /// that name, step forward through the list to the first free one, so a mother and her baby or two neighbours
+        /// rarely share a name. Only when every name is taken does the drawn one repeat.</summary>
+        string PickName(string[] list)
+        {
+            int k = _rng.Next(list.Length);
+            HashSet<string> used = null;
+            for (int step = 0; step < list.Length; step++)
+            {
+                string n = list[(k + step) % list.Length];
+                if (used == null)
+                {
+                    bool taken = false;
+                    foreach (var o in Citizens) if (!o.Gone && o.Name == n) { taken = true; break; }
+                    if (!taken) return n;
+                    used = new HashSet<string>();
+                    foreach (var o in Citizens) if (!o.Gone) used.Add(o.Name);
+                }
+                else if (!used.Contains(n)) return n;
+            }
+            return list[k];
         }
 
         bool IsAdult(Citizen c) => c.Age >= B.adultAge;
