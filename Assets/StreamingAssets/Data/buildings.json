@@ -160,7 +160,7 @@
     {
       "id": "fishing_spot", "name": "Fishing Spot", "age": "stone", "category": "Food", "description": "Fishers work the river from the bank. Must be built next to water. Poor in winter.",
       "sizeX": 2, "sizeY": 2, "cost": [{"id": "wood", "amount": 10}], "buildWork": 2, "unlockedBy": "fishing", "maxWorkers": 2,
-      "workerTitle": "Fisher", "outputs": [{"id": "fish", "amount": 1.9}], "yieldTag": "fishing", "seasonYield": [1, 1.1, 1, 0.4],
+      "workerTitle": "Fisher", "outputs": [{"id": "fish", "amount": 2.8}], "yieldTag": "fishing", "seasonYield": [1, 1.1, 1, 0.4],
       "nearby": {"feature": "water", "radius": 3, "min": 3, "full": 10}, "color": "#6b5340", "workPose": "stand",
       "parts": [
         {"prim": "box", "pos": [0, 0, 0], "size": [1.6, 0.12, 1.2], "material": "wood"},
