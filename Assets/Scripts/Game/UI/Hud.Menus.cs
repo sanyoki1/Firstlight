@@ -109,8 +109,7 @@ namespace Firstlight.Game.UI
             if (Event.current.type == EventType.Repaint) _toastTime += math.min(Time.unscaledDeltaTime, 0.05f);
             if (_toastTime > 3.5f) { _toastTime = -1; return; }
             float a = math.saturate(math.min(_toastTime / 0.15f, (3.5f - _toastTime) / 0.6f));
-            var c = new GUIContent(_toast);
-            float w = Label.CalcSize(c).x + 40;
+            float w = Label.CalcSize(Temp(_toast)).x + 40;
             var r = new Rect(VW / 2 - w / 2, VH - 120, w, 34);
             var old = GUI.color; GUI.color = new Color(1, 1, 1, a);
             GUI.Box(r, GUIContent.none, UiTheme.Header);

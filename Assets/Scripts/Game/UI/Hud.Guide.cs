@@ -143,8 +143,7 @@ namespace Firstlight.Game.UI
             if (build == null) { build = build2; build2 = null; }
             float w = 400;
             string whyText = st.WhyNow?.Invoke(this) ?? st.Why;
-            var why = new GUIContent(whyText);
-            float h = 44 + SmallWrap.CalcHeight(why, w - 28) + (prog != null ? 24 : 0) + (build != null ? 36 : 0) + 12;
+            float h = 44 + SmallWrap.CalcHeight(Temp(whyText), w - 28) + (prog != null ? 24 : 0) + (build != null ? 36 : 0) + 12;
             float x = BuildCategory != null ? 420 : 10;
             var r = Box(new Rect(x, VH - 60 - h - 8, w, h));
             Fill(new Rect(r.x + 1, r.y + 1, 3, r.height - 2), Accent);
@@ -155,7 +154,7 @@ namespace Firstlight.Game.UI
             Tip(new Rect(r.xMax - 64, r.y + 6, 56, 20), "Hide the guide, in this game and in new ones. Settings > First-game guide brings it back for new games.");
             GUI.Label(new Rect(r.x + 14, r.y + 24, w - 28, 22), $"<b>{st.Title}</b>", Label);
             float y = r.y + 48;
-            float wh = SmallWrap.CalcHeight(why, w - 28);
+            float wh = SmallWrap.CalcHeight(Temp(whyText), w - 28);
             GUI.Label(new Rect(r.x + 14, y, w - 28, wh), whyText, SmallWrap);
             y += wh + 2;
             if (prog != null) { GUI.Label(new Rect(r.x + 14, y, w - 28, 22), prog, Small); y += 24; }
@@ -333,8 +332,7 @@ namespace Firstlight.Game.UI
             if (_hint == null || ResearchOpen || EndOpen || GoneOpen || GoalsOpen || JobsOpen || StocksOpen || LawsOpen || EventsOpen) return;   // the side panels sit where the card is
             float w = 520;
             string body = HintText(_hint);
-            var text = new GUIContent(body);
-            float th = SmallWrap.CalcHeight(text, w - 32);
+            float th = SmallWrap.CalcHeight(Temp(body), w - 32);
             float h = 44 + th + 46;
             var r = Box(new Rect(VW / 2 - w / 2, TopBarHeight + 12, w, h));
             Fill(new Rect(r.x + 1, r.y + 1, r.width - 2, 3), Info);

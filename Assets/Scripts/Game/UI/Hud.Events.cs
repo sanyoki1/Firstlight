@@ -21,8 +21,11 @@ namespace Firstlight.Game.UI
         // The rows on show and their heights (rebuilt only when an event comes in or the filter changes).
         readonly List<int> _evRows = new();
         readonly List<float> _evH = new();
+        readonly List<string> _evDate = new(), _evText = new();     // the rows' coloured texts, made with the rows
         int _evCount = -1; bool _evProblemsBuilt; float _evWidthBuilt;
         GUIStyle _evStyle;
+
+        static string _noProblems, _nothingYet, _probOn, _probOff;
 
         static string SeasonShort(int s) => s switch { 0 => "Spr", 1 => "Sum", 2 => "Aut", _ => "Win" };
         string EventDate(int day) => $"Y{day / S.DaysPerYear + 1} {SeasonShort((day / D.Balance.daysPerSeason) % 4)} {day % D.Balance.daysPerSeason + 1}";
@@ -39,7 +42,7 @@ namespace Firstlight.Game.UI
             {
                 var fr = new Rect(r.x + 344, r.y + 10, 160, 24);
                 if (GUI.Button(fr, GUIContent.none, GUIStyle.none)) { _eventsProblems = !_eventsProblems; _eventsScroll = default; }
-                GUI.Label(fr, (_eventsProblems ? Col("[x]", Good) : Col("[  ]", Dim)) + "  Problems only", Small);
+                GUI.Label(fr, _eventsProblems ? _probOn ??= Col("[x]", Good) + "  Problems only" : _probOff ??= Col("[  ]", Dim) + "  Problems only", Small);
                 Tip(fr, "Show only warnings and bad news: deaths, leavers, shortages, floods, sickness, disputes.");
             }
             var view = new Rect(r.x + 10, r.y + 44, w - 20, h - 54);
@@ -52,17 +55,20 @@ namespace Firstlight.Game.UI
             float textW = view.width - 120;
             if (_evCount != S.Events.Count || _evProblemsBuilt != _eventsProblems || _evWidthBuilt != textW)
             {
-                _evRows.Clear(); _evH.Clear();
+                _evRows.Clear(); _evH.Clear(); _evDate.Clear(); _evText.Clear();
                 for (int i = S.Events.Count - 1; i >= 0 && _evRows.Count < EventsShown; i--)
                 {
                     var e = S.Events[i];
                     if (_eventsProblems && e.Severity == Severity.Info) continue;
                     _evRows.Add(i);
-                    _evH.Add(math.max(22, _evStyle.CalcHeight(new GUIContent(e.Text), textW) + 4));
+                    _evH.Add(math.max(22, _evStyle.CalcHeight(Temp(e.Text), textW) + 4));
+                    var col = e.Severity == Severity.Bad ? Bad : e.Severity == Severity.Warning ? Warn : Text;
+                    _evDate.Add(Col(EventDate(e.Day), Dim));
+                    _evText.Add(Col(e.Text, e.Severity == Severity.Info ? Text : col));
                 }
                 _evCount = S.Events.Count; _evProblemsBuilt = _eventsProblems; _evWidthBuilt = textW;
             }
-            if (_evRows.Count == 0) { GUI.Label(new Rect(view.x + 6, view.y + 4, view.width, 22), Col(_eventsProblems ? "No problems so far." : "Nothing has happened yet.", Dim), Label); return; }
+            if (_evRows.Count == 0) { GUI.Label(new Rect(view.x + 6, view.y + 4, view.width, 22), _eventsProblems ? _noProblems ??= Col("No problems so far.", Dim) : _nothingYet ??= Col("Nothing has happened yet.", Dim), Label); return; }
             float total = 0; foreach (var hh in _evH) total += hh + 2;
             _eventsScroll = GUI.BeginScrollView(view, _eventsScroll, new Rect(0, 0, view.width - 18, total));
             float y = 0;
@@ -77,11 +83,11 @@ namespace Firstlight.Game.UI
                     var row = new Rect(0, y, view.width - 18, hh);
                     if (e.HasPlace && row.Contains(Event.current.mousePosition)) Fill(row, new Color(1, 1, 1, 0.05f));
                     Fill(new Rect(0, y + 2, 3, hh - 4), e.Severity == Severity.Info ? Faint : col);
-                    GUI.Label(new Rect(10, y + 2, 92, 20), Col(EventDate(e.Day), Dim), Small);   // Faint was nearly invisible here
-                    GUI.Label(new Rect(104, y + 2, textW, hh - 4), Col(e.Text, e.Severity == Severity.Info ? Text : col), _evStyle);
+                    GUI.Label(new Rect(10, y + 2, 92, 20), _evDate[k], Small);   // Faint was nearly invisible here
+                    GUI.Label(new Rect(104, y + 2, textW, hh - 4), _evText[k], _evStyle);
                     if (e.HasPlace)
                     {
-                        GUI.Label(new Rect(row.xMax - 16, y + 1, 14, 20), Col("›", Dim), Label);
+                        GUI.Label(new Rect(row.xMax - 16, y + 1, 14, 20), _feedArrow ??= Col("›", Dim), Label);
                         if (GUI.Button(row, GUIContent.none, GUIStyle.none)) JumpTo(e.Place);
                     }
                 }

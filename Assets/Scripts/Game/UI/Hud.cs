@@ -554,7 +554,7 @@ namespace Firstlight.Game.UI
         {
             if (_forcedTip != null) _tip = _forcedTip;
             if (_tip == null) return;
-            var content = new GUIContent(_tip);
+            var content = Temp(_tip);
             float w = 360;
             float h = UiTheme.Tip.CalcHeight(content, w);
             var m = _forcedTip != null ? _forcedTipAt : Event.current.mousePosition;
@@ -563,6 +563,10 @@ namespace Firstlight.Game.UI
             if (r.yMax > VH - 8) r.y = VH - 8 - h;
             GUI.Box(r, content, UiTheme.Tip);
         }
+
+        // One GUIContent for measuring and drawing text (a new one used to be made for every row, chip and tooltip).
+        static readonly GUIContent _temp = new();
+        static GUIContent Temp(string text) { _temp.text = text; return _temp; }
 
         // -uishots: show the tooltip a hover would show (screenshots have no mouse).
         string _forcedTip; Vector2 _forcedTipAt;
@@ -614,6 +618,22 @@ namespace Firstlight.Game.UI
             var p = PointerScreen;
             var at = new Vector2(p.x / Scale + 26, (Screen.height - p.y) / Scale + 18);
             var d = PlaceDef;
+            // Made once a frame (it is built from the world under the pointer); the second and later calls of the frame reuse it.
+            if (_placeTipFrame != Time.frameCount || _placeTipText == null) { _placeTipText = PlacementTipText(d); _placeTipFrame = Time.frameCount; }
+            string text = _placeTipText;
+            var style = PlaceTip;
+            float h = style.CalcHeight(Temp(text), 360) + 14;
+            var r = new Rect(at.x, at.y, 380, h);
+            if (r.xMax > VW - 10) r.x = at.x - 420;
+            if (r.yMax > VH - 10) r.y = VH - 10 - h;
+            GUI.Box(r, GUIContent.none, UiTheme.Tip);
+            GUI.Label(new Rect(r.x + 10, r.y + 7, 360, h - 12), text, style);
+        }
+
+        int _placeTipFrame = -1; string _placeTipText;
+
+        string PlacementTipText(BuildingDef d)
+        {
             var lines = new List<string> { $"<b>{d.name}</b>" };
             if (d.path)
             {
@@ -669,14 +689,7 @@ namespace Firstlight.Game.UI
                 }
             }
             if (!d.path) lines.Add(Col(d.townCenter ? "Left-click to place" : "Left-click to place, Shift for several, comma and period turn it, right-click to stop", Dim));
-            string text = string.Join("\n", lines);
-            var style = PlaceTip;
-            float h = style.CalcHeight(new GUIContent(text), 360) + 14;
-            var r = new Rect(at.x, at.y, 380, h);
-            if (r.xMax > VW - 10) r.x = at.x - 420;
-            if (r.yMax > VH - 10) r.y = VH - 10 - h;
-            GUI.Box(r, GUIContent.none, UiTheme.Tip);
-            GUI.Label(new Rect(r.x + 10, r.y + 7, 360, h - 12), text, style);
+            return string.Join("\n", lines);
         }
 
         /// <summary>The name and doing of the person under the pointer (with a faint ring in the view).</summary>
@@ -695,7 +708,7 @@ namespace Firstlight.Game.UI
             if (c != null)
             {
                 string doing = c.Job != null ? c.Job.Def.workerTitle ?? c.Job.Def.name : c.IsBuilder ? "Builder" : c.Age < D.Balance.adultAge ? "Child" : "Hauler";
-                text = $"<b>{c.Name}</b>  {Col(doing, Dim)}";
+                text = _tl.Begin().S("<b>").S(c.Name).S("</b>  ").C(Dim).S(doing).E().To(ref _personTag);
             }
             else
             {
@@ -703,13 +716,13 @@ namespace Firstlight.Game.UI
                 if (hb.Id != _tagBuilding || Time.unscaledTime - _tagAt > 0.25f) { _tagText = BuildingTag(hb); _tagBuilding = hb.Id; _tagAt = Time.unscaledTime; }
                 text = _tagText;
             }
-            var size = Label.CalcSize(new GUIContent(text));
+            var size = Label.CalcSize(Temp(text));
             var r = new Rect(at.x / Scale - size.x / 2 - 8, (UnityEngine.Screen.height - at.y) / Scale - 30, size.x + 16, 24);
             GUI.Box(r, GUIContent.none, UiTheme.Tip);
             GUI.Label(r, text, Center);
         }
 
-        int _tagBuilding = -1; float _tagAt; string _tagText = "";
+        int _tagBuilding = -1; float _tagAt; string _tagText = "", _personTag;
 
         /// <summary>
         /// "Woodcutter · Working · 2/2", "Storage Pile · 212 / 250", "Thatched Hut · 6 / 8 live here", "Site: Lean-to · 40 %":

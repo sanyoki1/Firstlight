@@ -58,17 +58,31 @@ namespace Firstlight.Game.UI
         public float Trend(int r) => _dayDelta == null || r < 0 ? 0 : _dayDelta[r];
         public float KnowledgePerDay => _knowPerDay;
 
+        static string _arrowUp, _arrowDown, _arrowFlat;
         static string Arrow(float d, float big)
         {
-            if (d > big) return Col(" ↑", Good);
-            if (d < -big) return Col(" ↓", Bad);
-            return Col(" ·", Faint);
+            if (d > big) return _arrowUp ??= Col(" ↑", Good);
+            if (d < -big) return _arrowDown ??= Col(" ↓", Bad);
+            return _arrowFlat ??= Col(" ·", Faint);
         }
 
-        string Clock()
+        // Labels are built in one reused buffer and the string from last time is kept while the text is the same (TextLine):
+        // the top bar used to make a few dozen new strings on every call. One cache field per label.
+        readonly TextLine _tl = new();
+        string _calTxt, _popTxt, _popTxt2, _foodTxt, _foodTxt2, _resTxt, _resTxt2, _resTxt3, _autoTxt;
+        readonly string[] _stockTxt = new string[KeyStocks.Length];
+        static readonly float[] Speeds = { 0, 1, 2, 4 };
+        static readonly string[] SpeedNames = { "II", "1x", "2x", "4x" };
+        static readonly string[] PanelLabels = { "Research", "Goals", "Jobs", "Events", "Help" };
+        static readonly string[] PanelKeys = { "R", "G", "J", "V", "F1" };
+        static readonly string[] PanelTips = { "Research tree: choose what to learn next.", "Goals: the key research and milestones for the next age.", "Jobs: how many work where; set priorities on each building.",
+                                               "Events: everything that has happened, newest first (who died and of what, who left, shortages), and Topics: the hints seen so far.", "Controls and keys." };
+        static string[] _panelLabelsKeyed;
+
+        void AppendClock(TextLine t)
         {
             float h = S.DayFraction * 24f;
-            return $"{(int)h:00}:{(int)((h - (int)h) * 60) / 10 * 10:00}";
+            t.I((int)h, "00").S(":").I((int)((h - (int)h) * 60) / 10 * 10, "00");
         }
 
         void DrawTopBar()
@@ -80,13 +94,13 @@ namespace Firstlight.Game.UI
             // Age and calendar.
             var ar = new Rect(x, 5, 250, 42);
             GUI.Label(new Rect(x, 5, 250, 22), S.Age?.name ?? "", Title);
-            GUI.Label(new Rect(x, 27, 250, 20), $"Year {S.Year + 1}, {S.SeasonName} day {S.DayOfSeason + 1}  ·  {Clock()}", Small);
+            _tl.Begin().S("Year ").I(S.Year + 1).S(", ").S(S.SeasonName).S(" day ").I(S.DayOfSeason + 1).S("  ·  "); AppendClock(_tl);
+            GUI.Label(new Rect(x, 27, 250, 20), _tl.To(ref _calTxt), Small);
             if (Over(ar)) Tip(ar, $"The age the settlement has reached, and the calendar: {D.Balance.daysPerSeason} days a season, a year of four seasons. Winter is cold and nothing grows; spring floods can come. Goals (G) show what the next age needs.");
             x += 252;
 
             // Speed.
-            float[] speeds = { 0, 1, 2, 4 };
-            string[] names = { "II", "1x", "2x", "4x" };
+            var speeds = Speeds; var names = SpeedNames;
             for (int i = 0; i < 4; i++)
             {
                 var r = new Rect(x + i * 42, 11, 38, 30);
@@ -100,8 +114,12 @@ namespace Firstlight.Game.UI
             var (adults, elders, kids) = PeopleSplit();
             int free = _tHousing - _tPop;
             var pr = new Rect(x, 5, 236, 42);
-            GUI.Label(new Rect(x, 5, 236, 22), $"<b>{_tPop}</b> people  " + (_tHomeless > 0 ? Col($"{_tHomeless} homeless", Warn) : free > 0 ? Col($"{free} beds free", Dim) : Col("no free beds", Dim)), Label);
-            GUI.Label(new Rect(x, 27, 236, 20), $"{adults} adults · {kids} children · {elders} elders", Small);
+            _tl.Begin().S("<b>").I(_tPop).S("</b> people  ");
+            if (_tHomeless > 0) _tl.C(Warn).I(_tHomeless).S(" homeless").E();
+            else if (free > 0) _tl.C(Dim).I(free).S(" beds free").E();
+            else _tl.C(Dim).S("no free beds").E();
+            GUI.Label(new Rect(x, 5, 236, 22), _tl.To(ref _popTxt), Label);
+            GUI.Label(new Rect(x, 27, 236, 20), _tl.Begin().I(adults).S(" adults · ").I(kids).S(" children · ").I(elders).S(" elders").To(ref _popTxt2), Small);
             if (Over(pr)) Tip(pr, $"People: {S.Population}, housing for {S.HousingCapacity}. Babies are born to families with a home, free beds and food in store; migrants come when there are free beds, food and good spirits. Unhappy or starving people leave.\n\n" +
                     $"Happiness {S.AverageHappiness:P0}: the average and the worst of food, warmth, shelter, health (and later water, pots at home and faith). It sets how fast people work.\n\nBorn {S.Births}, arrived {S.Migrants}, left {S.Leavers}, died {S.TotalDeaths}." +
                     (S.TotalDeaths > 0 ? $"\nDeaths: {DeathsByCause()}. Events (V) says who." : ""));
@@ -111,8 +129,10 @@ namespace Firstlight.Game.UI
             float fd = TFoodDays;
             var fcol = fd < S.Data.Balance.foodWarnDays ? Bad : fd < 8 ? Warn : Good;
             var fr = new Rect(x, 5, 150, 42);
-            GUI.Label(new Rect(x, 5, 150, 22), "Food " + Col(FoodDaysText(fd), fcol), Label);
-            GUI.Label(new Rect(x, 27, 150, 20), $"{_tFoodStock:0} in store" + Arrow(_foodDelta, 0.5f), Small);
+            _tl.Begin().S("Food ").C(fcol);
+            if (fd >= 99) _tl.S("-"); else _tl.F(fd, "0.#").S(" days");      // FoodDaysText
+            GUI.Label(new Rect(x, 5, 150, 22), _tl.E().To(ref _foodTxt), Label);
+            GUI.Label(new Rect(x, 27, 150, 20), _tl.Begin().F(_tFoodStock, "0").S(" in store").S(Arrow(_foodDelta, 0.5f)).To(ref _foodTxt2), Small);
             if (Over(fr)) Tip(fr, FoodTip());
             if (GUI.Button(fr, GUIContent.none, GUIStyle.none)) ToggleStocks();
 
@@ -128,33 +148,40 @@ namespace Firstlight.Game.UI
             var def = cur != null ? D.ResearchById(cur) : null;
             if (GUI.Button(rr, GUIContent.none, Button)) ToggleResearch();
             bool allKnown = def == null && _tAllKnown;
-            GUI.Label(new Rect(rx + 8, 7, rw - 14, 20), def != null ? $"Researching <b>{def.name}</b>" : allKnown ? Col("All research known", Good) : Col("Nothing being researched", Warn), Label14);
+            if (def != null) _tl.Begin().S("Researching <b>").S(def.name).S("</b>");
+            else if (allKnown) _tl.Begin().C(Good).S("All research known").E();
+            else _tl.Begin().C(Warn).S("Nothing being researched").E();
+            GUI.Label(new Rect(rx + 8, 7, rw - 14, 20), _tl.To(ref _resTxt), Label14);
             // Second line: what holds research up when nothing makes knowledge (it used to look like it was running, at
             // "+0/day"), else the bar, the rate and about how many days the current topic has left.
             string stalled = allKnown ? null : KnowledgeStalled();
-            if (stalled != null) GUI.Label(new Rect(rx + 8, 25, rw - 12, 18), Col(stalled, Warn), Small);
+            if (stalled != null) GUI.Label(new Rect(rx + 8, 25, rw - 12, 18), _tl.Begin().C(Warn).S(stalled).E().To(ref _resTxt2), Small);
             else
             {
-                string eta = def != null && _knowPerDay > 0.05f ? $" · ~{math.max(1, math.ceil(def.cost * (1f - S.ResearchProgress(cur)) / _knowPerDay)):0} days" : "";
-                float lw = eta.Length > 0 ? 128 : 80;
+                bool eta = def != null && _knowPerDay > 0.05f;
+                float lw = eta ? 128 : 80;
                 Bar(new Rect(rx + 8, 30, rw - lw - 18, 9), def != null ? S.ResearchProgress(cur) : 0, Accent);
-                GUI.Label(new Rect(rx + rw - lw - 4, 25, lw + 2, 18), $"+{_knowPerDay:0.#}/day{eta}", SmallRight);
+                _tl.Begin().S("+").F(_knowPerDay, "0.#").S("/day");
+                if (eta) _tl.S(" · ~").F(math.max(1, math.ceil(def.cost * (1f - S.ResearchProgress(cur)) / _knowPerDay)), "0").S(" days");
+                GUI.Label(new Rect(rx + rw - lw - 4, 25, lw + 2, 18), _tl.To(ref _resTxt3), SmallRight);
             }
             if (Over(rr)) Tip(rr, (def != null ? $"{def.name}: {S.ResearchProgress(cur):P0}. {S.ResearchQueue.Count} in the queue." : $"Nothing queued: knowledge is banked ({S.KnowledgeBank:0}) until you choose.") +
                     $"\n\nKnowledge {_knowPerDay:0.#} a day, from the elders at staffed Elders' Fires (old people count more). More fires and more elders on them research faster. Open the research tree (R)." +
                     (stalled != null ? $"\n\n{stalled}: nothing makes knowledge now." : ""));
 
-            string[] labels = { "Research", "Goals", "Jobs", "Events", "Help" };
-            string[] keys = { "R", "G", "J", "V", "F1" };
-            bool[] open = { ResearchOpen, GoalsOpen, JobsOpen, EventsOpen, HelpOpen };
-            string[] tips = { "Research tree: choose what to learn next.", "Goals: the key research and milestones for the next age.", "Jobs: how many work where; set priorities on each building.",
-                              "Events: everything that has happened, newest first (who died and of what, who left, shortages), and Topics: the hints seen so far.", "Controls and keys." };
+            var labels = PanelLabels; var keys = PanelKeys; var tips = PanelTips;
+            if (_panelLabelsKeyed == null)
+            {
+                _panelLabelsKeyed = new string[5];
+                for (int i = 0; i < 5; i++) _panelLabelsKeyed[i] = $"{labels[i]} {Col(keys[i], Dim)}";
+            }
             for (int i = 0; i < 5; i++)
             {
                 var r = new Rect(bx + i * bw, 9, bw - 4, 34);
                 // Goals is lit while the next age is ready (nothing else says the age-up is a manual step).
-                bool lit = open[i] || i == 1 && AgeReady;
-                if (GUI.Button(r, narrow ? labels[i] : $"{labels[i]} {Col(keys[i], Dim)}", lit ? ButtonOn : Button))
+                bool open = i == 0 ? ResearchOpen : i == 1 ? GoalsOpen : i == 2 ? JobsOpen : i == 3 ? EventsOpen : HelpOpen;
+                bool lit = open || i == 1 && AgeReady;
+                if (GUI.Button(r, narrow ? labels[i] : _panelLabelsKeyed[i], lit ? ButtonOn : Button))
                 {
                     if (i == 0) ToggleResearch(); else if (i == 1) ToggleGoals(); else if (i == 2) ToggleJobs(); else if (i == 3) ToggleEvents(); else ToggleHelp();
                 }
@@ -165,8 +192,9 @@ namespace Firstlight.Game.UI
             x = 12;
             float y2 = 55, right = VW - 10;
             int shown = 0;
-            foreach (var id in KeyStocks)
+            for (int k = 0; k < KeyStocks.Length; k++)
             {
+                string id = KeyStocks[k];
                 int r = S.ResIndex(id);
                 if (r < 0) continue;
                 bool tools = id == "tools";
@@ -177,7 +205,7 @@ namespace Firstlight.Game.UI
                 float trend = tools ? ToolTrend() : Trend(r);
                 // Name 68 wide (the small text grows when the layout is scaled down: "Firewood" ran into its figure at 720p).
                 GUI.Label(new Rect(x, y2 + 3, 68, 20), tools ? "Tools" : D.Resources[r].name, Small);
-                GUI.Label(new Rect(x + 68, y2 + 2, 50, 22), $"<b>{amt:0}</b>" + Arrow(trend, 0.3f), Label);
+                GUI.Label(new Rect(x + 68, y2 + 2, 50, 22), _tl.Begin().S("<b>").F(amt, "0").S("</b>").S(Arrow(trend, 0.3f)).To(ref _stockTxt[k]), Label);
                 if (Over(sr)) Tip(sr, (StockTips.TryGetValue(id, out var t) ? t : D.Resources[r].name) + $"\n\n{amt:0.#} in store, {trend:+0.#;-0.#;0} over the last day. Click for every good (T).");
                 if (GUI.Button(sr, GUIContent.none, GUIStyle.none)) ToggleStocks();
                 x += 120; shown++;
@@ -186,7 +214,7 @@ namespace Firstlight.Game.UI
             if (G.Auto != null)
             {
                 var ar2 = Box(new Rect(VW - 330, VH - (VW - 330 < 1290 ? 98 : 40), 320, 30), UiTheme.Header);   // above the build bar when the screen is narrow
-                GUI.Label(new Rect(ar2.x + 12, ar2.y, 300, 30), Col("Auto-player is running the settlement (F9)", Info), Label14);
+                GUI.Label(new Rect(ar2.x + 12, ar2.y, 300, 30), _autoTxt ??= Col("Auto-player is running the settlement (F9)", Info), Label14);
             }
         }
 

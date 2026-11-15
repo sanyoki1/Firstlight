@@ -25,10 +25,21 @@ namespace Firstlight.Game.UI
 
         sealed class JobRow
         {
-            public BuildingDef Def; public Building First; public int N, W, Max, Hi, Lo, Paused; public string Note;
-            public void Reset(BuildingDef d) { Def = d; First = null; N = W = Max = Hi = Lo = Paused = 0; Note = null; }
+            public BuildingDef Def; public Building First, Short; public int N, W, Max, Hi, Lo, Paused; public string Note;
+            // The row's texts, kept while they come out the same (TextLine).
+            public string NameTxt, CountTxt, PrioTxt, NoteTxt;
+            public void Reset(BuildingDef d) { Def = d; First = Short = null; N = W = Max = Hi = Lo = Paused = 0; Note = null; }
         }
         readonly List<JobRow> _jobRowPool = new();
+        readonly List<JobRow> _jobRowsSorted = new();
+        readonly Dictionary<BuildingDef, JobRow> _jobRowOf = new();
+        string _jobsHead, _jobsPlaces, _jobsNoHaul, _jobsFoot;
+        // Rows in the order of category, then name (as OrderBy(category).ThenBy(name) sorted them; a row is one kind of building).
+        static readonly System.Comparison<JobRow> JobOrder = (a, b) =>
+        {
+            int c = string.Compare(a.Def.category, b.Def.category);
+            return c != 0 ? c : string.Compare(a.Def.name, b.Def.name);
+        };
         Vector2 _jobsScroll;
 
         // ------------------------------------------------------------------ goals
@@ -79,11 +90,19 @@ namespace Firstlight.Game.UI
         void DrawJobs()
         {
             var r = BeginSide("Jobs", 470, _jobsH, () => JobsOpen = false);
-            int adults = _tAdults, jobs = S.Citizens.Count(c => !c.Gone && c.Job != null), builders = S.Citizens.Count(c => !c.Gone && c.IsBuilder);
-            int sick = S.Citizens.Count(c => !c.Gone && c.Sick && S.Citizens.Count > 0 && c.Age >= D.Balance.adultAge);
+            int adults = _tAdults, jobs = 0, builders = 0, sick = 0;
+            foreach (var c in S.Citizens)
+            {
+                if (c.Gone) continue;
+                if (c.Job != null) jobs++;
+                if (c.IsBuilder) builders++;
+                if (c.Sick && c.Age >= D.Balance.adultAge) sick++;
+            }
             int free = adults - jobs - builders - sick;
             var (onlyAdults, elders, kids) = PeopleSplit();
-            Para($"{onlyAdults} adults and {elders} elders: {jobs} in jobs, {builders} building, {Col($"{free} free", free > 0 ? Good : Dim)} (they haul goods), {sick} sick. {kids} children.", Wrap);
+            _tl.Begin().I(onlyAdults).S(" adults and ").I(elders).S(" elders: ").I(jobs).S(" in jobs, ").I(builders).S(" building, ")
+               .C(free > 0 ? Good : Dim).I(free).S(" free").E().S(" (they haul goods), ").I(sick).S(" sick. ").I(kids).S(" children.");
+            Para(_tl.To(ref _jobsHead), Wrap);
             // Places that want workers now (not paused, flooded or out of season), how many are filled, and who carries.
             int places = 0, filled = 0, hiWorkers = 0, normalWorkers = 0;
             foreach (var b in S.Buildings)
@@ -93,30 +112,40 @@ namespace Firstlight.Game.UI
                 if (JobIdle(b) != null) continue;
                 places += b.Def.maxWorkers; filled += b.Workers;
             }
-            Row($"Places: {places}, filled {filled}" + (places > filled ? Col($" · short of {places - filled} worker{(places - filled == 1 ? "" : "s")}", Warn) : Col(" · all filled", Good)), Label);
-            if (free <= 0) Row(Col("Nobody is free to haul: goods wait at workplaces", Warn), Label);
+            _tl.Begin().S("Places: ").I(places).S(", filled ").I(filled);
+            if (places > filled) _tl.C(Warn).S(" · short of ").I(places - filled).S(places - filled == 1 ? " worker" : " workers").E();
+            else _tl.C(Good).S(" · all filled").E();
+            Row(_tl.To(ref _jobsPlaces), Label);
+            if (free <= 0) Row(_jobsNoHaul ??= Col("Nobody is free to haul: goods wait at workplaces", Warn), Label);
             Gap(2);
             GUI.Label(new Rect(_lx, _ly, 200, 20), "Workplace", Small);
             GUI.Label(new Rect(_lx + 200, _ly, 80, 20), "Workers", Small);
             GUI.Label(new Rect(_lx + 312, _ly, 130, 20), "Priority", Small);
             _ly += 22;
             // The rows (gathered first, so a list taller than the screen scrolls instead of running off the bottom).
+            // One row per kind of workplace (no LINQ: the rows are pooled per kind and sorted in place).
             int nRows = 0;
             float content = 0;
-            foreach (var g in S.Buildings.Where(b => b.Active && b.Def.IsWorkplace).GroupBy(b => b.Def).OrderBy(g => g.Key.category).ThenBy(g => g.Key.name))
+            _jobRowOf.Clear(); _jobRowsSorted.Clear();
+            foreach (var b in S.Buildings)
             {
-                if (nRows == _jobRowPool.Count) _jobRowPool.Add(new JobRow());
-                var jr = _jobRowPool[nRows++]; jr.Reset(g.Key);
-                Building shortB = null;
-                foreach (var b in g)
+                if (!b.Active || !b.Def.IsWorkplace) continue;
+                if (!_jobRowOf.TryGetValue(b.Def, out var jr))
                 {
-                    jr.First ??= b; jr.N++;
-                    jr.W += b.Workers; jr.Max += b.Def.maxWorkers;
-                    if (b.Priority == Priority.High) jr.Hi++; else if (b.Priority == Priority.Low) jr.Lo++;
-                    if (b.Paused) jr.Paused++;
-                    if (shortB == null && b.Workers < b.Def.maxWorkers) shortB = b;
+                    if (nRows == _jobRowPool.Count) _jobRowPool.Add(new JobRow());
+                    jr = _jobRowPool[nRows++]; jr.Reset(b.Def);
+                    _jobRowOf[b.Def] = jr; _jobRowsSorted.Add(jr);
                 }
-                jr.Note = JobNote(g.Key, shortB ?? jr.First, jr.W, jr.Max, free, hiWorkers, normalWorkers, builders);
+                jr.First ??= b; jr.N++;
+                jr.W += b.Workers; jr.Max += b.Def.maxWorkers;
+                if (b.Priority == Priority.High) jr.Hi++; else if (b.Priority == Priority.Low) jr.Lo++;
+                if (b.Paused) jr.Paused++;
+                if (jr.Short == null && b.Workers < b.Def.maxWorkers) jr.Short = b;
+            }
+            _jobRowsSorted.Sort(JobOrder);
+            foreach (var jr in _jobRowsSorted)
+            {
+                jr.Note = JobNote(jr.Def, jr.Short ?? jr.First, jr.W, jr.Max, free, hiWorkers, normalWorkers, builders, jr);
                 content += jr.Note != null ? 43 : 25;
             }
             float avail = VH - 70 - _ly - 40;
@@ -129,20 +158,24 @@ namespace Firstlight.Game.UI
             }
             for (int k = 0; k < nRows; k++)
             {
-                var jr = _jobRowPool[k];
+                var jr = _jobRowsSorted[k];
                 var row = new Rect(_lx - 6, _ly, _lw + 12, jr.Note != null ? 42 : 24);
                 if (GUI.Button(row, GUIContent.none, GUIStyle.none)) { Select(jr.First); JumpTo(jr.First.Center); }
                 if (row.Contains(Event.current.mousePosition)) Fill(row, new Color(1, 1, 1, 0.05f));
-                GUI.Label(new Rect(_lx, _ly, 200, 24), jr.N > 1 ? $"{jr.Def.name} x{jr.N}" : jr.Def.name, Label);
+                GUI.Label(new Rect(_lx, _ly, 200, 24), jr.N > 1 ? _tl.Begin().S(jr.Def.name).S(" x").I(jr.N).To(ref jr.NameTxt) : jr.Def.name, Label);
                 // An empty bar draws no colour, so the count carries it: red at none, amber short, green full.
                 var wc = jr.W >= jr.Max ? Good : jr.W == 0 ? Bad : Warn;
                 if (jr.W == 0) Fill(new Rect(_lx + 200, _ly + 7, 50, 10), new Color(Bad.r, Bad.g, Bad.b, 0.28f));
                 else Bar(new Rect(_lx + 200, _ly + 7, 50, 10), jr.W / (float)math.max(1, jr.Max), wc);
-                GUI.Label(new Rect(_lx + 256, _ly, 52, 24), Col($"{jr.W}/{jr.Max}", wc), Label);
-                string p = (jr.Hi > 0 ? Col($"{jr.Hi} high ", Accent) : "") + (jr.Lo > 0 ? Col($"{jr.Lo} low ", Dim) : "") + (jr.Paused > 0 ? Col($"{jr.Paused} paused", Warn) : "");
-                GUI.Label(new Rect(_lx + 312, _ly, _lw - 312, 24), p.Length > 0 ? p : Col("normal", Dim), Small);
+                GUI.Label(new Rect(_lx + 256, _ly, 52, 24), _tl.Begin().C(wc).I(jr.W).S("/").I(jr.Max).E().To(ref jr.CountTxt), Label);
+                _tl.Begin();
+                if (jr.Hi > 0) _tl.C(Accent).I(jr.Hi).S(" high ").E();
+                if (jr.Lo > 0) _tl.C(Dim).I(jr.Lo).S(" low ").E();
+                if (jr.Paused > 0) _tl.C(Warn).I(jr.Paused).S(" paused").E();
+                if (jr.Hi == 0 && jr.Lo == 0 && jr.Paused == 0) _tl.C(Dim).S("normal").E();
+                GUI.Label(new Rect(_lx + 312, _ly, _lw - 312, 24), _tl.To(ref jr.PrioTxt), Small);
                 _ly += 24;
-                if (jr.Note != null) { GUI.Label(new Rect(_lx + 12, _ly - 2, _lw - 12, 18), Col(jr.Note, Dim), Small); _ly += 18; }
+                if (jr.Note != null) { GUI.Label(new Rect(_lx + 12, _ly - 2, _lw - 12, 18), jr.Note, Small); _ly += 18; }
                 _ly += 1;
             }
             if (scroll)
@@ -151,7 +184,7 @@ namespace Firstlight.Game.UI
                 _lx = lx0; _lw = lw0; _ly = ly0 + avail;
             }
             Gap(4);
-            Para(Col("Click a row to select it. Priorities and pausing are set on each building.", Dim));
+            Para(_jobsFoot ??= Col("Click a row to select it. Priorities and pausing are set on each building.", Dim));
             _jobsH = _ly - r.y + 8;
         }
 
@@ -163,32 +196,56 @@ namespace Firstlight.Game.UI
             _ => null,
         };
 
+        readonly List<string> _before = new(3);
+
         /// <summary>
         /// The faint line under a Jobs row: why it is short of workers (paused, out of season, or who came first: jobs fill
-        /// High first, then builders, then Normal with fields first, then Low), or what stops the workers it has.
+        /// High first, then builders, then Normal with fields first, then Low), or what stops the workers it has. Returned
+        /// in Dim, kept in the row while it reads the same.
         /// </summary>
-        string JobNote(BuildingDef d, Building b, int w, int max, int free, int hiWorkers, int normalWorkers, int builders)
+        string JobNote(BuildingDef d, Building b, int w, int max, int free, int hiWorkers, int normalWorkers, int builders, JobRow row)
         {
             if (b == null) return null;
             string idle = JobIdle(b);
-            if (idle != null) return w < max ? Cap(idle) : null;
-            if (w < max)
+            var t = _tl.Begin().C(Dim);
+            if (idle != null)
+            {
+                if (w >= max) return null;
+                t.Ch(char.ToUpper(idle[0])).S(idle, 1);          // Cap(idle)
+            }
+            else if (w < max)
             {
                 if (free > 0) return null;                         // filled at the next shift change
-                var before = new List<string>(3);
+                var before = _before; before.Clear();
                 if (b.Priority < Priority.High && hiWorkers > 0) before.Add("High jobs");
                 if (b.Priority < Priority.High && builders > 0) before.Add("builders");
                 if (b.Priority == Priority.Low && normalWorkers > 0) before.Add("Normal jobs");
-                if (before.Count == 0) return w == 0 ? "Nobody left to take it: more people, or raise its priority" : null;
-                return before.Count == 1 ? $"Short: {(before[0] == "High jobs" ? "High-priority jobs" : before[0])} take everyone first" : $"Short: taken first by {string.Join(", ", before.GetRange(0, before.Count - 1))} and {before[before.Count - 1]}";
+                if (before.Count == 0)
+                {
+                    if (w != 0) return null;
+                    t.S("Nobody left to take it: more people, or raise its priority");
+                }
+                else if (before.Count == 1) t.S("Short: ").S(before[0] == "High jobs" ? "High-priority jobs" : before[0]).S(" take everyone first");
+                else
+                {
+                    t.S("Short: taken first by ");
+                    for (int i = 0; i < before.Count - 1; i++) { if (i > 0) t.S(", "); t.S(before[i]); }
+                    t.S(" and ").S(before[before.Count - 1]);
+                }
             }
-            return b.Status switch
+            else
             {
-                "Needs tools" => "Its workers need tools",
-                "Waiting for inputs" => "Waiting for its inputs",
-                "Waiting for goods to be carried off" => "Full: waiting for haulers",
-                _ => null,
-            };
+                string s = b.Status switch
+                {
+                    "Needs tools" => "Its workers need tools",
+                    "Waiting for inputs" => "Waiting for its inputs",
+                    "Waiting for goods to be carried off" => "Full: waiting for haulers",
+                    _ => null,
+                };
+                if (s == null) return null;
+                t.S(s);
+            }
+            return t.E().To(ref row.NoteTxt);
         }
 
         // ------------------------------------------------------------------ stocks
@@ -196,35 +253,49 @@ namespace Firstlight.Game.UI
         void DrawStocks()
         {
             var r = BeginSide("Goods in store", 400, _stocksH, () => StocksOpen = false);
-            BarRow("Storage", S.StorageUsed / math.max(1, S.StorageCapacity), S.StorageUsed > S.StorageCapacity * 0.9f ? Warn : Info, $"{S.StorageUsed:0}/{S.StorageCapacity}");
+            float used = S.StorageUsed; int capacity = S.StorageCapacity;
+            BarRow("Storage", used / math.max(1, capacity), used > capacity * 0.9f ? Warn : Info, _tl.Begin().F(used, "0").S("/").I(capacity).To(ref _storageTxt));
             Gap(4);
             GUI.Label(new Rect(_lx, _ly, 180, 20), "Good", Small);
             GUI.Label(new Rect(_lx + 180, _ly, 80, 20), "In store", SmallRight);
             GUI.Label(new Rect(_lx + 270, _ly, 90, 20), "Last day", SmallRight);
             _ly += 22;
+            if (_goodsName == null || _goodsName.Length != S.ResCount)
+            {
+                _goodsName = new string[S.ResCount]; _goodsAmt = new string[S.ResCount + 1]; _goodsTrend = new string[S.ResCount + 1];
+                for (int i = 0; i < S.ResCount; i++) _goodsName[i] = D.Resources[i].name + (D.Resources[i].isFood ? Col("  food", Faint) : "");
+            }
             for (int i = 0; i < S.ResCount; i++)
             {
                 float amt = S.StockTotals[i];
                 if (amt < 0.05f && S.Produced[i] < 0.05f) continue;
-                var rd = D.Resources[i];
-                GUI.Label(new Rect(_lx, _ly, 180, 22), rd.name + (rd.isFood ? Col("  food", Faint) : ""), Label);
-                GUI.Label(new Rect(_lx + 180, _ly, 80, 22), $"<b>{amt:0}</b>", Right);
-                float t = Trend(i);
-                GUI.Label(new Rect(_lx + 270, _ly, 90, 22), math.abs(t) < 0.05f ? Col("-", Faint) : Col($"{t:+0.#;-0.#}", t > 0 ? Good : Bad), Right);
+                GUI.Label(new Rect(_lx, _ly, 180, 22), _goodsName[i], Label);
+                GUI.Label(new Rect(_lx + 180, _ly, 80, 22), _tl.Begin().S("<b>").F(amt, "0").S("</b>").To(ref _goodsAmt[i]), Right);
+                GUI.Label(new Rect(_lx + 270, _ly, 90, 22), TrendText(Trend(i), ref _goodsTrend[i]), Right);
                 _ly += 23;
             }
             // Tools of all kinds together: the top bar's "Tools" figure.
             float tools = ToolsInStore();
             if (tools >= 0.05f)
             {
-                GUI.Label(new Rect(_lx, _ly, 180, 22), Col("Tools (all kinds)", Dim), Label);
-                GUI.Label(new Rect(_lx + 180, _ly, 80, 22), $"<b>{tools:0}</b>", Right);
-                float tt = ToolTrend();
-                GUI.Label(new Rect(_lx + 270, _ly, 90, 22), math.abs(tt) < 0.05f ? Col("-", Faint) : Col($"{tt:+0.#;-0.#}", tt > 0 ? Good : Bad), Right);
+                GUI.Label(new Rect(_lx, _ly, 180, 22), _goodsTools ??= Col("Tools (all kinds)", Dim), Label);
+                GUI.Label(new Rect(_lx + 180, _ly, 80, 22), _tl.Begin().S("<b>").F(tools, "0").S("</b>").To(ref _goodsAmt[S.ResCount]), Right);
+                GUI.Label(new Rect(_lx + 270, _ly, 90, 22), TrendText(ToolTrend(), ref _goodsTrend[S.ResCount]), Right);
                 _ly += 23;
             }
             _stocksH = _ly - r.y + 10;
         }
+
+        string _storageTxt, _goodsTools;
+        string[] _goodsName, _goodsAmt, _goodsTrend;
+
+        /// <summary>"-" (faint) for no change, else "+1.2" / "-0.4" in green / red.</summary>
+        string TrendText(float t, ref string cache)
+        {
+            if (math.abs(t) < 0.05f) return _goodsFlat ??= Col("-", Faint);
+            return _tl.Begin().C(t > 0 ? Good : Bad).F(t, "+0.#;-0.#").E().To(ref cache);
+        }
+        static string _goodsFlat;
 
         // ------------------------------------------------------------------ help
 
@@ -294,28 +365,75 @@ namespace Firstlight.Game.UI
         readonly System.Collections.Generic.Dictionary<string, int> _chipCycle = new();
         string _chipTargetName = "";
 
-        /// <summary>The places a standing warning is about (by its wording, as the sim words it), for the chip's click.</summary>
-        void ChipTargets(string w, System.Collections.Generic.List<(float2 at, Building b, Citizen c)> into)
+        /// <summary>What a standing warning is about, by its wording as the sim words it (0: no place to go).</summary>
+        static int ChipKind(string w)
         {
-            into.Clear(); _chipTargetName = "";
-            void People(System.Func<Citizen, bool> f, string name) { _chipTargetName = name; foreach (var c in S.Citizens) if (!c.Gone && f(c)) into.Add((c.Pos, null, c)); }
-            void Places(System.Func<Building, bool> f, string name) { _chipTargetName = name; foreach (var b in S.Buildings) if (b.Active && f(b)) into.Add((b.Center, b, null)); }
-            if (w.Contains("have no tools") || w.Contains("has no tools"))
+            if (w.Contains("have no tools") || w.Contains("has no tools")) return 1;
+            if (w.Contains("no home")) return 2;
+            if (w.Contains("are sick")) return 3;
+            if (w.Contains("unhappy")) return 4;
+            if (w.Contains("no clean water")) return 5;
+            if (w.Contains("nearly full")) return 6;
+            if (w.StartsWith("Not enough firewood")) return 7;
+            if (w.StartsWith("Expected harvest")) return 8;
+            if (w.StartsWith("Unrest")) return 9;
+            if (w.StartsWith("Food") || w.StartsWith("There is no food")) return 10;
+            return 0;
+        }
+
+        static readonly string[] ChipTargetNames = { "", "workplaces", "people without a home", "sick people", "unhappy people", "homes without water", "full stores", "woodcutters", "fields", "councils", "food workplaces" };
+
+        bool ChipPerson(int kind, Citizen c) => kind == 2 ? c.Home == null : kind == 3 ? c.Sick : kind == 4 && c.UnhappyDays > 0;
+
+        bool ChipPlace(int kind, Building b)
+        {
+            switch (kind)
             {
-                _chipTargetName = "workplaces";
-                foreach (var c in S.Citizens)
-                    if (!c.Gone && c.Job != null && c.Job.Def.usesTools && c.Tool < 0 && !into.Exists(t => t.b == c.Job)) into.Add((c.Job.Center, c.Job, null));
+                case 5: return b.Def.housing > 0 && b.Residents > 0 && !b.HasWater;
+                case 6: return b.IsStorage && b.Stored > S.Capacity(b) * 0.9f;
+                case 7:
+                    if (!b.Def.IsWorkplace) return false;
+                    foreach (var o in b.Def.outputs) if (o.id == D.Balance.fuelResource) return true;
+                    return false;
+                case 8: return b.Def.crop;
+                case 9: return b.Def.orderPower > 0;
+                case 10:
+                    if (!b.Def.IsWorkplace || b.Def.crop) return false;
+                    foreach (var o in b.Def.outputs) { int r = S.ResIndex(o.id); if (r >= 0 && D.Resources[r].isFood) return true; }
+                    return false;
             }
-            else if (w.Contains("no home")) People(c => c.Home == null, "people without a home");
-            else if (w.Contains("are sick")) People(c => c.Sick, "sick people");
-            else if (w.Contains("unhappy")) People(c => c.UnhappyDays > 0, "unhappy people");
-            else if (w.Contains("no clean water")) Places(b => b.Def.housing > 0 && b.Residents > 0 && !b.HasWater, "homes without water");
-            else if (w.Contains("nearly full")) Places(b => b.IsStorage && b.Stored > S.Capacity(b) * 0.9f, "full stores");
-            else if (w.StartsWith("Not enough firewood")) Places(b => b.Def.IsWorkplace && System.Array.Exists(b.Def.outputs, o => o.id == D.Balance.fuelResource), "woodcutters");
-            else if (w.StartsWith("Expected harvest")) Places(b => b.Def.crop, "fields");
-            else if (w.StartsWith("Unrest")) Places(b => b.Def.orderPower > 0, "councils");
-            else if (w.StartsWith("Food") || w.StartsWith("There is no food"))
-                Places(b => b.Def.IsWorkplace && !b.Def.crop && System.Array.Exists(b.Def.outputs, o => S.ResIndex(o.id) >= 0 && D.Resources[S.ResIndex(o.id)].isFood), "food workplaces");
+            return false;
+        }
+
+        /// <summary>
+        /// The places a standing warning is about (by its wording, as the sim words it), for the chip's click. With firstOnly
+        /// it stops at the first (the chip only needs to know whether it has a place). No delegates: it runs on every call.
+        /// </summary>
+        void ChipTargets(string w, System.Collections.Generic.List<(float2 at, Building b, Citizen c)> into, bool firstOnly = false)
+        {
+            into.Clear();
+            int kind = ChipKind(w);
+            _chipTargetName = ChipTargetNames[kind];
+            if (kind == 1)
+            {
+                foreach (var c in S.Citizens)
+                {
+                    if (c.Gone || c.Job == null || !c.Job.Def.usesTools || c.Tool >= 0) continue;
+                    bool listed = false;
+                    foreach (var t in into) if (t.b == c.Job) { listed = true; break; }
+                    if (listed) continue;
+                    into.Add((c.Job.Center, c.Job, null));
+                    if (firstOnly) return;
+                }
+            }
+            else if (kind >= 2 && kind <= 4)
+            {
+                foreach (var c in S.Citizens) if (!c.Gone && ChipPerson(kind, c)) { into.Add((c.Pos, null, c)); if (firstOnly) return; }
+            }
+            else if (kind >= 5)
+            {
+                foreach (var b in S.Buildings) if (b.Active && ChipPlace(kind, b)) { into.Add((b.Center, b, null)); if (firstOnly) return; }
+            }
         }
 
         /// <summary>A chip's tooltip: where a click goes (null when it has no place).</summary>
@@ -336,6 +454,42 @@ namespace Firstlight.Game.UI
             var t = _chipTargets[i];
             if (t.b != null) Select(t.b); else if (t.c != null) SelectCitizen(t.c);
             JumpTo(t.at);
+        }
+
+        // The chips' and feed rows' text and sizes, made when a warning or event first shows (and again when the text size
+        // changes), not on every call: each used to be a new coloured string, a new GUIContent and a text measurement.
+        sealed class ChipLook { public string Text; public float One, Height; }
+        readonly System.Collections.Generic.Dictionary<string, ChipLook> _chipLooks = new();
+        int _chipLookFont = -1;
+        string _readyText, _readyFor; float _readyW; int _readyFont = -1;
+        sealed class FeedLook { public string Text, Src; public float W, H; public int Repeats; }
+        readonly System.Collections.Generic.Dictionary<int, FeedLook> _feedLooks = new();
+        int _feedBuiltCount = -1;
+        readonly System.Collections.Generic.List<string> _feedBuiltWarnings = new();
+
+        ChipLook LookOf(string w)
+        {
+            if (_chipLookFont != UiTheme.Chip.fontSize) { _chipLooks.Clear(); _chipLookFont = UiTheme.Chip.fontSize; }
+            if (_chipLooks.TryGetValue(w, out var look)) return look;
+            if (_chipLooks.Count > 64) _chipLooks.Clear();
+            bool bad = w.StartsWith("There is no food") || w.Contains("run out in 1 ") || w.Contains("run out in 2 ");
+            var c = new GUIContent(Col(w, bad ? Bad : Warn));
+            float one = UiTheme.Chip.CalcSize(c).x + 4;
+            float wd = math.min(ChipMaxW, one);
+            look = new ChipLook { Text = c.text, One = one, Height = one <= ChipMaxW ? 26 : math.max(26, _chipWrap.CalcHeight(c, wd)) };
+            _chipLooks[w] = look;
+            return look;
+        }
+
+        /// <summary>Whether the feed's rows must be gathered again: a new event, or the standing warnings changed.</summary>
+        bool FeedStale()
+        {
+            bool same = _feedBuiltCount == S.Events.Count && _feedBuiltWarnings.Count == S.Warnings.Count;
+            for (int i = 0; same && i < S.Warnings.Count; i++) same = string.Equals(_feedBuiltWarnings[i], S.Warnings[i]);
+            if (same) return false;
+            _feedBuiltCount = S.Events.Count;
+            _feedBuiltWarnings.Clear(); _feedBuiltWarnings.AddRange(S.Warnings);
+            return true;
         }
 
         // Whether the next age can be reached now (looked up twice a second, not every frame: it builds lists; and at once
@@ -363,10 +517,14 @@ namespace Firstlight.Game.UI
             if (AgeReady && !EndOpen)
             {
                 var next = D.Age(S.Age.next);
-                var c = new GUIContent(Col($"Ready to advance to the {next?.name} (G)", Good));
-                float wd = math.min(ChipMaxW, UiTheme.ChipGood.CalcSize(c).x + 4);
-                var r = Box(new Rect(10, y, wd, 26), UiTheme.ChipGood);
-                GUI.Label(r, c, UiTheme.ChipGood);
+                if (_readyText == null || _readyFor != next?.name || _readyFont != UiTheme.ChipGood.fontSize)
+                {
+                    var c = new GUIContent(Col($"Ready to advance to the {next?.name} (G)", Good));
+                    _readyText = c.text; _readyFor = next?.name; _readyFont = UiTheme.ChipGood.fontSize;
+                    _readyW = math.min(ChipMaxW, UiTheme.ChipGood.CalcSize(c).x + 4);
+                }
+                var r = Box(new Rect(10, y, _readyW, 26), UiTheme.ChipGood);
+                GUI.Label(r, _readyText, UiTheme.ChipGood);
                 if (GUI.Button(r, GUIContent.none, GUIStyle.none)) { if (!GoalsOpen) ToggleGoals(); }
                 Tip(r, "Every key research topic and milestone is done. Open Goals (G) and press Advance when you are ready.");
                 y += 30;
@@ -375,15 +533,13 @@ namespace Firstlight.Game.UI
             _chipWrap ??= new GUIStyle(UiTheme.Chip) { wordWrap = true, padding = new RectOffset(10, 10, 4, 4) };
             foreach (var w in S.Warnings)
             {
-                bool bad = w.StartsWith("There is no food") || w.Contains("run out in 1 ") || w.Contains("run out in 2 ");
-                var c = new GUIContent(Col(w, bad ? Bad : Warn));
-                float one = UiTheme.Chip.CalcSize(c).x + 4;
-                float wd = math.min(ChipMaxW, one);
-                float hh = one <= ChipMaxW ? 26 : math.max(26, _chipWrap.CalcHeight(c, wd));
+                var look = LookOf(w);
+                float wd = math.min(ChipMaxW, look.One);
+                float hh = look.Height;
                 var r = Box(new Rect(10, y, wd, hh), UiTheme.Chip);
-                GUI.Label(r, c, one <= ChipMaxW ? UiTheme.Chip : _chipWrap);
+                GUI.Label(r, look.Text, look.One <= ChipMaxW ? UiTheme.Chip : _chipWrap);
                 // Click: the camera goes to the buildings or people concerned, the next one at each click.
-                ChipTargets(w, _chipTargets);
+                ChipTargets(w, _chipTargets, true);
                 if (_chipTargets.Count > 0)
                 {
                     if (r.Contains(Event.current.mousePosition)) Fill(r, new Color(1, 1, 1, 0.04f));
@@ -397,15 +553,20 @@ namespace Firstlight.Game.UI
             for (; _feedSeen < S.Events.Count; _feedSeen++) _feedTime[_feedSeen] = Time.unscaledTime;
             y += 6;
             // The last few events, newest at the bottom: a warning already standing as a chip is not repeated here, and
-            // the same line coming again is shown once with a count.
-            _feedRows.Clear();
-            for (int i = S.Events.Count - 1; i >= 0 && _feedRows.Count < 7 && i >= S.Events.Count - 60; i--)
+            // the same line coming again is shown once with a count. Gathered again only when an event comes in or the
+            // chips change.
+            if (FeedStale())
             {
-                var e = S.Events[i];
-                if (e.Severity != Severity.Bad && ShownAsChip(e.Text)) continue;   // (some chips are logged as Info)
-                if (_feedRows.Count > 0 && S.Events[_feedRows[_feedRows.Count - 1].idx].Text == e.Text) { var last = _feedRows[_feedRows.Count - 1]; _feedRows[_feedRows.Count - 1] = (last.idx, last.n + 1); continue; }
-                _feedRows.Add((i, 1));
+                _feedRows.Clear();
+                for (int i = S.Events.Count - 1; i >= 0 && _feedRows.Count < 7 && i >= S.Events.Count - 60; i--)
+                {
+                    var e = S.Events[i];
+                    if (e.Severity != Severity.Bad && ShownAsChip(e.Text)) continue;   // (some chips are logged as Info)
+                    if (_feedRows.Count > 0 && S.Events[_feedRows[_feedRows.Count - 1].idx].Text == e.Text) { var last = _feedRows[_feedRows.Count - 1]; _feedRows[_feedRows.Count - 1] = (last.idx, last.n + 1); continue; }
+                    _feedRows.Add((i, 1));
+                }
             }
+            if (_feedLooks.Count > 32) _feedLooks.Clear();
             for (int k = _feedRows.Count - 1; k >= 0; k--)
             {
                 var (i, repeats) = _feedRows[k];
@@ -414,22 +575,34 @@ namespace Firstlight.Game.UI
                 float a = math.saturate(1.4f - age / 40f);
                 if (a <= 0.05f) continue;
                 var col = e.Severity == Severity.Bad ? Bad : e.Severity == Severity.Warning ? Warn : Text;
-                string line = repeats > 1 ? $"{e.Text}  {Col($"x{repeats}", Faint)}" : e.Text;
-                var content = new GUIContent(line);
                 var style = FeedRow;
-                float wd = math.min(520, style.CalcSize(content).x + 26 + (e.HasPlace ? 14 : 0));
-                float hh = math.max(24, style.CalcHeight(content, wd - 14 - (e.HasPlace ? 14 : 0)) + 6);
+                if (!_feedLooks.TryGetValue(i, out var look) || look.Repeats != repeats || !ReferenceEquals(look.Src, e.Text))
+                {
+                    string line = repeats > 1 ? $"{e.Text}  {Col($"x{repeats}", Faint)}" : e.Text;
+                    var content = new GUIContent(line);
+                    float w0 = math.min(520, style.CalcSize(content).x + 26 + (e.HasPlace ? 14 : 0));
+                    look = new FeedLook
+                    {
+                        Repeats = repeats, Src = e.Text, W = w0,
+                        H = math.max(24, style.CalcHeight(content, w0 - 14 - (e.HasPlace ? 14 : 0)) + 6),
+                        Text = repeats > 1 ? Col(e.Text, col) + "  " + Col($"x{repeats}", Faint) : Col(e.Text, col),
+                    };
+                    _feedLooks[i] = look;
+                }
+                float wd = look.W, hh = look.H;
                 var r = new Rect(10, y, wd, hh);
                 var old = GUI.color; GUI.color = new Color(1, 1, 1, a);
                 Box(r, UiTheme.Header);
                 Fill(new Rect(r.x + 1, r.y + 1, 4, r.height - 2), col);
-                GUI.Label(new Rect(r.x + 12, r.y + 3, wd - 14 - (e.HasPlace ? 14 : 0), hh - 6), repeats > 1 ? Col(e.Text, col) + "  " + Col($"x{repeats}", Faint) : Col(e.Text, col), style);
-                if (e.HasPlace) GUI.Label(new Rect(r.xMax - 16, r.y + 2, 12, hh - 4), Col("›", Dim), style);   // clickable: goes there
+                GUI.Label(new Rect(r.x + 12, r.y + 3, wd - 14 - (e.HasPlace ? 14 : 0), hh - 6), look.Text, style);
+                if (e.HasPlace) GUI.Label(new Rect(r.xMax - 16, r.y + 2, 12, hh - 4), _feedArrow ??= Col("›", Dim), style);   // clickable: goes there
                 if (e.HasPlace && GUI.Button(r, GUIContent.none, GUIStyle.none)) JumpTo(e.Place);
                 if (e.HasPlace && Over(r)) Tip(r, $"Day {e.Day + 1}. Click to go there.");
                 GUI.color = old;
                 y += hh + 3;
             }
         }
+
+        static string _feedArrow;
     }
 }

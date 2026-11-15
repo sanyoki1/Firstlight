@@ -24,7 +24,7 @@ namespace Firstlight.Game.UI
         void Para(string text, GUIStyle style = null)
         {
             style ??= SmallWrap;
-            float h = style.CalcHeight(new GUIContent(text), _lw);
+            float h = style.CalcHeight(Temp(text), _lw);
             GUI.Label(new Rect(_lx, _ly, _lw, h), text, style);
             _ly += h + 4;
         }
@@ -248,12 +248,22 @@ namespace Firstlight.Game.UI
             if (who.Count > 0) Para(string.Join(", ", who));
         }
 
+        readonly List<int> _storeItems = new();
+
         void DrawStore(Building b)
         {
             Gap(4);
             float cap = math.max(1, S.Capacity(b));
             BarRow("Stored", b.Stored / cap, b.Stored > cap * 0.9f ? Warn : Info, $"{b.Stored:0} / {cap:0}");
-            var items = Enumerable.Range(0, S.ResCount).Where(i => b.Store[i] >= 0.5f).OrderByDescending(i => b.Store[i]).ToList();
+            // Goods held, most first (as Enumerable.OrderByDescending: a stable sort, ties keep the resource order).
+            var items = _storeItems; items.Clear();
+            for (int i = 0; i < S.ResCount; i++) if (b.Store[i] >= 0.5f) items.Add(i);
+            for (int k = 1; k < items.Count; k++)
+            {
+                int v = items[k], j = k - 1;
+                while (j >= 0 && b.Store[items[j]] < b.Store[v]) { items[j + 1] = items[j]; j--; }
+                items[j + 1] = v;
+            }
             for (int k = 0; k < items.Count; k += 2)
             {
                 GUI.Label(new Rect(_lx, _ly, _lw / 2, 20), $"{D.Resources[items[k]].name}  <b>{b.Store[items[k]]:0}</b>", Small);

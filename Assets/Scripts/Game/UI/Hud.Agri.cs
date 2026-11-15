@@ -95,8 +95,12 @@ namespace Firstlight.Game.UI
         void DrawCoverage(Building b)
         {
             var d = b.Def;
-            var homes = S.Buildings.Where(h => h.Active && h.Def.housing > 0 && h.Residents > 0).ToList();
-            int Count(float radius) => homes.Count(h => math.distance(h.Center, b.Center) <= radius);
+            int Count(float radius)
+            {
+                int n = 0;
+                foreach (var h in S.Buildings) if (h.Active && h.Def.housing > 0 && h.Residents > 0 && math.distance(h.Center, b.Center) <= radius) n++;
+                return n;
+            }
             if (d.waterRadius > 0)
             {
                 float r = d.waterRadius * S.Effect("water.radius");
@@ -353,6 +357,9 @@ namespace Firstlight.Game.UI
         /// <summary>A need's short top-bar label, naming what it measures.</summary>
         static string NeedLabel(NeedDef n) => n.id switch { "water" => "Water", "goods" => "Pots", "faith" => "Faith", _ => n.name };
 
+        string _happyTxt, _unrestTxt;
+        string[] _needTxt = new string[0];
+
         /// <summary>The needs that have arrived, as "Water 92%" (only once they apply), and unrest; row two of the top bar.</summary>
         void DrawNeedsStrip(float x, float y, float right)
         {
@@ -360,19 +367,21 @@ namespace Firstlight.Game.UI
                 float hp = _tHappy;
                 var r = new Rect(x, y, 116, 26);
                 GUI.Label(new Rect(x, y + 3, 56, 20), "Happy", Small);
-                GUI.Label(new Rect(x + 56, y + 2, 56, 22), Col($"<b>{hp:P0}</b>", hp >= 0.6f ? Good : hp >= D.Balance.leaveHappiness + 0.05f ? Warn : Bad), Label);
+                GUI.Label(new Rect(x + 56, y + 2, 56, 22), _tl.Begin().C(hp >= 0.6f ? Good : hp >= D.Balance.leaveHappiness + 0.05f ? Warn : Bad).S("<b>").F(hp, "P0").S("</b>").E().To(ref _happyTxt), Label);
                 if (Over(r)) Tip(r, $"Average happiness {hp:P0}: a blend of the average and the worst of each person's needs (food, warmth, shelter, health, and later water, pots at home and faith). Happy people work faster; below {D.Balance.leaveHappiness:P0} for {D.Balance.leaveAfterDays:0} days they leave.");
                 x += 120;
             }
-            foreach (var n in D.Balance.needs)
+            for (int k = 0; k < D.Balance.needs.Length; k++)
             {
+                var n = D.Balance.needs[k];
                 float met = S.NeedMet(n.id);
                 if (met < 0) continue;
                 if (x + 116 > right) return;
                 var r = new Rect(x, y, 116, 26);
                 // Labelled by what they measure: "Pots" (households with pots in use), not "Pottery" (the stock on the left).
                 GUI.Label(new Rect(x, y + 3, 56, 20), NeedLabel(n), Small);
-                GUI.Label(new Rect(x + 56, y + 2, 56, 22), Col($"<b>{met:P0}</b>", met >= 0.9f ? Good : met >= 0.6f ? Warn : Bad), Label);
+                if (_needTxt.Length < D.Balance.needs.Length) _needTxt = new string[D.Balance.needs.Length];
+                GUI.Label(new Rect(x + 56, y + 2, 56, 22), _tl.Begin().C(met >= 0.9f ? Good : met >= 0.6f ? Warn : Bad).S("<b>").F(met, "P0").S("</b>").E().To(ref _needTxt[k]), Label);
                 if (Over(r)) Tip(r, NeedTip(n, met));
                 x += 120;
             }
@@ -381,7 +390,7 @@ namespace Firstlight.Game.UI
                 var r = new Rect(x, y, 116, 26);
                 float u = S.Unrest;
                 GUI.Label(new Rect(x, y + 3, 56, 20), "Unrest", Small);
-                GUI.Label(new Rect(x + 56, y + 2, 56, 22), Col($"<b>{u:P0}</b>", u >= D.Balance.disputeAt ? Bad : u >= D.Balance.unrestWarn ? Warn : Good), Label);
+                GUI.Label(new Rect(x + 56, y + 2, 56, 22), _tl.Begin().C(u >= D.Balance.disputeAt ? Bad : u >= D.Balance.unrestWarn ? Warn : Good).S("<b>").F(u, "P0").S("</b>").E().To(ref _unrestTxt), Label);
                 if (Over(r)) Tip(r, $"Unrest {u:P0} (heading for {S.UnrestTarget:P0}). It grows with unhappiness, crowding, people without faith and sheer numbers. Above {D.Balance.disputeAt:P0} disputes cost work days; above {D.Balance.theftAt:P0} goods go missing. A staffed council and laws calm it.");
             }
         }

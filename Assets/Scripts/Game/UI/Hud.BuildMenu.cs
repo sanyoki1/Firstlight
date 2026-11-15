@@ -25,25 +25,31 @@ namespace Firstlight.Game.UI
             float w = 12 + cats.Length * bw + 130 + 220;
             var bar = Box(new Rect(10, y, w, 50), UiTheme.Header);
             float x = bar.x + 8;
-            foreach (var c in cats)
+            _catFaint ??= new string[cats.Length];
+            for (int k = 0; k < cats.Length; k++)
             {
+                string c = cats[k];
                 var r = new Rect(x, y + 8, bw - 6, 34);
-                int ready = InCategory(c).Count(S.IsUnlocked);
-                if (GUI.Button(r, ready > 0 ? c : Col(c, Faint), BuildCategory == c ? ButtonOn : Button)) OpenCategory(c);
+                // Buildings of the category ready to place (InCategory(c).Count(S.IsUnlocked), without LINQ on every call).
+                int ready = 0;
+                foreach (var b in D.Buildings) if (b.category == c && !b.townCenter && D.AgeOrder(b.age) <= S.Age.order && S.IsUnlocked(b)) ready++;
+                if (GUI.Button(r, ready > 0 ? c : _catFaint[k] ??= Col(c, Faint), BuildCategory == c ? ButtonOn : Button)) OpenCategory(c);
                 x += bw;
             }
             var dr = new Rect(x + 4, y + 8, 120, 34);
-            if (GUI.Button(dr, $"Demolish {Col("X", Faint)}", Mode == ToolMode.Demolish ? ButtonOn : Button))
+            if (GUI.Button(dr, _demolishTxt ??= $"Demolish {Col("X", Faint)}", Mode == ToolMode.Demolish ? ButtonOn : Button))
             {
                 if (Mode == ToolMode.Demolish) CancelTool(); else StartDemolish();
             }
             x += 136;
             // Builders: how many people are kept on construction while there are sites.
             GUI.Label(new Rect(x, y + 4, 100, 20), "Builders", Small);
-            int sites = S.Sites.Count();
-            GUI.Label(new Rect(x, y + 24, 110, 20), sites > 0 ? $"{sites} site{(sites == 1 ? "" : "s")} open" : Col("no sites", Dim), Small);
+            int sites = 0;
+            foreach (var b in S.Buildings) if (b.UnderWork) sites++;
+            if (sites > 0) _tl.Begin().I(sites).S(sites == 1 ? " site open" : " sites open"); else _tl.Begin().C(Dim).S("no sites").E();
+            GUI.Label(new Rect(x, y + 24, 110, 20), _tl.To(ref _sitesTxt), Small);
             if (GUI.Button(new Rect(x + 108, y + 11, 30, 28), "-", Button)) S.SetBuilders(S.BuildersWanted - 1);
-            GUI.Label(new Rect(x + 140, y + 11, 36, 28), $"<b>{S.BuildersWanted}</b>", Center);
+            GUI.Label(new Rect(x + 140, y + 11, 36, 28), _tl.Begin().S("<b>").I(S.BuildersWanted).S("</b>").To(ref _buildersTxt), Center);
             if (GUI.Button(new Rect(x + 178, y + 11, 30, 28), "+", Button)) S.SetBuilders(S.BuildersWanted + 1);
             Tip(new Rect(x, y, 210, 50), "How many people build and carry materials to sites, taken before normal-priority jobs. They go back to other work when there is nothing to build.");
 
@@ -51,30 +57,59 @@ namespace Firstlight.Game.UI
         }
 
         GUIStyle _costStyle, _summaryStyle;
+        string[] _catFaint;
+        string _demolishTxt, _sitesTxt, _buildersTxt;
+
+        // The open category's rows and their fixed texts, made when the category or the age changes (not on every call).
+        sealed class BuildRow { public BuildingDef Def; public string Name, NameLocked, Needs, Summary, Cost; public int CostMask = -1; }
+        readonly List<BuildRow> _buildRows = new();
+        string _buildRowsCat; int _buildRowsAge = -1;
+
+        /// <summary>The cost line, made again only when which costs are in store changes (one bit per cost).</summary>
+        string RowCost(BuildRow row)
+        {
+            var d = row.Def;
+            int mask = 0;
+            for (int i = 0; i < d.cost.Length && i < 30; i++) if (S.Stock(d.cost[i].id) >= d.cost[i].amount) mask |= 1 << i;
+            if (row.Cost == null || mask != row.CostMask) { row.Cost = Cost(d); row.CostMask = mask; }
+            return row.Cost;
+        }
 
         void DrawCategory(string cat, float barY)
         {
-            var list = InCategory(cat).ToList();
+            if (_buildRowsCat != cat || _buildRowsAge != S.Age.order)
+            {
+                _buildRows.Clear();
+                foreach (var d in InCategory(cat))
+                    _buildRows.Add(new BuildRow
+                    {
+                        Def = d, Name = $"<b>{d.name}</b>", NameLocked = Col(d.name, Dim),
+                        Needs = Col("Needs " + (D.ResearchById(d.unlockedBy)?.name ?? d.unlockedBy), Warn), Summary = Col(Summary(d), Dim),
+                    });
+                _buildRowsCat = cat; _buildRowsAge = S.Age.order;
+            }
+            var list = _buildRows;
             const float rowH = 54, w = 400;
             float h = 40 + list.Count * rowH + 8;
             var r = Box(new Rect(10, barY - h - 6, w, h));
             GUI.Label(new Rect(r.x + 14, r.y + 8, w - 60, 24), cat, Title);
             if (GUI.Button(new Rect(r.xMax - 32, r.y + 8, 24, 22), "x", Button)) BuildCategory = null;
             float y = r.y + 38;
-            foreach (var d in list)
+            foreach (var br in list)
             {
+                var d = br.Def;
                 bool ok = S.IsUnlocked(d);
                 var row = new Rect(r.x + 8, y, w - 16, rowH - 4);
                 bool on = Mode == ToolMode.Place && PlaceDef == d;
                 if (GUI.Button(row, GUIContent.none, ok ? (on ? ButtonOn : Button) : ButtonDim) && ok) StartPlacing(d);
                 // Locked rows in Dim, not Faint: "Needs Pottery" is what the player needs to read.
-                GUI.Label(new Rect(row.x + 10, row.y + 4, 220, 22), ok ? $"<b>{d.name}</b>" : Col(d.name, Dim), Label);
+                GUI.Label(new Rect(row.x + 10, row.y + 4, 220, 22), ok ? br.Name : br.NameLocked, Label);
                 _costStyle ??= new GUIStyle(Small);
                 _costStyle.fontSize = Px(13);
-                GUI.Label(new Rect(row.x + 10, row.y + 26, 360, 20), ok ? Cost(d) : Col("Needs " + (D.ResearchById(d.unlockedBy)?.name ?? d.unlockedBy), Warn), _costStyle);
+                GUI.Label(new Rect(row.x + 10, row.y + 26, 360, 20), ok ? RowCost(br) : br.Needs, _costStyle);
                 _summaryStyle ??= new GUIStyle(Small) { alignment = TextAnchor.MiddleRight };
                 _summaryStyle.fontSize = Small.fontSize;
-                GUI.Label(new Rect(row.x + 200, row.y + 4, 176, 22), Col(Summary(d), Dim), _summaryStyle);
+                GUI.Label(new Rect(row.x + 200, row.y + 4, 176, 22), br.Summary, _summaryStyle);
                 if (Over(row)) Tip(row, Describe(d));
                 y += rowH;
             }
