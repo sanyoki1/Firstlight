@@ -32,7 +32,7 @@ namespace Firstlight.Game.UI
             ["herbs"] = "Herbs: gathered by the herbalist; healers use them to treat the sick.",
             ["grain"] = "Grain: the harvest from the fields, eaten through winter and spring. Keeps best in a granary.",
             ["clay"] = "Clay: dug at a clay pit on the river's clay beds; potters fire it into pottery.",
-            ["pottery"] = "Pottery: every household keeps pots in use, and they wear out. Potters make them.",
+            ["pottery"] = "Pottery: pots in store, not yet handed out. Every household keeps pots in use and they wear out; potters make more. (Pots on the right: how many people have pots at home.)",
             ["copper"] = "Copper: smelted from copper ore; coppersmiths make copper tools from it.",
             ["bronze"] = "Bronze: copper with a little tin, cast at a foundry; bronze smiths make the best tools.",
         };
@@ -103,7 +103,7 @@ namespace Firstlight.Game.UI
             GUI.Label(new Rect(x, 5, 236, 22), $"<b>{S.Population}</b> people  " + (S.Homeless > 0 ? Col($"{S.Homeless} homeless", Warn) : free > 0 ? Col($"{free} beds free", Dim) : Col("no free beds", Dim)), Label);
             GUI.Label(new Rect(x, 27, 236, 20), $"{adults} adults · {kids} children · {elders} elders", Small);
             Tip(pr, $"People: {S.Population}, housing for {S.HousingCapacity}. Babies are born to families with a home, free beds and food in store; migrants come when there are free beds, food and good spirits. Unhappy or starving people leave.\n\n" +
-                    $"Happiness {S.AverageHappiness:P0}: the average and the worst of food, warmth, shelter, health (and later water, pottery and faith). It sets how fast people work.\n\nBorn {S.Births}, arrived {S.Migrants}, left {S.Leavers}, died {S.TotalDeaths}." +
+                    $"Happiness {S.AverageHappiness:P0}: the average and the worst of food, warmth, shelter, health (and later water, pots at home and faith). It sets how fast people work.\n\nBorn {S.Births}, arrived {S.Migrants}, left {S.Leavers}, died {S.TotalDeaths}." +
                     (S.TotalDeaths > 0 ? $"\nDeaths: {DeathsByCause()}. Events (V) says who." : ""));
             x += 240;
 

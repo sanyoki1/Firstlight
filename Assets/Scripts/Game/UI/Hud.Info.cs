@@ -241,7 +241,7 @@ namespace Firstlight.Game.UI
             Row(warm ? "Within the campfire's warmth" : b.Def.homeWarmth >= 0.6f ? Col("Outside the campfire's warmth (warm enough when heated)", Dim) : Col("Outside the campfire's warmth", Warn), Small, 20);
             var has = new List<string>();
             if (S.NeedActive("water")) has.Add(b.HasWater ? Col("clean water", Good) : Col("no clean water nearby", Bad));
-            if (S.NeedActive("goods")) has.Add(b.GoodsLife > 0 ? Col($"pottery ({b.GoodsLife:0} days)", Good) : Col("no pottery", Warn));
+            if (S.NeedActive("goods")) has.Add(b.GoodsLife > 0 ? Col($"pots in use ({b.GoodsLife:0} days left)", Good) : Col("no pots", Warn));
             if (S.NeedActive("faith")) has.Add(b.HasFaith ? Col("a shaman in reach", Good) : Col("no shaman in reach", Warn));
             if (has.Count > 0) Row("Household  " + string.Join(", ", has), Small, 20);
             var who = S.Citizens.Where(c => c.Home == b).Select(c => c.Age < D.Balance.adultAge ? $"{c.Name} ({(int)c.Age})" : c.Name).ToList();
@@ -312,7 +312,7 @@ namespace Firstlight.Game.UI
             if (c.Cold) needs.Add(Col("cold", Bad));
             if (c.Sick) needs.Add(Col($"sick for {c.SickDays} more days" + (c.Treated ? ", treated" : ""), Warn));
             if (c.NoWater) needs.Add(Col("no clean water", Warn));
-            if (c.NoGoods) needs.Add(Col("no pottery", Warn));
+            if (c.NoGoods) needs.Add(Col("no pots at home", Warn));
             if (c.NoFaith) needs.Add(Col("no faith", Warn));
             if (c.DisputeDays > 0) needs.Add(Col($"in a dispute ({c.DisputeDays} days off work)", Warn));
             if (c.UnhappyDays > 0) needs.Add(Col($"unhappy {c.UnhappyDays} days, may leave", Bad));

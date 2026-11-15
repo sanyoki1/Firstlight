@@ -331,6 +331,9 @@ namespace Firstlight.Game.UI
 
         // ------------------------------------------------------------------ needs in the top bar
 
+        /// <summary>A need's short top-bar label, naming what it measures.</summary>
+        static string NeedLabel(NeedDef n) => n.id switch { "water" => "Water", "goods" => "Pots", "faith" => "Faith", _ => n.name };
+
         /// <summary>The needs that have arrived, as "Water 92%" (only once they apply), and unrest; row two of the top bar.</summary>
         void DrawNeedsStrip(float x, float y, float right)
         {
@@ -339,7 +342,7 @@ namespace Firstlight.Game.UI
                 var r = new Rect(x, y, 116, 26);
                 GUI.Label(new Rect(x, y + 3, 56, 20), "Happy", Small);
                 GUI.Label(new Rect(x + 56, y + 2, 56, 22), Col($"<b>{hp:P0}</b>", hp >= 0.6f ? Good : hp >= D.Balance.leaveHappiness + 0.05f ? Warn : Bad), Label);
-                Tip(r, $"Average happiness {hp:P0}: a blend of the average and the worst of each person's needs (food, warmth, shelter, health, and later water, pottery and faith). Happy people work faster; below {D.Balance.leaveHappiness:P0} for {D.Balance.leaveAfterDays:0} days they leave.");
+                Tip(r, $"Average happiness {hp:P0}: a blend of the average and the worst of each person's needs (food, warmth, shelter, health, and later water, pots at home and faith). Happy people work faster; below {D.Balance.leaveHappiness:P0} for {D.Balance.leaveAfterDays:0} days they leave.");
                 x += 120;
             }
             foreach (var n in D.Balance.needs)
@@ -348,10 +351,14 @@ namespace Firstlight.Game.UI
                 if (met < 0) continue;
                 if (x + 116 > right) return;
                 var r = new Rect(x, y, 116, 26);
-                GUI.Label(new Rect(x, y + 3, 56, 20), n.id == "water" ? "Water" : n.name, Small);
+                // Labelled by what they measure: "Pots" (households with pots in use), not "Pottery" (the stock on the left).
+                GUI.Label(new Rect(x, y + 3, 56, 20), NeedLabel(n), Small);
                 GUI.Label(new Rect(x + 56, y + 2, 56, 22), Col($"<b>{met:P0}</b>", met >= 0.9f ? Good : met >= 0.6f ? Warn : Bad), Label);
-                Tip(r, $"{n.name}: {met:P0} of people have it. Unmet, it holds their happiness down to about {n.unmet:P0}." +
-                       (n.id == "water" ? " Homes near the river or within a well's reach have clean water; without it people also fall sick more." : n.id == "goods" ? " Each household keeps pots in use and they wear out; a clay pit and potters keep them coming." : n.id == "faith" ? " Homes within reach of a staffed Shaman's Hut have it; without it unrest grows." : ""));
+                Tip(r, (n.id == "water" ? $"Clean water: {met:P0} of people live where they can get it. Homes near the river or within a well's reach have it; without it people also fall sick more."
+                       : n.id == "goods" ? $"Pots at home: {met:P0} of people live in a household with pots in use. Pots wear out; a clay pit and potters keep them coming (the Pottery figure on the left is the pots in store, not yet handed out)."
+                       : n.id == "faith" ? $"Faith: {met:P0} of people live within reach of a staffed Shaman's Hut; without it unrest grows."
+                       : $"{n.name}: {met:P0} of people have it.") +
+                       $" Unmet, it holds a person's happiness down to about {n.unmet:P0}.");
                 x += 120;
             }
             if (S.Age.order >= 1 && x + 116 <= right)
