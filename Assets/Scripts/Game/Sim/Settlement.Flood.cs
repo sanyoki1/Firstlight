@@ -95,9 +95,9 @@ namespace Firstlight.Game
                 for (int r = 0; r < ResCount; r++)
                 {
                     float k = Data.Resources[r].spoilPerDay > 0 ? B.floodLossSpoiling : B.floodLoss;
-                    if (b.Store != null && b.Store[r] > 0) { float l = b.Store[r] * k; b.Store[r] -= l; b.Stored -= l; Consumed[r] += l; lost += l; }
-                    if (b.Out[r] > 0) { float l = b.Out[r] * k; b.Out[r] -= l; b.OutTotal -= l; lost += l; }
-                    if (b.In[r] > 0) { float l = b.In[r] * k; b.In[r] -= l; lost += l; }
+                    if (b.Store != null && b.Store[r] > 0) { float l = b.Store[r] * k; b.Store[r] -= l; b.Stored -= l; Lost[r] += l; lost += l; }
+                    if (b.Out[r] > 0) { float l = b.Out[r] * k; b.Out[r] -= l; b.OutTotal -= l; Lost[r] += l; lost += l; }
+                    if (b.In[r] > 0) { float l = b.In[r] * k; b.In[r] -= l; Lost[r] += l; lost += l; }
                 }
                 // Silt: a flooded field grows more this year.
                 if (b.Def.crop) b.FloodBonus = 1f + B.floodFertility;
@@ -211,6 +211,7 @@ namespace Firstlight.Game
             // Short of what was promised (the stores changed while the offer stood): fewer goods in return.
             if (giveAmt > 0 && took < giveAmt) getAmt = math.floor(getAmt * took / giveAmt);
             float stored = Deposit(want, getAmt, TownCenter.Center);
+            Traded[give] -= took; Traded[want] += stored;
             Trades++;
             Log(Severity.Info, $"Traders came by: {took:0} {Data.Resources[give].name.ToLower()} swapped for {getAmt:0} {Data.Resources[want].name.ToLower()}." +
                 (getAmt - stored >= 1f ? $" {getAmt - stored:0} of it had no room in store and was left behind." : ""), TownCenter.Center);

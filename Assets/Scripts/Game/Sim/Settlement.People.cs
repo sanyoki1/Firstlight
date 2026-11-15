@@ -229,6 +229,7 @@ namespace Firstlight.Game
                         site.InTransit[c.TaskIdx] -= c.CarryAmt;
                         var bd = site.BuildDef;
                         site.Delivered[c.TaskIdx] += c.CarryAmt;
+                        Consumed[c.CarryRes] += c.CarryAmt;     // built in (given back if the site is pulled down)
                         // Snap away float dust so a site is never left a hair short of its materials.
                         if (bd.cost[c.TaskIdx].amount - site.Delivered[c.TaskIdx] < MaterialTolerance) site.Delivered[c.TaskIdx] = bd.cost[c.TaskIdx].amount;
                         if (math.abs(site.InTransit[c.TaskIdx]) < 1e-3f) site.InTransit[c.TaskIdx] = 0;
@@ -379,7 +380,7 @@ namespace Firstlight.Game
                 if (d < bd) { bd = d; best = b; }
             }
             if (best != null) { best.Out[r] += c.CarryAmt; best.OutTotal += c.CarryAmt; }
-            else Consumed[r] += c.CarryAmt;
+            else Lost[r] += c.CarryAmt;
             c.CarryAmt = 0; c.CarryRes = -1;
         }
 
@@ -596,7 +597,7 @@ namespace Firstlight.Game
             if (c.Load != null)
                 for (int r = 0; r < ResCount; r++)
                 {
-                    if (c.Load[r] < 1e-4f) { c.Load[r] = 0; continue; }
+                    if (c.Load[r] < 1e-4f) { Lost[r] += c.Load[r]; c.Load[r] = 0; continue; }
                     total += c.Load[r];
                     if (c.Load[r] > most) { most = c.Load[r]; main = r; }
                 }
@@ -661,7 +662,7 @@ namespace Firstlight.Game
             if (better < 0 || TakeFrom(s, better, 1f) < 1f) return;
             if (c.Tool >= 0)
             {
-                if (c.ToolLife > B.toolWearDays * 0.5f) Deposit(c.Tool, 1f, c.Pos);
+                if (c.ToolLife > B.toolWearDays * 0.5f) Lost[c.Tool] += 1f - Deposit(c.Tool, 1f, c.Pos);
                 else Consumed[c.Tool] += 1f;
                 ToolSwaps++;
             }
@@ -675,7 +676,7 @@ namespace Firstlight.Game
         {
             if (c.Tool < 0) return;
             c.ToolLife -= Step / WorkdaySeconds * Effect("wear.tools");
-            if (c.ToolLife <= 0) { c.Tool = -1; c.ToolLife = 0; }
+            if (c.ToolLife <= 0) { Consumed[c.Tool] += 1f; c.Tool = -1; c.ToolLife = 0; }
         }
 
         /// <summary>
@@ -1156,6 +1157,7 @@ namespace Firstlight.Game
         void Depart(Citizen c, int edge)
         {
             CancelTask(c);
+            LoseBelongings(c);
             c.Job = null; c.IsBuilder = false; c.Home = null;
             c.CarryAmt = 0; c.CarryRes = -1;
             c.Gone = true;
@@ -1166,10 +1168,19 @@ namespace Firstlight.Game
             _jobsDirty = true;
         }
 
+        /// <summary>What a leaver takes along or the dead had on them (goods in hand, a field load, the tool) leaves the economy.</summary>
+        void LoseBelongings(Citizen c)
+        {
+            if (c.CarryRes >= 0) Lost[c.CarryRes] += c.CarryAmt;
+            if (c.Load != null) for (int r = 0; r < ResCount; r++) Lost[r] += c.Load[r];
+            if (c.Tool >= 0) Lost[c.Tool] += 1f;
+        }
+
         void Die(Citizen c, string cause)
         {
             if (c.Gone) return;
             CancelTask(c);
+            LoseBelongings(c);
             c.Gone = true;
             c.Job = null; c.IsBuilder = false; c.Home = null;
             Deaths[cause] = Deaths.TryGetValue(cause, out int n) ? n + 1 : 1;

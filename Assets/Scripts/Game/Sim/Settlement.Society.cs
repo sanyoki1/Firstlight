@@ -222,7 +222,7 @@ namespace Firstlight.Game
                 {
                     float amt = math.min(40f, from.Store[res] * R(0.08f, 0.2f));
                     amt = TakeFrom(from, res, amt);
-                    Consumed[res] += amt;
+                    Lost[res] += amt;
                     Thefts++;
                     Log(Severity.Warning, $"Theft: {amt:0} {Data.Resources[res].name.ToLower()} went missing from the {from.Def.name}.", from.Center);
                 }

@@ -20,7 +20,7 @@ namespace Firstlight.Game
             w.Int(BuildersWanted); w.Int(Births); w.Int(Migrants); w.Int(Leavers);
             w.Int(Deaths.Count); foreach (var kv in Deaths) { w.Str(kv.Key); w.Int(kv.Value); }
             w.Double(KnowledgeEarned); w.Float(KnowledgeBank);                  // v2: the cumulative counters are doubles
-            w.Floats(StockTotals); w.Doubles(Produced); w.Doubles(Consumed);
+            w.Floats(StockTotals); w.Doubles(Produced); w.Doubles(Consumed); w.Doubles(Lost); w.Doubles(Traded);
             w.Double(WorkerSeconds); w.Double(ProductiveSeconds);
             w.Float(GrainProducedF);                                            // v2
             w.Int(ToolSwaps); w.Int(PathCount); w.Int(Upgrades); w.Int(Trades);
@@ -168,6 +168,8 @@ namespace Firstlight.Game
             KnowledgeEarned = v2 ? r.Double() : r.Float(); KnowledgeBank = r.Float();
             CopyInto(r.ResFloats(), StockTotals);
             CopyInto(v2 ? r.ResDoubles() : Widen(r.ResFloats()), Produced); CopyInto(v2 ? r.ResDoubles() : Widen(r.ResFloats()), Consumed);
+            if (v2) { CopyInto(r.ResDoubles(), Lost); CopyInto(r.ResDoubles(), Traded); }
+            else { Array.Clear(Lost, 0, ResCount); Array.Clear(Traded, 0, ResCount); }   // not counted before format 2
             WorkerSeconds = v2 ? r.Double() : r.Float(); ProductiveSeconds = v2 ? r.Double() : r.Float();
             GrainProducedF = v2 ? r.Float() : _grain >= 0 ? (float)Produced[_grain] : 0;   // v1 kept it in Produced (a float then)
             ToolSwaps = r.Int(); PathCount = r.Int(); Upgrades = r.Int(); Trades = r.Int();

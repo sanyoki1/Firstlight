@@ -80,7 +80,9 @@ namespace Firstlight.Game
         // Cumulative counters are doubles: they are fed tiny per-step amounts for decades (floats stopped adding them up
         // exactly past ~2^15). Reports only: no decision of the sim reads them.
         public readonly double[] Produced;   // made by workplaces since the start (per resource)
-        public readonly double[] Consumed;   // eaten, burned or worn out since the start (per resource)
+        public readonly double[] Consumed;   // used up since the start: eaten, burned, worn out, used by workplaces, built in
+        public readonly double[] Lost;       // gone unused since the start: spoiled, soaked, stolen, dropped, no room, taken by leavers and the dead
+        public readonly double[] Traded;     // net from traders since the start (received minus given)
         public double WorkerSeconds, ProductiveSeconds;  // workers' time on shift vs time actually producing
 
         // ------------------------------------------------------------------ research and ages
@@ -107,6 +109,8 @@ namespace Firstlight.Game
             StockTotals = new float[ResCount];
             Produced = new double[ResCount];
             Consumed = new double[ResCount];
+            Lost = new double[ResCount];
+            Traded = new double[ResCount];
             _foodByPerish = Enumerable.Range(0, ResCount).Where(i => data.Resources[i].isFood)
                 .OrderByDescending(i => data.Resources[i].spoilPerDay).ThenBy(i => i).ToArray();
             _toolsBest = Enumerable.Range(0, ResCount).Where(i => data.Resources[i].toolSpeed > 0)

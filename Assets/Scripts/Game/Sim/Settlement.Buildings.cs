@@ -209,9 +209,14 @@ namespace Firstlight.Game
             if (b == TownCenter) { reason = "The campfire can't be removed"; return false; }
             var refund = new float[ResCount];
             for (int i = 0; i < b.Def.cost.Length; i++)
+            {
+                // (The refund line is kept exactly as it was: the JIT may keep the product in higher precision, and a
+                // float local in between would round it differently and change the game.)
                 refund[ResIndex(b.Def.cost[i].id)] += b.IsSite ? b.Delivered[i] : b.Def.cost[i].amount * B.demolishRefund;
+                Consumed[ResIndex(b.Def.cost[i].id)] -= b.IsSite ? b.Delivered[i] : b.Def.cost[i].amount * B.demolishRefund;   // built-in materials come back
+            }
             if (b.UpgradeTo != null)
-                for (int i = 0; i < b.UpgradeTo.cost.Length; i++) refund[b.CostRes[i]] += b.Delivered[i];
+                for (int i = 0; i < b.UpgradeTo.cost.Length; i++) { refund[b.CostRes[i]] += b.Delivered[i]; Consumed[b.CostRes[i]] -= b.Delivered[i]; }
             for (int r = 0; r < ResCount; r++) refund[r] += b.Out[r] + b.In[r];
             if (b.Store != null) for (int r = 0; r < ResCount; r++) refund[r] += b.Store[r];
             b.State = BuildState.Removed;
@@ -219,7 +224,11 @@ namespace Firstlight.Game
             if (b.Store != null) { Array.Clear(b.Store, 0, ResCount); b.Stored = 0; }
             Array.Clear(b.Out, 0, ResCount); Array.Clear(b.In, 0, ResCount); b.OutTotal = 0;
             float lost = 0;
-            for (int r = 0; r < ResCount; r++) if (refund[r] > 0.01f) lost += refund[r] - Deposit(r, refund[r], b.Center);
+            for (int r = 0; r < ResCount; r++)
+            {
+                if (refund[r] > 0.01f) { float put = Deposit(r, refund[r], b.Center); lost += refund[r] - put; Lost[r] += refund[r] - put; }
+                else Lost[r] += refund[r];
+            }
             foreach (var c in Citizens)
             {
                 if (c.Home == b) c.Home = null;
@@ -332,14 +341,14 @@ namespace Firstlight.Game
         {
             if (b == null || b.UpgradeTo == null) return;
             var refund = new float[ResCount];
-            for (int i = 0; i < b.UpgradeTo.cost.Length; i++) refund[b.CostRes[i]] += b.Delivered[i];
+            for (int i = 0; i < b.UpgradeTo.cost.Length; i++) { refund[b.CostRes[i]] += b.Delivered[i]; Consumed[b.CostRes[i]] -= b.Delivered[i]; }
             foreach (var c in Citizens) if (c.TaskB2 == b && (c.Task == Task.FetchMaterial || c.Task == Task.DeliverMaterial || c.Task == Task.GoBuild || c.Task == Task.Build)) CancelTask(c);
             b.UpgradeTo = null;
             b.Delivered = new float[b.Def.cost.Length];
             b.InTransit = new float[b.Def.cost.Length];
             b.CostRes = Array.ConvertAll(b.Def.cost, a => ResIndex(a.id));
             b.Work = 1f;
-            for (int r = 0; r < ResCount; r++) if (refund[r] > 0.01f) Deposit(r, refund[r], b.Center);
+            for (int r = 0; r < ResCount; r++) Lost[r] += refund[r] > 0.01f ? refund[r] - Deposit(r, refund[r], b.Center) : refund[r];
             _jobsDirty = true;
         }
 
@@ -443,7 +452,7 @@ namespace Firstlight.Game
             float take = math.min(amt, s.Store[r]);
             if (take <= 0) return 0;
             s.Store[r] -= take; s.Stored -= take; StockTotals[r] -= take;
-            if (s.Store[r] < 1e-4f) { s.Stored -= s.Store[r]; StockTotals[r] -= s.Store[r]; s.Store[r] = 0; }
+            if (s.Store[r] < 1e-4f) { s.Stored -= s.Store[r]; StockTotals[r] -= s.Store[r]; Lost[r] += s.Store[r]; s.Store[r] = 0; }
             return take;
         }
 
@@ -524,10 +533,10 @@ namespace Firstlight.Game
                     if (b.Store != null && b.Store[r] > 0)
                     {
                         float loss = b.Store[r] * math.saturate(rate * b.Def.spoilMultiplier);
-                        b.Store[r] -= loss; b.Stored -= loss;
+                        b.Store[r] -= loss; b.Stored -= loss; Lost[r] += loss;
                     }
-                    if (b.Out[r] > 0) { float loss = b.Out[r] * math.saturate(rate); b.Out[r] -= loss; b.OutTotal -= loss; }
-                    if (b.In[r] > 0) b.In[r] -= b.In[r] * math.saturate(rate);
+                    if (b.Out[r] > 0) { float loss = b.Out[r] * math.saturate(rate); b.Out[r] -= loss; b.OutTotal -= loss; Lost[r] += loss; }
+                    if (b.In[r] > 0) { float before = b.In[r]; b.In[r] -= b.In[r] * math.saturate(rate); Lost[r] += before - b.In[r]; }
                 }
             }
         }
@@ -595,6 +604,7 @@ namespace Firstlight.Game
                 {
                     float t = math.min(need, b.In[r]);
                     b.In[r] -= t; need -= t;
+                    Consumed[r] += t;
                     if (need <= 0) break;
                 }
             }

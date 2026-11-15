@@ -90,6 +90,7 @@ namespace Firstlight.Game
                 if (S.Day != 0 || S.Population != 0) Violation("pre-campfire", $"time moved or people appeared: day {S.Day}, pop {S.Population}");
                 PlaceCampfire();
                 _startPeople = S.Population;
+                _startGoods = Holdings();
                 int totalDays = years * S.DaysPerYear, lastDay = S.Day, deadDays = 0;
                 while (S.Day < totalDays)
                 {
@@ -423,8 +424,74 @@ namespace Firstlight.Game
             }
             if (S.KnowledgeBank < -eps || S.KnowledgeBank > 0.01f && S.ResearchQueue.Count > 0) Violation("knowledge bank", $"{S.KnowledgeBank} banked with {S.ResearchQueue.Count} queued");
             if (S.BuildersWanted < 0) Violation("builders", $"{S.BuildersWanted}");
+            CheckConservation();
         }
         int _homelessWithRoom;
+
+        // ------------------------------------------------------------------ goods conservation
+
+        double[] _startGoods;
+        double _worstDrift; string _worstDriftAt = "";
+
+        /// <summary>Every good the settlement holds, per good: stores, workplace piles (out and in), what people carry, field
+        /// loads, and the tools in people's hands (one each).</summary>
+        double[] Holdings()
+        {
+            var h = new double[S.ResCount];
+            foreach (var b in S.Buildings)
+            {
+                for (int r = 0; r < S.ResCount; r++) h[r] += b.Out[r] + b.In[r];
+                if (b.Store != null) for (int r = 0; r < S.ResCount; r++) h[r] += b.Store[r];
+            }
+            foreach (var c in S.Citizens)
+            {
+                if (c.Gone) continue;
+                if (c.CarryRes >= 0) h[c.CarryRes] += c.CarryAmt;
+                if (c.Load != null) for (int r = 0; r < S.ResCount; r++) h[r] += c.Load[r];
+                if (c.Tool >= 0) h[c.Tool] += 1;
+            }
+            return h;
+        }
+
+        /// <summary>
+        /// Per good: start + produced + traded (net) - consumed - lost == held (stores, piles, hands, loads, tools). Holdings
+        /// are floats added to in many small steps, so a little rounding is allowed: 0.02 plus 1e-6 of the good's total flow
+        /// (the largest drift seen in 8 fuzz seeds x 15 years was about 2e-7 of the flow). The first check after day 10 also
+        /// makes sure the check can fail: one unit of a good put into a store without a counter must be caught.
+        /// </summary>
+        void CheckConservation()
+        {
+            if (_startGoods == null) return;
+            if (!_conservationSelfTested && S.Day >= 10 && S.TownCenter != null && S.TownCenter.Store != null)
+            {
+                _conservationSelfTested = true;
+                float keep = S.TownCenter.Store[0];          // put back exactly afterwards: the run must not change
+                S.TownCenter.Store[0] = keep + 1f;
+                int caught = ConservationOff(Holdings(), false);
+                S.TownCenter.Store[0] = keep;
+                if (caught == 0) Violation("goods conservation", "self-test: one unit added to a store without a counter was not caught");
+                else _log.Add($"day {S.Day}: goods conservation self-test: an uncounted unit of {D.Resources[0].id} was caught");
+            }
+            ConservationOff(Holdings(), true);
+        }
+        bool _conservationSelfTested;
+
+        int ConservationOff(double[] h, bool report)
+        {
+            int off = 0;
+            for (int r = 0; r < S.ResCount; r++)
+            {
+                double flow = _startGoods[r] + S.Produced[r] + Math.Abs(S.Traded[r]) + Math.Abs(S.Consumed[r]) + S.Lost[r];
+                double expect = _startGoods[r] + S.Produced[r] + S.Traded[r] - S.Consumed[r] - S.Lost[r];
+                double drift = h[r] - expect, tol = 0.02 + flow * 1e-6;
+                if (Math.Abs(drift) > tol) off++;
+                if (!report) continue;
+                if (Math.Abs(drift) / tol > _worstDrift) { _worstDrift = Math.Abs(drift) / tol; _worstDriftAt = $"{D.Resources[r].id} {drift:+0.0000;-0.0000} of {tol:F3} allowed on day {S.Day} (flow {flow:F0})"; }
+                if (Math.Abs(drift) > tol)
+                    Violation("goods conservation", $"{D.Resources[r].id}: held {h[r]:F3} but start {_startGoods[r]:F1} + produced {S.Produced[r]:F3} + traded {S.Traded[r]:F3} - consumed {S.Consumed[r]:F3} - lost {S.Lost[r]:F3} = {expect:F3} (off by {drift:F4})");
+            }
+            return off;
+        }
 
         /// <summary>
         /// Every game hour: someone on the same errand (not resting, working, building or idling) at the same spot, or
@@ -486,6 +553,7 @@ namespace Firstlight.Game
             sb.AppendLine("## Notes");
             sb.AppendLine();
             foreach (var l in _log) sb.AppendLine("- " + l);
+            if (_startGoods != null) sb.AppendLine($"- Goods conservation: largest drift {_worstDrift:P0} of the allowance ({_worstDriftAt}).");
             sb.AppendLine();
             sb.AppendLine("## Actions");
             sb.AppendLine();

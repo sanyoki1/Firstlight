@@ -304,6 +304,12 @@ namespace Firstlight.Game
             sb.AppendLine(r.reachedNextAge ? $"Reached the {data.Age(r.nextAge)?.name} on {When(s, r.ageUpDay)}." : $"Did not reach the {data.Age(r.nextAge)?.name}.");
             sb.AppendLine(r.reachedFinalAge ? $"Reached the {data.Age(r.finalAge)?.name} on {When(s, r.finalAgeDay)}." : $"Did not reach the {data.Age(r.finalAge)?.name}.");
             sb.AppendLine($"Outbreaks {r.outbreaks}, thefts {r.thefts}, disputes {r.disputes}, trader visits {r.trades}, upgrades {r.upgrades}, tool swaps {r.toolSwaps}, path tiles {r.paths}.");
+            if (s != null)
+            {
+                double food = 0, all = 0;
+                for (int i = 0; i < s.ResCount; i++) { all += s.Lost[i]; if (data.Resources[i].isFood) food += s.Lost[i]; }
+                sb.AppendLine($"Goods lost (spoiled, soaked, stolen, dropped, no room, taken by leavers and the dead): food {food.ToString("F0", Inv)}, all goods {all.ToString("F0", Inv)}.");
+            }
             sb.AppendLine();
             sb.AppendLine("## Seasons");
             sb.AppendLine();
