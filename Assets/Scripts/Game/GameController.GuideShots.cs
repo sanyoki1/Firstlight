@@ -148,10 +148,11 @@ namespace Firstlight.Game
             yield return Shot("help");
             Hud.HelpOpen = false;
 
-            // A death, and its hint naming who and of what.
+            // A death, and its hint naming who and of what (the age-up banner, if the auto-player advanced, is cleared).
             yield return Advance(() => Sim.TotalDeaths > 0 && Sim.DayFraction > 0.4f && Sim.DayFraction < 0.6f, 4000, 3);
             if (Sim.TotalDeaths > 0)
             {
+                Hud.ClearBanner();
                 Hud.ShowHint("death");
                 LookAt(World(TownMiddle()), 36f, 50f, 25f);
                 yield return Settle(6);
@@ -163,9 +164,25 @@ namespace Firstlight.Game
             yield return Advance(() => Sim.Age.order >= 1 && Sim.Season == 0 && Sim.DayOfSeason >= 2 && Sim.DayFraction > 0.45f && Sim.Buildings.Any(b => b.Active && b.Def.crop), 8000, 3);
             LookAt(World(TownMiddle()), 36f, 50f, 25f);
             yield return Settle(6);
+            Hud.ClearBanner();
             Hud.ForceTooltip(Hud.FoodTip(), new Vector2(690, 40));
             yield return Shot("harvest_outlook");
             Hud.ForceTooltip(null, default);
+            // Staged (this run only): fields pulled down one by one until the harvest falls short, to show the warning.
+            var crops = Sim.Buildings.Where(b => b.Active && b.Def.crop).ToList();
+            for (int i = 0; i < crops.Count && !Sim.Warnings.Any(w => w.StartsWith("Expected harvest")); i++)
+            {
+                Sim.Demolish(crops[i], out _);
+                yield return Advance(() => Sim.Warnings.Any(w => w.StartsWith("Expected harvest")), 2, 1);
+            }
+            if (Sim.Warnings.Any(w => w.StartsWith("Expected harvest")))
+            {
+                yield return Settle(4);
+                Hud.ClearBanner();
+                Hud.ForceTooltip(Hud.FoodTip(), new Vector2(690, 40));
+                yield return Shot("harvest_warning_staged");
+                Hud.ForceTooltip(null, default);
+            }
 
             // A workplace waiting for an input, named.
             yield return Advance(() => Sim.Buildings.Any(b => b.Active && b.Status == "Waiting for inputs"), 3000, 2);
@@ -173,6 +190,7 @@ namespace Firstlight.Game
             if (waiting != null)
             {
                 Hud.Select(waiting);
+                Hud.ClearBanner();
                 LookAt(World(waiting.Center), 22f, 50f, 20f);
                 yield return Settle(4);
                 yield return Shot("status_waiting_input");

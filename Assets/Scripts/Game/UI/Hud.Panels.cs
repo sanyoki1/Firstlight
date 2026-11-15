@@ -244,14 +244,18 @@ namespace Firstlight.Game.UI
             JumpTo(t.at);
         }
 
-        // Whether the next age can be reached now (looked up twice a second, not every frame: it builds lists).
-        bool _ageReady; float _ageReadyAt = -1;
+        // Whether the next age can be reached now (looked up twice a second, not every frame: it builds lists; and at once
+        // when more than a game hour has passed since, as when the game runs fast).
+        bool _ageReady; float _ageReadyAt = -1, _ageReadySim = -1;
         bool AgeReady
         {
             get
             {
                 if (S.NeedsCampfire) return false;
-                if (_ageReadyAt < 0 || Time.unscaledTime - _ageReadyAt > 0.5f) { _ageReadyAt = Time.unscaledTime; _ageReady = S.CanAdvanceAge(); }
+                if (_ageReadyAt < 0 || Time.unscaledTime - _ageReadyAt > 0.5f || math.abs(S.Time - _ageReadySim) > D.Balance.dayLengthSeconds / 24f)
+                {
+                    _ageReadyAt = Time.unscaledTime; _ageReadySim = S.Time; _ageReady = S.CanAdvanceAge();
+                }
                 return _ageReady;
             }
         }
