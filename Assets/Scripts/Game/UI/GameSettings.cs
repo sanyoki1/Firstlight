@@ -6,7 +6,7 @@ using UnityEngine;
 namespace Firstlight.Game.UI
 {
     /// <summary>
-    /// Player settings, kept in persistentDataPath/settings.json (plain JsonUtility, so a hand edit or a missing field
+    /// Player settings, kept in DataPaths.Root/settings.json (persistentDataPath for a plain launch) (plain JsonUtility, so a hand edit or a missing field
     /// falls back to the default). Applied at start and whenever the settings screen changes something.
     /// </summary>
     [Serializable]
@@ -26,7 +26,7 @@ namespace Firstlight.Game.UI
         public bool guideDone;                // the guide was finished or closed once (not shown again for new games)
 
         public static GameSettings Current { get; private set; } = new();
-        static string FilePath => Path.Combine(Application.persistentDataPath, "settings.json");
+        static string FilePath => Path.Combine(DataPaths.Root, "settings.json");   // a scratch folder in test modes (DataPaths)
 
         public static void Load()
         {

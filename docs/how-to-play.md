@@ -14,7 +14,8 @@ the people decide who walks where. Everything else (who works, who hauls, who bu
   - **Load**: every save with its age, year, season, population and the real date it was saved.
   - **Settings**: window/fullscreen, resolution, vsync, frame cap, interface size, edge scrolling, camera speed,
     autosave, the first-game guide, hints, and sound volumes. Kept in `settings.json` next to the saves.
-- Saves live in `%USERPROFILE%\AppData\LocalLow\<company>\Firstlight\saves` (Unity's persistentDataPath; the load
+- Saves live in `%USERPROFILE%\AppData\LocalLow\<company>\Firstlight\saves` (Unity's persistentDataPath, or the
+  folder given with `-savedir DIR`; test modes use a scratch folder, see the tests below; the load
   screen shows the exact folder).
 
 ## Controls
@@ -96,3 +97,11 @@ Things worth knowing:
 - Smoke test of the default launch path: `Build/Firstlight.exe -smoketest` (menu, new game, campfire, a minute of
   play, save, quit), then `Build/Firstlight.exe -smoketest -smokecontinue` (menu, Continue, checks the loaded state
   is exactly the saved one).
+- **Test runs never touch the real saves.** Every non-interactive mode (`-autotest`, `-fuzztest`, `-uishots`,
+  `-p4shots`, `-shot`, `-shots` and the other clip modes, `-smoketest`, `-soak`, `-perfprobe`, `-faulttest`,
+  `-autoplay`, `-reloadtest`, `-quitafter`, anything in `-batchmode`) keeps its saves, autosaves, quicksave,
+  `settings.json` and the smoke-test digest in a scratch folder: `<outdir>/userdata` when `-outdir` is given, else
+  `%TEMP%\Firstlight-scratch` (one fixed folder, so `-smoketest` and `-smoketest -smokecontinue` find each other).
+  `-savedir DIR` puts them in DIR instead (for any launch, a person's too). Only a plain launch (no test mode; `-seed N`
+  or `-load FILE` alone count as plain) reads and writes the real folder. The player log says where they went
+  (`[Paths] ...`). A scratch folder starts with default settings (guide and hints on).

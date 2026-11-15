@@ -52,7 +52,7 @@ namespace Firstlight.Game
         const string Magic = "FLSV";
         public const string Extension = ".flsave";
 
-        public static string Dir => Path.Combine(Application.persistentDataPath, "saves");
+        public static string Dir => Path.Combine(DataPaths.Root, "saves");   // the real folder only for a plain launch (DataPaths)
 
         public sealed class Header
         {

@@ -191,7 +191,7 @@ namespace Firstlight.Game
         /// </summary>
         IEnumerator SmokeTest()
         {
-            string dir = Path.Combine(Application.persistentDataPath, "smoke");
+            string dir = Path.Combine(DataPaths.Root, "smoke");
             Directory.CreateDirectory(dir);
             string digestFile = Path.Combine(dir, "digest.txt");
             if (_smoke == 0) _smoke = HasArg("-smokecontinue") ? 3 : 1;
