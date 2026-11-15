@@ -540,6 +540,10 @@ namespace Firstlight.Game.UI
             return r;
         }
 
+        /// <summary>Whether the pointer is over a rectangle. A tooltip's text is built only when it is (built for every figure
+        /// on every call, the tooltips were most of the HUD's garbage).</summary>
+        static bool Over(Rect r) => r.Contains(Event.current.mousePosition);
+
         void Tip(Rect r, string text)
         {
             if (!string.IsNullOrEmpty(text) && r.Contains(Event.current.mousePosition)) _tip = text;

@@ -388,7 +388,7 @@ namespace Firstlight.Game.UI
                 {
                     if (r.Contains(Event.current.mousePosition)) Fill(r, new Color(1, 1, 1, 0.04f));
                     if (GUI.Button(r, GUIContent.none, GUIStyle.none)) CycleChip(w);
-                    Tip(r, ChipTipText(w));
+                    if (Over(r)) Tip(r, ChipTipText(w));
                 }
                 y += hh + 4;
             }
@@ -426,7 +426,7 @@ namespace Firstlight.Game.UI
                 GUI.Label(new Rect(r.x + 12, r.y + 3, wd - 14 - (e.HasPlace ? 14 : 0), hh - 6), repeats > 1 ? Col(e.Text, col) + "  " + Col($"x{repeats}", Faint) : Col(e.Text, col), style);
                 if (e.HasPlace) GUI.Label(new Rect(r.xMax - 16, r.y + 2, 12, hh - 4), Col("›", Dim), style);   // clickable: goes there
                 if (e.HasPlace && GUI.Button(r, GUIContent.none, GUIStyle.none)) JumpTo(e.Place);
-                if (e.HasPlace) Tip(r, $"Day {e.Day + 1}. Click to go there.");
+                if (e.HasPlace && Over(r)) Tip(r, $"Day {e.Day + 1}. Click to go there.");
                 GUI.color = old;
                 y += hh + 3;
             }

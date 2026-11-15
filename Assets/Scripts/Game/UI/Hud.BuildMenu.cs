@@ -75,7 +75,7 @@ namespace Firstlight.Game.UI
                 _summaryStyle ??= new GUIStyle(Small) { alignment = TextAnchor.MiddleRight };
                 _summaryStyle.fontSize = Small.fontSize;
                 GUI.Label(new Rect(row.x + 200, row.y + 4, 176, 22), Col(Summary(d), Dim), _summaryStyle);
-                Tip(row, Describe(d));
+                if (Over(row)) Tip(row, Describe(d));
                 y += rowH;
             }
         }

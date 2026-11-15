@@ -81,7 +81,7 @@ namespace Firstlight.Game.UI
             var ar = new Rect(x, 5, 250, 42);
             GUI.Label(new Rect(x, 5, 250, 22), S.Age?.name ?? "", Title);
             GUI.Label(new Rect(x, 27, 250, 20), $"Year {S.Year + 1}, {S.SeasonName} day {S.DayOfSeason + 1}  ·  {Clock()}", Small);
-            Tip(ar, $"The age the settlement has reached, and the calendar: {D.Balance.daysPerSeason} days a season, a year of four seasons. Winter is cold and nothing grows; spring floods can come. Goals (G) show what the next age needs.");
+            if (Over(ar)) Tip(ar, $"The age the settlement has reached, and the calendar: {D.Balance.daysPerSeason} days a season, a year of four seasons. Winter is cold and nothing grows; spring floods can come. Goals (G) show what the next age needs.");
             x += 252;
 
             // Speed.
@@ -92,7 +92,7 @@ namespace Firstlight.Game.UI
                 var r = new Rect(x + i * 42, 11, 38, 30);
                 bool on = math.abs(S.Speed - speeds[i]) < 0.01f;
                 if (GUI.Button(r, names[i], on ? ButtonOn : Button)) G.SetSpeed(speeds[i]);
-                Tip(r, i == 0 ? "Pause (Space). You can still build and give orders while paused." : $"Game speed {names[i]} (key {i}).");
+                if (Over(r)) Tip(r, i == 0 ? "Pause (Space). You can still build and give orders while paused." : $"Game speed {names[i]} (key {i}).");
             }
             x += 4 * 42 + 16;
 
@@ -102,7 +102,7 @@ namespace Firstlight.Game.UI
             var pr = new Rect(x, 5, 236, 42);
             GUI.Label(new Rect(x, 5, 236, 22), $"<b>{S.Population}</b> people  " + (S.Homeless > 0 ? Col($"{S.Homeless} homeless", Warn) : free > 0 ? Col($"{free} beds free", Dim) : Col("no free beds", Dim)), Label);
             GUI.Label(new Rect(x, 27, 236, 20), $"{adults} adults · {kids} children · {elders} elders", Small);
-            Tip(pr, $"People: {S.Population}, housing for {S.HousingCapacity}. Babies are born to families with a home, free beds and food in store; migrants come when there are free beds, food and good spirits. Unhappy or starving people leave.\n\n" +
+            if (Over(pr)) Tip(pr, $"People: {S.Population}, housing for {S.HousingCapacity}. Babies are born to families with a home, free beds and food in store; migrants come when there are free beds, food and good spirits. Unhappy or starving people leave.\n\n" +
                     $"Happiness {S.AverageHappiness:P0}: the average and the worst of food, warmth, shelter, health (and later water, pots at home and faith). It sets how fast people work.\n\nBorn {S.Births}, arrived {S.Migrants}, left {S.Leavers}, died {S.TotalDeaths}." +
                     (S.TotalDeaths > 0 ? $"\nDeaths: {DeathsByCause()}. Events (V) says who." : ""));
             x += 240;
@@ -113,7 +113,7 @@ namespace Firstlight.Game.UI
             var fr = new Rect(x, 5, 150, 42);
             GUI.Label(new Rect(x, 5, 150, 22), "Food " + Col(FoodDaysText(fd), fcol), Label);
             GUI.Label(new Rect(x, 27, 150, 20), $"{S.FoodStock:0} in store" + Arrow(_foodDelta, 0.5f), Small);
-            Tip(fr, FoodTip());
+            if (Over(fr)) Tip(fr, FoodTip());
             if (GUI.Button(fr, GUIContent.none, GUIStyle.none)) ToggleStocks();
 
             // Research progress (right side), then the panel buttons.
@@ -140,7 +140,7 @@ namespace Firstlight.Game.UI
                 Bar(new Rect(rx + 8, 30, rw - lw - 18, 9), def != null ? S.ResearchProgress(cur) : 0, Accent);
                 GUI.Label(new Rect(rx + rw - lw - 4, 25, lw + 2, 18), $"+{_knowPerDay:0.#}/day{eta}", new GUIStyle(Small) { alignment = TextAnchor.MiddleRight });
             }
-            Tip(rr, (def != null ? $"{def.name}: {S.ResearchProgress(cur):P0}. {S.ResearchQueue.Count} in the queue." : $"Nothing queued: knowledge is banked ({S.KnowledgeBank:0}) until you choose.") +
+            if (Over(rr)) Tip(rr, (def != null ? $"{def.name}: {S.ResearchProgress(cur):P0}. {S.ResearchQueue.Count} in the queue." : $"Nothing queued: knowledge is banked ({S.KnowledgeBank:0}) until you choose.") +
                     $"\n\nKnowledge {_knowPerDay:0.#} a day, from the elders at staffed Elders' Fires (old people count more). More fires and more elders on them research faster. Open the research tree (R)." +
                     (stalled != null ? $"\n\n{stalled}: nothing makes knowledge now." : ""));
 
@@ -158,7 +158,7 @@ namespace Firstlight.Game.UI
                 {
                     if (i == 0) ToggleResearch(); else if (i == 1) ToggleGoals(); else if (i == 2) ToggleJobs(); else if (i == 3) ToggleEvents(); else ToggleHelp();
                 }
-                Tip(r, tips[i] + (narrow ? $" ({keys[i]})" : "") + (i == 1 && AgeReady ? " Everything for the next age is in place: advance from here." : ""));
+                if (Over(r)) Tip(r, tips[i] + (narrow ? $" ({keys[i]})" : "") + (i == 1 && AgeReady ? " Everything for the next age is in place: advance from here." : ""));
             }
 
             // Row two: key stocks, then the needs and unrest (they keep their order and drop from the right when narrow).
@@ -178,7 +178,7 @@ namespace Firstlight.Game.UI
                 // Name 68 wide (the small text grows when the layout is scaled down: "Firewood" ran into its figure at 720p).
                 GUI.Label(new Rect(x, y2 + 3, 68, 20), tools ? "Tools" : D.Resources[r].name, Small);
                 GUI.Label(new Rect(x + 68, y2 + 2, 50, 22), $"<b>{amt:0}</b>" + Arrow(trend, 0.3f), Label);
-                Tip(sr, (StockTips.TryGetValue(id, out var t) ? t : D.Resources[r].name) + $"\n\n{amt:0.#} in store, {trend:+0.#;-0.#;0} over the last day. Click for every good (T).");
+                if (Over(sr)) Tip(sr, (StockTips.TryGetValue(id, out var t) ? t : D.Resources[r].name) + $"\n\n{amt:0.#} in store, {trend:+0.#;-0.#;0} over the last day. Click for every good (T).");
                 if (GUI.Button(sr, GUIContent.none, GUIStyle.none)) ToggleStocks();
                 x += 120; shown++;
             }

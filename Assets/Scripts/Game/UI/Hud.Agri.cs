@@ -50,7 +50,7 @@ namespace Firstlight.Game.UI
                     string n = ResName(d.outputs[i].id);
                     if (GUI.Button(r, ok ? n : Col(n, Faint), math.max(0, b.Focus) == i ? ButtonOn : ok ? Button : ButtonDim) && ok) S.SetFocus(b, i);
                     var unlock = D.Resource(d.outputs[i].id)?.unlockedBy;
-                    Tip(r, ok ? $"Sow {n.ToLower()}: about {d.outputs[i].amount:0} at a full harvest." + (b.Sown > 0 && i != b.CropOut ? " Takes effect at next spring's sowing." : "")
+                    if (Over(r)) Tip(r, ok ? $"Sow {n.ToLower()}: about {d.outputs[i].amount:0} at a full harvest." + (b.Sown > 0 && i != b.CropOut ? " Takes effect at next spring's sowing." : "")
                               : $"Needs research: {D.ResearchById(unlock)?.name ?? unlock}");
                     x += 114;
                 }
@@ -85,7 +85,7 @@ namespace Firstlight.Game.UI
             string label = can ? $"Rebuild as a {t.name}  " + Col(Cost(t), Dim) : Col($"Rebuild as a {t.name}  ({why})", Dim);
             if (GUI.Button(r, label, can ? Button : ButtonDim) && can) UpgradeSelected();
             string gain = t.housing > 0 ? $"Houses {t.housing} (now {b.Def.housing}), warmth {t.homeWarmth:0.##} (now {b.Def.homeWarmth:0.##}). " : "";
-            Tip(r, $"{gain}Builders bring the materials and rebuild it where it stands; people keep living here meanwhile.\n\n{t.description}");
+            if (Over(r)) Tip(r, $"{gain}Builders bring the materials and rebuild it where it stands; people keep living here meanwhile.\n\n{t.description}");
             _ly += 34;
         }
 
@@ -361,7 +361,7 @@ namespace Firstlight.Game.UI
                 var r = new Rect(x, y, 116, 26);
                 GUI.Label(new Rect(x, y + 3, 56, 20), "Happy", Small);
                 GUI.Label(new Rect(x + 56, y + 2, 56, 22), Col($"<b>{hp:P0}</b>", hp >= 0.6f ? Good : hp >= D.Balance.leaveHappiness + 0.05f ? Warn : Bad), Label);
-                Tip(r, $"Average happiness {hp:P0}: a blend of the average and the worst of each person's needs (food, warmth, shelter, health, and later water, pots at home and faith). Happy people work faster; below {D.Balance.leaveHappiness:P0} for {D.Balance.leaveAfterDays:0} days they leave.");
+                if (Over(r)) Tip(r, $"Average happiness {hp:P0}: a blend of the average and the worst of each person's needs (food, warmth, shelter, health, and later water, pots at home and faith). Happy people work faster; below {D.Balance.leaveHappiness:P0} for {D.Balance.leaveAfterDays:0} days they leave.");
                 x += 120;
             }
             foreach (var n in D.Balance.needs)
@@ -373,7 +373,7 @@ namespace Firstlight.Game.UI
                 // Labelled by what they measure: "Pots" (households with pots in use), not "Pottery" (the stock on the left).
                 GUI.Label(new Rect(x, y + 3, 56, 20), NeedLabel(n), Small);
                 GUI.Label(new Rect(x + 56, y + 2, 56, 22), Col($"<b>{met:P0}</b>", met >= 0.9f ? Good : met >= 0.6f ? Warn : Bad), Label);
-                if (r.Contains(Event.current.mousePosition)) Tip(r, NeedTip(n, met));
+                if (Over(r)) Tip(r, NeedTip(n, met));
                 x += 120;
             }
             if (S.Age.order >= 1 && x + 116 <= right)
@@ -382,7 +382,7 @@ namespace Firstlight.Game.UI
                 float u = S.Unrest;
                 GUI.Label(new Rect(x, y + 3, 56, 20), "Unrest", Small);
                 GUI.Label(new Rect(x + 56, y + 2, 56, 22), Col($"<b>{u:P0}</b>", u >= D.Balance.disputeAt ? Bad : u >= D.Balance.unrestWarn ? Warn : Good), Label);
-                Tip(r, $"Unrest {u:P0} (heading for {S.UnrestTarget:P0}). It grows with unhappiness, crowding, people without faith and sheer numbers. Above {D.Balance.disputeAt:P0} disputes cost work days; above {D.Balance.theftAt:P0} goods go missing. A staffed council and laws calm it.");
+                if (Over(r)) Tip(r, $"Unrest {u:P0} (heading for {S.UnrestTarget:P0}). It grows with unhappiness, crowding, people without faith and sheer numbers. Above {D.Balance.disputeAt:P0} disputes cost work days; above {D.Balance.theftAt:P0} goods go missing. A staffed council and laws calm it.");
             }
         }
     }

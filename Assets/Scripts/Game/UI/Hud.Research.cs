@@ -185,7 +185,7 @@ namespace Firstlight.Game.UI
                 var unlocks = D.Buildings.Where(b => b.unlockedBy == d.id).Select(b => b.name).ToList();
                 if (unlocks.Count > 0 && r.height > 56) GUI.Label(new Rect(r.x + 12, r.y + 46, r.width - 20, 16), Col("Unlocks " + string.Join(", ", unlocks), st == RState.Known ? new Color(0.5f, 0.6f, 0.48f) : Dim), new GUIStyle(Small) { fontSize = 11 });
             }
-            Tip(r, ResearchTip(d, st));
+            if (Over(r)) Tip(r, ResearchTip(d, st));
         }
 
         /// <summary>-uishots: show a topic's tooltip as hovering it would.</summary>

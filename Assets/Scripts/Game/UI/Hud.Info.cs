@@ -79,7 +79,7 @@ namespace Firstlight.Game.UI
                 bool confirm = _confirmDemolish == b.Id;
                 var br = new Rect(_lx, _ly, 200, 28);
                 if (GUI.Button(br, confirm ? Col("Click again to remove", Bad) : "Demolish", Button)) Demolish(b);
-                if (br.Contains(Event.current.mousePosition)) Tip(br, b.IsSite ? "Pull down the site. Delivered materials go back to storage." : $"Pull it down: {DemolishLoss(b)}.");
+                if (Over(br)) Tip(br, b.IsSite ? "Pull down the site. Delivered materials go back to storage." : $"Pull it down: {DemolishLoss(b)}.");
                 _ly += 32;
             }
             EndInfo(r);
@@ -194,7 +194,7 @@ namespace Firstlight.Game.UI
                     string n = i < 0 ? "Both" : ResName(d.outputs[i].id);
                     var fr = new Rect(x, _ly, 100, 28);
                     if (GUI.Button(fr, n, b.Focus == i ? ButtonOn : Button)) S.SetFocus(b, i);
-                    Tip(fr, i < 0 ? "Make the usual mix." : $"Make only {n.ToLower()}: the time spent on the rest goes into it, at {D.Balance.focusShare:P0}.");
+                    if (Over(fr)) Tip(fr, i < 0 ? "Make the usual mix." : $"Make only {n.ToLower()}: the time spent on the rest goes into it, at {D.Balance.focusShare:P0}.");
                     x += 104;
                 }
                 _ly += 34;
