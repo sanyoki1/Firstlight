@@ -114,7 +114,8 @@ namespace Firstlight.Game.UI
         {
             Row(Col("Under construction", Warn), Bold);
             if (!string.IsNullOrEmpty(b.Def.onDeposit)) Row(Col($"On {S.DepositCells(b.Def, b.Origin, b.Rot)} cells of the {b.Def.onDeposit} deposit", Dim), Small, 20);
-            BarRow("Progress", b.Progress, Accent, $"{b.Progress:P0}");
+            // "Overall": materials and build work together (it read as a second, different progress bar).
+            BarRow("Overall", b.Progress, Accent, $"{b.Progress:P0}");
             for (int i = 0; i < b.Def.cost.Length; i++)
             {
                 var c = b.Def.cost[i];
@@ -123,12 +124,32 @@ namespace Firstlight.Game.UI
             }
             BarRow("Build work", b.Work, Accent, $"{b.Work:P0}");
             int builders = S.Citizens.Count(c => c.IsBuilder && c.TaskB2 == b);
-            Row(builders > 0 ? $"{builders} builder{(builders == 1 ? "" : "s")} on it" : Col(S.BuildersWanted == 0 ? "No builders assigned (bottom bar)" : "Waiting for builders", Warn), Small, 20);
+            Row(builders > 0 ? $"{builders} builder{(builders == 1 ? "" : "s")} on it" : Col(SiteWait(b), Warn), Small, 20);
             var missing = b.Def.cost.Where((c, i) => b.Delivered[i] + b.InTransitOf(i) < c.amount - 0.01f && S.Stock(c.id) < 0.5f).Select(c => ResName(c.id).ToLower()).ToList();
             if (missing.Count > 0) Row(Col("No " + string.Join(", ", missing) + " in store", Bad), Small, 20);
             DrawBuildOrder(b);
             Gap(4);
             Para(b.Def.description);
+        }
+
+        /// <summary>
+        /// Why nobody is building a site: no builders at all; outside work hours (they rest until the workday starts); or
+        /// other sites come first (higher build order, or the same and older).
+        /// </summary>
+        string SiteWait(Building b)
+        {
+            if (S.BuildersWanted == 0) return "No builders assigned (bottom bar)";
+            var bal = D.Balance;
+            if (!S.IsWorkTime)
+            {
+                float h = bal.workdayStart * 24f;
+                return $"Builders are resting; work starts at {(int)h:00}:{(int)((h - (int)h) * 60) / 5 * 5:00}";
+            }
+            int ahead = 0;
+            foreach (var s in S.Buildings)
+                if (s != b && s.UnderWork && (s.Priority > b.Priority || s.Priority == b.Priority && s.Id < b.Id)) ahead++;
+            if (ahead == 0) return "Waiting for builders";
+            return $"Waiting for builders: {ahead} site{(ahead == 1 ? " is" : "s are")} ahead of it" + (b.Priority != Priority.High ? " (Build order: First moves it up)" : "");
         }
 
         /// <summary>Which sites the builders serve first (materials and work): High, then Normal, then Low.</summary>

@@ -556,7 +556,13 @@ namespace Firstlight.Game.UI
                 if (d.crop && d.irrigationRadius > 0) { var c2 = Settlement.FootprintCenter(d, PlaceOrigin(d, HoverCell, PlaceRot), PlaceRot); lines.Add(M.CountFeature("water", c2, d.irrigationRadius) > 0 ? Col("Water in reach: can be irrigated", Good) : Col("No water in reach to irrigate", Dim)); }
                 if (!d.townCenter && S.FloodRiskCells(d, PlaceOrigin(d, HoverCell, PlaceRot), PlaceRot) > 0)
                     lines.Add(d.crop ? Col("On the floodplain: a spring flood leaves silt (a better harvest that year)", Good) : Col("On the floodplain: spring floods may reach it", Warn));
-                if (d.cost.Length > 0) lines.Add("Cost: " + Cost(d));
+                if (d.cost.Length > 0)
+                {
+                    lines.Add("Cost: " + Cost(d));
+                    // Placing it anyway is allowed: the site waits for what is missing.
+                    var shortOf = d.cost.Where(c => S.Stock(c.id) < c.amount).Select(c => ResName(c.id).ToLower()).ToList();
+                    if (shortOf.Count > 0) lines.Add(Col($"Not enough {string.Join(" or ", shortOf)} in store: builders will wait for it.", Warn));
+                }
             }
             if (!d.path) lines.Add(Col(d.townCenter ? "Left-click to place" : "Left-click to place, Shift for several, comma and period turn it, right-click to stop", Dim));
             string text = string.Join("\n", lines);
