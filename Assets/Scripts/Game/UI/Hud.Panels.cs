@@ -200,14 +200,15 @@ namespace Firstlight.Game.UI
 
         void DrawHelp()
         {
-            var r = Box(new Rect(VW / 2 - 330, VH / 2 - 390, 660, 780));
+            var r = Box(new Rect(VW / 2 - 360, VH / 2 - 390, 720, 780));
             GUI.Label(new Rect(r.x + 20, r.y + 12, 400, 28), "Controls", Title);
             if (GUI.Button(new Rect(r.xMax - 34, r.y + 12, 24, 22), "x", Button)) HelpOpen = false;
             string[,] keys =
             {
-                { "W A S D, arrows", "Move the camera (or push the pointer to the screen edge)" },
+                { "W A S D, arrows, middle-drag", "Move the camera (or push the pointer to the screen edge)" },
                 { "Q / E, right-drag", "Turn and tilt the camera" },
-                { "Mouse wheel, middle-drag", "Zoom, pan" },
+                { "Wheel, PageUp / PageDown, + / -", "Zoom in and out" },
+                { "Home or H", "Camera back to the campfire" },
                 { "Left-click", "Select a building or person; place what you are building" },
                 { "Tab", "Before the campfire is placed: show a good site for it" },
                 { "Shift + left-click", "Place several of the same building" },
@@ -229,16 +230,17 @@ namespace Firstlight.Game.UI
                 { "F9", "Let the auto-player run the settlement" },
                 { "F11", "Hide the interface" },
             };
-            float y = r.y + 52;
+            float y = r.y + 50;
+            // Key names up to "Wheel, PageUp / PageDown, + / -" fit their 270-wide column (the long ones used to clip at 210).
             for (int i = 0; i < keys.GetLength(0); i++)
             {
-                GUI.Label(new Rect(r.x + 24, y, 210, 26), $"<b>{keys[i, 0]}</b>", Label);
-                GUI.Label(new Rect(r.x + 240, y, 400, 26), keys[i, 1], Label);
-                y += 28;
+                GUI.Label(new Rect(r.x + 24, y, 270, 26), $"<b>{keys[i, 0]}</b>", Label);
+                GUI.Label(new Rect(r.x + 300, y, 400, 26), keys[i, 1], Label);
+                y += 27;
             }
-            GUI.Label(new Rect(r.x + 24, y + 2, 612, 22), Col("Hover any number for what moves it; click an event (›) to go there.", Dim), Small);
+            GUI.Label(new Rect(r.x + 24, y + 2, 672, 22), Col("Hover any number for what moves it; click an event (›) to go there.", Dim), Small);
             if (GUI.Button(new Rect(r.x + 24, r.yMax - 46, 160, 30), "Game menu (Esc)", Button)) { HelpOpen = false; OpenMenu(); }
-            GUI.Label(new Rect(r.x + 200, r.yMax - 46, 440, 30), Col("Saves itself at the start of every season.", Faint), Small);
+            GUI.Label(new Rect(r.x + 200, r.yMax - 46, 500, 30), Col("Saves itself at the start of every season.", Faint), Small);
         }
 
         // ------------------------------------------------------------------ warnings and events

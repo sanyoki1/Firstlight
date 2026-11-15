@@ -276,6 +276,7 @@ namespace Firstlight.Game.UI
             if (kb.vKey.wasPressedThisFrame) ToggleEvents();
             if (kb.tKey.wasPressedThisFrame) ToggleStocks();
             if (kb.bKey.wasPressedThisFrame) OpenCategory(BuildCategory == null ? Categories[0] : BuildCategory);
+            if ((kb.homeKey.wasPressedThisFrame || kb.hKey.wasPressedThisFrame) && S.TownCenter != null) JumpTo(S.TownCenter.Center, 34f);
             if (Mode == ToolMode.Place && PlaceDef != null && !PlaceDef.path)
             {
                 if (kb.periodKey.wasPressedThisFrame) RotatePlacement(1);
@@ -469,6 +470,7 @@ namespace Firstlight.Game.UI
                 PerfProbe.End(PerfProbe.S.GuiPanels);
                 DrawPlacementTip();
                 PerfProbe.Begin(PerfProbe.S.GuiTopBar); DrawTopBar(); PerfProbe.End(PerfProbe.S.GuiTopBar);
+                DrawPausedTag();
                 PerfProbe.Begin(PerfProbe.S.GuiResearch);
                 if (ResearchOpen) DrawResearch();
                 PerfProbe.End(PerfProbe.S.GuiResearch);
@@ -484,6 +486,16 @@ namespace Firstlight.Game.UI
             GUI.matrix = old;
             SwapRects();
         }
+
+        /// <summary>"Paused (Space)" under the top bar's centre while the game is paused and no menu or screen covers it.</summary>
+        void DrawPausedTag()
+        {
+            if (S.Speed > 0 || MenuOpen || ResearchOpen || EndOpen || GoneOpen) return;
+            var r = new Rect(VW / 2 - 90, TopBarHeight + 6, 180, 28);
+            GUI.Box(r, GUIContent.none, UiTheme.Header);
+            GUI.Label(r, _pausedText ??= $"<b>{Col("Paused", Accent)}</b>  {Col("(Space)", Dim)}", Center);
+        }
+        string _pausedText;
 
         void SwapRects() { _prevRects.Clear(); _prevRects.AddRange(_rects); }
 

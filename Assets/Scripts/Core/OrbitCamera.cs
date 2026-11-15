@@ -5,7 +5,7 @@ using UnityEngine.InputSystem;
 namespace Firstlight.Core
 {
     /// <summary>
-    /// Angled top-down camera. WASD / arrows pan, Q/E rotate, mouse wheel zooms,
+    /// Angled top-down camera. WASD / arrows pan, Q/E rotate, mouse wheel (or PageUp/PageDown, +/-) zooms,
     /// right-drag rotates and tilts, middle-drag pans.
     /// </summary>
     public sealed class OrbitCamera : MonoBehaviour
@@ -72,6 +72,11 @@ namespace Firstlight.Core
                 if (kb.dKey.isPressed || kb.rightArrowKey.isPressed) move.x += 1;
                 if (kb.qKey.isPressed) rot += 1;
                 if (kb.eKey.isPressed) rot -= 1;
+                // Zoom keys (keyboard-only players had none): PageUp / + in, PageDown / - out, about 8 wheel notches a second.
+                float zoom = 0;
+                if (kb.pageUpKey.isPressed || kb.equalsKey.isPressed || kb.numpadPlusKey.isPressed) zoom += 1;
+                if (kb.pageDownKey.isPressed || kb.minusKey.isPressed || kb.numpadMinusKey.isPressed) zoom -= 1;
+                if (zoom != 0) Distance *= Mathf.Pow(0.87f, zoom * 8f * dt);
             }
 
             float yawRad = Yaw * Mathf.Deg2Rad;
