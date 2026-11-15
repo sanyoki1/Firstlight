@@ -366,6 +366,7 @@ namespace Firstlight.Game
             b.OutRes = Array.ConvertAll(d.outputs, a => ResIndex(a.id));
             b.InRes = Array.ConvertAll(d.inputs, i => Array.ConvertAll(i.ids, ResIndex));
             b.YieldKey = "yield." + d.yieldTag;
+            if (b.Focus >= 0) b.Focus = b.Focus < from.outputs.Length ? Array.FindIndex(d.outputs, o => o.id == from.outputs[b.Focus].id) : -1;   // same good, else the usual mix
             if (b.IsStorage && b.Store == null) b.Store = new float[ResCount];
             RefreshFullness(b);
             Upgrades++;
