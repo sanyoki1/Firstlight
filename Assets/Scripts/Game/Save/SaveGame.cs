@@ -80,12 +80,43 @@ namespace Firstlight.Game
             Name = name, Kind = kind, Age = s.Age?.name ?? "", Season = s.NeedsCampfire ? "" : s.SeasonName, SavedUtcTicks = DateTime.UtcNow.Ticks,
         };
 
+        // Measurement (docs/pass2/perf.md): where the last Write's time went, per part, with the collections seen in each.
+        static readonly System.Diagnostics.Stopwatch _partSw = new();
+        static readonly string[] PartNames = { "open", "header", "map", "sim", "auto", "water", "blocks", "compress", "close", "replace" };
+        static readonly double[] _partMs = new double[PartNames.Length];
+        static readonly int[] _partGc = new int[PartNames.Length];
+        static double _partLast; static int _partGcLast;
+        static void PartsStart() { _partSw.Restart(); _partLast = 0; _partGcLast = GC.CollectionCount(0); Array.Clear(_partMs, 0, _partMs.Length); Array.Clear(_partGc, 0, _partGc.Length); }
+        static void Part(int i)
+        {
+            double t = _partSw.Elapsed.TotalMilliseconds; int gc = GC.CollectionCount(0);
+            _partMs[i] += t - _partLast; _partGc[i] += gc - _partGcLast; _partLast = t; _partGcLast = gc;
+        }
+        /// <summary>The last <see cref="Write"/>'s parts: "name ms (collections)", for the log (measurement only).</summary>
+        public static string LastParts
+        {
+            get
+            {
+                var sb = new System.Text.StringBuilder();
+                double total = 0; int gcs = 0;
+                for (int i = 0; i < PartNames.Length; i++)
+                {
+                    total += _partMs[i]; gcs += _partGc[i];
+                    sb.Append($"{PartNames[i]} {_partMs[i]:F1}{(_partGc[i] > 0 ? $" ({_partGc[i]} gc)" : "")}, ");
+                }
+                sb.Append($"total {total:F1} ms, {gcs} gc");
+                return sb.ToString();
+            }
+        }
+
         public static void Write(string path, Header h, Settlement s, AutoPlayer auto, WaterSim water, byte[] game, byte[] test)
         {
+            PartsStart();
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             string tmp = path + ".tmp";
             using (var fs = File.Create(tmp))
             {
+                Part(0);
                 var w = new SaveWriter(fs);
                 w.W.Write(System.Text.Encoding.ASCII.GetBytes(Magic));
                 w.Int(Version);
@@ -100,20 +131,29 @@ namespace Firstlight.Game
                 b.Int(MapGenHash(s.Data.Balance));
                 var goods = new List<string>(s.ResCount); foreach (var g in s.Data.Resources) goods.Add(g.id);
                 b.Strs(goods);
+                Part(1);
                 s.Map.Write(b);
+                Part(2);
                 s.Write(b);
+                Part(3);
                 b.Bool(auto != null);
                 auto?.Write(b);
+                Part(4);
                 float[] depth = null;
                 if (water != null) { depth = new float[water.Depth.Length]; water.Depth.CopyTo(depth); }
                 b.Floats(depth);
+                Part(5);
                 b.Block(game);
                 b.Block(test);
                 b.Str("end");
                 b.W.Flush();
+                Part(6);
                 using var gz = new GZipStream(fs, System.IO.Compression.CompressionLevel.Fastest, true);
                 gz.Write(body.GetBuffer(), 0, (int)body.Length);
+                gz.Dispose();
+                Part(7);
             }
+            Part(8);
             // Overwriting: swap the new file in with File.Replace, which keeps the old save (as .bak) until the new one is in
             // place, so a failed move (a scanner or sync client holding the file) or a crash never leaves the slot empty.
             // If it throws, the old save is untouched and the caller shows the reason.
@@ -124,6 +164,7 @@ namespace Firstlight.Game
                 try { File.Delete(bak); } catch (IOException) { } catch (UnauthorizedAccessException) { }
             }
             else File.Move(tmp, path);
+            Part(9);
         }
 
         /// <summary>

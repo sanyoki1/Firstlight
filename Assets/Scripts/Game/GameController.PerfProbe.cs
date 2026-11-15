@@ -91,8 +91,55 @@ namespace Firstlight.Game
                     _spikes[k] = sp;
                 }
             }
+            if (_ringHave)
+            {
+                int k = _ringN++ % Ring;
+                _ringFrame[k] = Time.frameCount - 1; _ringT[k] = Time.realtimeSinceStartupAsDouble; _ringMs[k] = (float)PerfProbe.Ms(now - _ringTick);
+            }
+            _ringTick = now; _ringHave = true;
+            ReportSaves();
             _lastTick = now; _haveLast = true;
             PerfProbe.ClearFrame();
+        }
+
+        // ------------------------------------------------------------------ saves seen by the probe
+
+        // The last few thousand frames (frame number, real time at its end, ms), so a save's frame and the frames round it
+        // can be read back a second later.
+        const int Ring = 8192;
+        readonly int[] _ringFrame = new int[Ring]; readonly double[] _ringT = new double[Ring]; readonly float[] _ringMs = new float[Ring];
+        int _ringN; long _ringTick; bool _ringHave;
+        sealed class SaveRec { public string Kind; public int Frame; public double T, MainMs, DiskMs = -1; public int Gc0; }
+        readonly System.Collections.Generic.List<SaveRec> _saveRecs = new();
+
+        /// <summary>A save was made this frame: <paramref name="mainMs"/> on the main thread, on disk after <paramref name="diskMs"/> (-1 = not yet).</summary>
+        void ProbeSaved(string kind, double mainMs, double diskMs, int gcBefore) =>
+            _saveRecs.Add(new SaveRec { Kind = kind, Frame = Time.frameCount, T = Time.realtimeSinceStartupAsDouble, MainMs = mainMs, DiskMs = diskMs, Gc0 = gcBefore });
+
+        /// <summary>The newest save's file reached the disk <paramref name="diskMs"/> after it was asked for.</summary>
+        void ProbeSaveOnDisk(double diskMs) { if (_saveRecs.Count > 0) _saveRecs[_saveRecs.Count - 1].DiskMs = diskMs; }
+
+        void ReportSaves()
+        {
+            double now = Time.realtimeSinceStartupAsDouble;
+            for (int i = _saveRecs.Count - 1; i >= 0; i--)
+            {
+                var r = _saveRecs[i];
+                if (now - r.T < 1.2) continue;
+                _saveRecs.RemoveAt(i);
+                float saveMs = -1, worst = 0, before = 0; int n = 0;
+                for (int j = 0; j < Math.Min(_ringN, Ring); j++)
+                {
+                    if (_ringFrame[j] == r.Frame) { saveMs = _ringMs[j]; continue; }
+                    if (Math.Abs(_ringT[j] - r.T) > 1.0) continue;
+                    n++;
+                    if (_ringMs[j] > worst) worst = _ringMs[j];
+                    if (_ringT[j] < r.T && _ringMs[j] > before) before = _ringMs[j];
+                }
+                Debug.Log($"[ProbeSave] {r.Kind} save on day {Sim.Day}: save frame {saveMs:F1} ms (in the save call on the main thread {r.MainMs:F1} ms); " +
+                          $"worst other frame within 1 s {worst:F1} ms (before it {before:F1}; {n} frames); file on disk {(r.DiskMs < 0 ? "?" : r.DiskMs.ToString("F1"))} ms after the request; " +
+                          $"collections from the start of the save to 1.2 s later {GC.CollectionCount(0) - r.Gc0}");
+            }
         }
 
         void BeginPhase(string name)
@@ -209,6 +256,7 @@ namespace Firstlight.Game
             if (!HasArg("-perfnobase"))
                 foreach (var sp in speeds) { SetSpeed(sp); yield return Run($"town {sp}x", secs); }
 
+            if (HasArg("-perfquick")) yield return QuickSaves(ArgInt("-perfquick", 3));
             if (HasArg("-perfpanels")) yield return Panels(secs);
             if (HasArg("-perfplace")) yield return Repath(secs);
             if (HasArg("-perfsave")) SaveLoadTimes(outDir);
@@ -268,6 +316,19 @@ namespace Firstlight.Game
             Hud.PointerOverride = new Vector2(Screen.width / 2f, Screen.height / 2f);
             Hud.StartPlacing(def); yield return Run($"placing {def.id} (1x)", s); Hud.CancelTool();
             Hud.PointerOverride = null;
+        }
+
+        /// <summary>-perfquick N: N quicksaves at 1x, 5 s apart, through the same call as F5 (into this run's scratch saves folder).</summary>
+        IEnumerator QuickSaves(int n)
+        {
+            SetSpeed(1);
+            double last = Time.realtimeSinceStartupAsDouble; int done = 0;
+            yield return Run($"quicksave every 5 s (1x)", n * 5 + 3, () =>
+            {
+                if (done >= n || Time.realtimeSinceStartupAsDouble - last < 5) return;
+                last = Time.realtimeSinceStartupAsDouble; done++;
+                QuickSave();
+            });
         }
 
         /// <summary>A path tile laid and lifted every few seconds near the campfire: each is a hard walk-cost change that drops every cached path.</summary>

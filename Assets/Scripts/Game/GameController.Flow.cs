@@ -82,9 +82,15 @@ namespace Firstlight.Game
             try
             {
                 var sw = System.Diagnostics.Stopwatch.StartNew();
-                SaveGame.Write(path, SaveGame.HeaderFor(Sim, name, kind), Sim, Auto, Water, WriteGameBlock(), null);
+                int gc0 = GC.CollectionCount(0);
+                var block = WriteGameBlock();
+                double blockMs = sw.Elapsed.TotalMilliseconds;
+                SaveGame.Write(path, SaveGame.HeaderFor(Sim, name, kind), Sim, Auto, Water, block, null);
                 _savedAt = Sim.Time;
-                Debug.Log($"[Save] {kind} save to {path} in {sw.Elapsed.TotalMilliseconds:F0} ms: day {Sim.Day}, population {Sim.Population}");
+                double ms = sw.Elapsed.TotalMilliseconds;
+                Debug.Log($"[Save] {kind} save to {path} in {ms:F0} ms: day {Sim.Day}, population {Sim.Population}");
+                Debug.Log($"[SaveParts] {kind}: game block {blockMs:F1} ms; Write: {SaveGame.LastParts}; SaveTo {ms:F1} ms, {GC.CollectionCount(0) - gc0} gc");
+                if (PerfProbe.On) ProbeSaved(kind, ms, ms, gc0);
                 return null;
             }
             catch (Exception e)
@@ -132,7 +138,10 @@ namespace Firstlight.Game
             if (_autosaveDue < 0 || dayTicked || Time.realtimeSinceStartup < _autosaveDue) return;
             _autosaveDue = -1f;
             if (!GameSettings.Current.autosave) return;
-            string err = SaveTo(SaveGame.NextAutosave(), $"Autosave: {Sim.SeasonName}, year {Sim.Year + 1}", "auto");
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            string slot = SaveGame.NextAutosave();
+            if (PerfProbe.On) Debug.Log($"[SaveParts] autosave slot chosen in {sw.Elapsed.TotalMilliseconds:F2} ms");
+            string err = SaveTo(slot, $"Autosave: {Sim.SeasonName}, year {Sim.Year + 1}", "auto");
             Hud.Toast(err ?? "Autosaved");
         }
 
