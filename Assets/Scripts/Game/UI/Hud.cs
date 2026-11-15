@@ -244,6 +244,7 @@ namespace Firstlight.Game.UI
             if (kb.digit2Key.wasPressedThisFrame) G.SetSpeed(2);
             if (kb.digit3Key.wasPressedThisFrame) G.SetSpeed(4);
             if (ResearchOpen) return;              // world keys wait while the research screen has the keyboard
+            if (kb.tabKey.wasPressedThisFrame && S.NeedsCampfire) PointAtSuggestedSite();   // before the return below, which is for the same state
             if (S.NeedsCampfire) return;
             if (kb.gKey.wasPressedThisFrame) ToggleGoals();
             if (kb.jKey.wasPressedThisFrame) ToggleJobs();
@@ -255,7 +256,6 @@ namespace Firstlight.Game.UI
                 if (kb.commaKey.wasPressedThisFrame) RotatePlacement(-1);
             }
             if (kb.xKey.wasPressedThisFrame || kb.deleteKey.wasPressedThisFrame) { if (Mode == ToolMode.Demolish) CancelTool(); else StartDemolish(); }
-            if (kb.tabKey.wasPressedThisFrame && S.NeedsCampfire) PointAtSuggestedSite();
         }
 
         void MouseInput(bool overUI)

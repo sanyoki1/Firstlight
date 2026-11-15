@@ -127,7 +127,7 @@ namespace Firstlight.Game.UI
 
         void DrawHelp()
         {
-            var r = Box(new Rect(VW / 2 - 330, VH / 2 - 356, 660, 712));
+            var r = Box(new Rect(VW / 2 - 330, VH / 2 - 370, 660, 740));
             GUI.Label(new Rect(r.x + 20, r.y + 12, 400, 28), "Controls", Title);
             if (GUI.Button(new Rect(r.xMax - 34, r.y + 12, 24, 22), "x", Button)) HelpOpen = false;
             string[,] keys =
@@ -136,6 +136,7 @@ namespace Firstlight.Game.UI
                 { "Q / E, right-drag", "Turn and tilt the camera" },
                 { "Mouse wheel, middle-drag", "Zoom, pan" },
                 { "Left-click", "Select a building or person; place what you are building" },
+                { "Tab", "Before the campfire is placed: show a good site for it" },
                 { "Shift + left-click", "Place several of the same building" },
                 { "Right-click, Esc", "Stop placing or removing; close a panel; clear the selection" },
                 { ",  and  .", "Turn a building while placing it (its door turns with it)" },
