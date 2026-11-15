@@ -68,6 +68,7 @@ namespace Firstlight.Game
         public bool GhostValid;
         /// <summary>The person under the pointer: a faint ring.</summary>
         public Citizen HoverCitizen;
+        public Building HoverBuilding;    // a faint ring under the building the pointer is on (its hover tag)
         /// <summary>Set each frame by the game: 0 by day, 1 at deep night (fires light the ground round them).</summary>
         public float Night;
         /// <summary>Set each frame by the game: the point trees are cut away round (the camera focus) and how strongly.</summary>
@@ -603,6 +604,12 @@ namespace Firstlight.Game
                 float y = BaseOf(Selected) + 0.02f;
                 float r = math.max(Selected.Def.sizeX, Selected.Def.sizeY) * 0.75f;
                 _rings.Add(new InstanceData(new float3(Selected.Center.x, y, Selected.Center.y), 0, new float3(r, 1, r), Pal.Pack(sel)));
+            }
+            if (HoverBuilding != null && HoverBuilding.Alive && HoverBuilding != Selected)
+            {
+                float y = BaseOf(HoverBuilding) + 0.02f;
+                float r = math.max(HoverBuilding.Def.sizeX, HoverBuilding.Def.sizeY) * 0.75f;
+                _rings.Add(new InstanceData(new float3(HoverBuilding.Center.x, y, HoverBuilding.Center.y), 0, new float3(r, 1, r), Pal.Pack(new Color(0.7f, 0.68f, 0.6f))));
             }
             if (SelectedCitizen != null || HoverCitizen != null)
             {

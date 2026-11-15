@@ -396,6 +396,7 @@ namespace Firstlight.Game.UI
             }
             v.DemolishHover = Mode == ToolMode.Demolish && !PointerOverUI ? HoverBuilding : null;
             v.HoverCitizen = Mode == ToolMode.None && !PointerOverUI ? HoverCitizen : null;
+            v.HoverBuilding = Mode == ToolMode.None && !PointerOverUI && HoverCitizen == null ? HoverBuilding : null;
             if (v.GhostDef != null)
             {
                 var o = PlaceOrigin(PlaceDef, HoverCell, PlaceRot);
@@ -640,17 +641,58 @@ namespace Firstlight.Game.UI
         /// <summary>The name and doing of the person under the pointer (with a faint ring in the view).</summary>
         void DrawHoverTag()
         {
+            if (Mode != ToolMode.None || PointerOverUI) return;
             var c = HoverCitizen;
-            if (c == null || Mode != ToolMode.None || PointerOverUI) return;
-            var cam = G.Cam.Cam;
-            var at = cam.WorldToScreenPoint(new Vector3(HoverCitizenPos.x, M.HeightAt(HoverCitizenPos.x, HoverCitizenPos.y) + 1.15f, HoverCitizenPos.y));
+            var hb = c == null ? HoverBuilding : null;
+            if (c == null && (hb == null || !hb.Alive)) return;
+            Vector3 world = c != null
+                ? new Vector3(HoverCitizenPos.x, M.HeightAt(HoverCitizenPos.x, HoverCitizenPos.y) + 1.15f, HoverCitizenPos.y)
+                : new Vector3(hb.Center.x, M.HeightAt(hb.Center.x, hb.Center.y) + 1.6f, hb.Center.y);
+            var at = G.Cam.Cam.WorldToScreenPoint(world);
             if (at.z <= 0) return;
-            string doing = c.Job != null ? c.Job.Def.workerTitle ?? c.Job.Def.name : c.IsBuilder ? "Builder" : c.Age < D.Balance.adultAge ? "Child" : "Hauler";
-            var text = $"<b>{c.Name}</b>  {Col(doing, Dim)}";
+            string text;
+            if (c != null)
+            {
+                string doing = c.Job != null ? c.Job.Def.workerTitle ?? c.Job.Def.name : c.IsBuilder ? "Builder" : c.Age < D.Balance.adultAge ? "Child" : "Hauler";
+                text = $"<b>{c.Name}</b>  {Col(doing, Dim)}";
+            }
+            else
+            {
+                // A building's tag: rebuilt when the building changes and a few times a second, not every frame.
+                if (hb.Id != _tagBuilding || Time.unscaledTime - _tagAt > 0.25f) { _tagText = BuildingTag(hb); _tagBuilding = hb.Id; _tagAt = Time.unscaledTime; }
+                text = _tagText;
+            }
             var size = Label.CalcSize(new GUIContent(text));
             var r = new Rect(at.x / Scale - size.x / 2 - 8, (UnityEngine.Screen.height - at.y) / Scale - 30, size.x + 16, 24);
             GUI.Box(r, GUIContent.none, UiTheme.Tip);
             GUI.Label(r, text, Center);
+        }
+
+        int _tagBuilding = -1; float _tagAt; string _tagText = "";
+
+        /// <summary>
+        /// "Woodcutter · Working · 2/2", "Storage Pile · 212 / 250", "Thatched Hut · 6 / 8 live here", "Site: Lean-to · 40 %":
+        /// what a building is and how it is doing, for the hover tag (workplaces look alike at the default zoom).
+        /// </summary>
+        string BuildingTag(Building b)
+        {
+            var d = b.Def;
+            string sep = Col("  ·  ", Dim);
+            if (b.IsSite) return $"{Col("Site:", Dim)} <b>{d.name}</b>{sep}{b.Progress:P0}";
+            string text = $"<b>{d.name}</b>";
+            if (b.UpgradeTo != null) text += sep + Col($"being rebuilt ({b.Progress:P0})", Warn);
+            if (b.Flooded) return text + sep + Col("under flood water", Bad);
+            if (d.warmthRadius > 0) text += sep + (b.Fueled ? Col("burning", Good) : Col("out of firewood", Bad));
+            if (d.IsWorkplace)
+            {
+                string status = !string.IsNullOrEmpty(b.Status) ? b.Status : b.Workers > 0 ? "Working" : "No workers";
+                bool ok = status == "Working" || status == "Tending the crop" || status == "Harvesting" || status == "Tended for today";
+                text += sep + Col(status, ok ? Good : Warn);
+                text += sep + Col($"{b.Workers}/{d.maxWorkers}", b.Workers >= d.maxWorkers ? Good : b.Workers == 0 ? Bad : Warn);
+            }
+            if (d.housing > 0) text += sep + $"{b.Residents} / {d.housing} live here";
+            if (b.Store != null && !d.IsWorkplace) { float cap = math.max(1, S.Capacity(b)); text += sep + Col($"{b.Stored:0} / {cap:0}", b.Stored > cap * 0.9f ? Warn : Text); }
+            return text;
         }
 
         public Citizen HoverCitizen { get; private set; }
