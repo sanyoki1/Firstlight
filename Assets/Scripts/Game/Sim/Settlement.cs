@@ -247,7 +247,7 @@ namespace Firstlight.Game
                     WintersSurvived++;
                     Log(Severity.Info, $"The settlement came through winter {WintersSurvived} with {Population} people.");
                 }
-                Log(Severity.Info, $"{SeasonName} of year {Year + 1} begins.");
+                Log(Severity.Info, Season == 3 ? $"{SeasonName} of year {Year + 1} begins: nothing grows and little is gathered until spring." : $"{SeasonName} of year {Year + 1} begins.");
             }
             RefreshStock();
             DailyCrops();
@@ -469,7 +469,7 @@ namespace Firstlight.Game
             if (fd < B.foodWarnDays) { int n = math.max(1, (int)math.round(fd)); Warnings.Add(fd < 0.5f ? "There is no food left." : $"Food will run out in {n} day{(n == 1 ? "" : "s")}."); }
             float fuelNeed = FuelNeedUntilSpring();
             if (fuelNeed > 0 && StockTotals[_fuel] < fuelNeed * 0.7f && Season >= 2)
-                Warnings.Add($"Not enough firewood for winter ({StockTotals[_fuel]:F0} of about {fuelNeed:F0}).");
+                Warnings.Add($"Not enough firewood for winter ({StockTotals[_fuel]:F0} of about {fuelNeed:F0}): set a woodcutter to Firewood.");
             int homeless = Homeless;
             if (homeless > 0) Warnings.Add($"{homeless} {(homeless == 1 ? "person has" : "people have")} no home.");
             StorageWarning();
@@ -483,8 +483,8 @@ namespace Firstlight.Game
             // Heading into winter without the food to get through it (and the lean spring after).
             if (Season == 3 || Season == 2 && DayOfSeason >= B.daysPerSeason / 2)
             {
-                float need = DailyFoodNeed * DaysUntilSummer() * 0.7f;
-                if (FoodStock < need && fd >= B.foodWarnDays) Warnings.Add($"Food stores won't last until summer ({FoodStock:0} of about {need:0}).");
+                float need = FoodNeedToSummer();
+                if (FoodStock < need && fd >= B.foodWarnDays) Warnings.Add($"Food stores won't last until summer ({FoodStock:0} of about {need:0}): more gatherers, hunters or fishers now.");
             }
             if (Unrest >= B.unrestWarn) Warnings.Add($"Unrest is {(Unrest >= B.theftAt ? "high" : "rising")} ({Unrest:P0}): disputes and theft are likely.");
             if (OutbreakRisk >= B.outbreakWarn) Warnings.Add(OutbreakWarning());
@@ -606,6 +606,13 @@ namespace Firstlight.Game
             }
             return need;
         }
+
+        /// <summary>
+        /// Food to carry the settlement through winter and the lean spring, at today's headcount (what the "won't last until
+        /// summer" warning and the HUD's autumn hint and guide both use): from autumn on, the days left until summer; in
+        /// spring and summer, a whole winter and spring ahead. Gatherers still bring a little meanwhile, hence 0.7.
+        /// </summary>
+        public float FoodNeedToSummer() => DailyFoodNeed * (Season >= 2 ? DaysUntilSummer() : 2 * B.daysPerSeason) * 0.7f;
 
         /// <summary>Days from now until the first day of summer (the lean seasons run until then).</summary>
         public int DaysUntilSummer() => DaysUntilSeason(1);

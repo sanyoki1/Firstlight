@@ -40,8 +40,10 @@ namespace Firstlight.Game.UI
                     Done = h => h.S.CountBuildings("elders_fire") > 0 && BasicToolsQueued(h), Build = h => Has(h, "elders_fire") ? null : Def(h, "elders_fire"),
                     Build2 = h => h.FireStoneShort(out _, out _) && !Has(h, "stone_gatherer") ? Def(h, "stone_gatherer") : null,
                     Progress = h => h.FireProgress() + "  ·  " + (BasicToolsQueued(h) ? Col("Basic Tools queued", Good) : "Basic Tools not queued") },
+            // Ticks only from autumn (when the homes and people it counts are those that will face the winter), or once a
+            // winter is survived; it used to tick in spring on targets for the few homes built by then, and was gone.
             new() { Title = "Prepare for winter", Why = "Nothing grows in winter. Stock firewood for the homes and fire, and food for the cold days; raise a building's priority to push it.",
-                    Done = h => h.S.WintersSurvived >= 1 || h.WinterReady(out _), Progress = h => { h.WinterReady(out string p); return p; } },
+                    Done = h => h.S.WintersSurvived >= 1 || h.S.Season >= 2 && h.WinterReady(out _), Progress = h => { h.WinterReady(out string p); return p; } },
             new() { Title = "Build a toolmaker", Why = "Once Basic Tools is known: workers with tools work faster, and fields and mines need them.", Done = h => Has(h, "toolmaker"), Build = h => Def(h, "toolmaker"),
                     Progress = h => h.S.IsResearched("basic_tools") ? Col("Basic Tools is known", Good) : "Waiting for Basic Tools" },
             new() { Title = "Look at the goals (G)", Why = "Goals list the key research and milestones that lead to the Agricultural Age. From here the settlement is yours.", Done = h => h._goalsSeen },
@@ -94,13 +96,26 @@ namespace Firstlight.Game.UI
 
         bool GuideActive => GameSettings.Current.guide && !GuideHidden && _guideStep < Steps.Length;
 
-        /// <summary>Firewood for the days to spring and food for 10 days (the targets the guide's winter step watches).</summary>
+        /// <summary>
+        /// The guide's winter targets: firewood until spring for the homes lived in now, and food through winter and the
+        /// lean spring for the people there now (the sim's own figures, the ones its autumn warnings use).
+        /// </summary>
         bool WinterReady(out string progress)
         {
-            float fuel = math.max(20f, S.FuelNeedUntilSpring()), food = math.max(1f, S.DailyFoodNeed) * 10f;
+            float fuel = math.max(20f, S.FuelNeedUntilSpring()), food = math.max(1f, S.FoodNeedToSummer());
             float haveFuel = S.Stock(D.Balance.fuelResource), haveFood = S.FoodStock;
-            progress = $"Firewood {Col($"{haveFuel:0} / {fuel:0}", haveFuel >= fuel ? Good : Warn)}   Food {Col($"{haveFood:0} / {food:0}", haveFood >= food ? Good : Warn)}";
+            progress = $"Firewood {Col($"{haveFuel:0} / {fuel:0}", haveFuel >= fuel ? Good : Warn)}   Food {Col($"{haveFood:0} / {food:0}", haveFood >= food ? Good : Warn)}" +
+                       (S.Season < 2 ? Col("   (counted from autumn)", Faint) : "");
             return haveFuel >= fuel && haveFood >= food;
+        }
+
+        /// <summary>The autumn hint: how long until winter, and what the homes and people need to get through it.</summary>
+        string WinterHintText()
+        {
+            int days = S.Season == 2 ? D.Balance.daysPerSeason - S.DayOfSeason : 0;
+            string when = S.Season == 2 ? $"Winter comes in {days} day{(days == 1 ? "" : "s")}." : "Winter is here.";
+            return $"{when} Nothing grows then and little is gathered. Until spring the homes and the fire need about {S.FuelNeedUntilSpring():0} firewood (in store: {S.Stock(D.Balance.fuelResource):0}); " +
+                   $"until summer the people need about {S.FoodNeedToSummer():0} food (in store: {S.FoodStock:0}). Set a woodcutter to Firewood; keep gatherers and hunters busy now.";
         }
 
         void UpdateGuide()
@@ -153,11 +168,17 @@ namespace Firstlight.Game.UI
 
         // ------------------------------------------------------------------ one-time hints
 
-        sealed class HintDef { public string Id, Title, Text; public Func<Hud, bool> When; public Func<Hud, float2?> Where; }
+        sealed class HintDef { public string Id, Title, Text; public Func<Hud, string> TextNow; public Func<Hud, bool> When; public Func<Hud, float2?> Where; }
+
+        /// <summary>A hint's text with its live numbers (when it has them).</summary>
+        string HintText(HintDef h) => h.TextNow?.Invoke(this) ?? h.Text;
 
         static readonly HintDef[] Hints =
         {
-            new() { Id = "winter", Title = "Winter has come", Text = "Nothing grows and little is gathered until spring. Homes burn firewood every day; people without warmth, food or a roof lose health. Keep the woodcutters on firewood and the food stores up.", When = h => h.S.Season == 3 },
+            // On the first day of autumn (it came on the first day of winter, when gathering is down to an eighth), with the
+            // numbers. The id stays "winter" so a save that has seen the old hint does not show this one again.
+            new() { Id = "winter", Title = "Winter is coming", Text = "Nothing grows in winter and little is gathered. Homes burn firewood every day; people without warmth, food or a roof lose health. Before it comes: set a woodcutter to Firewood and keep gatherers and hunters busy.",
+                    TextNow = h => h.WinterHintText(), When = h => h.S.Season >= 2 },
             new() { Id = "death", Title = "Someone has died", Text = "The event list says why. Cold means not enough firewood, homes or clothing; hunger means too little food; sickness spreads in crowded homes. Old age is natural.", When = h => h.S.TotalDeaths > 0 },
             new() { Id = "need_water", Title = "A new need: clean water", Text = "Farming towns need clean water. Homes near the river have it; others need a well within reach. Without it people are less happy and fall sick more.", When = h => h.S.NeedActive("water") },
             new() { Id = "need_goods", Title = "A new need: pottery", Text = "Now that pottery is known every household wants pots. A clay pit and a potter keep them supplied; pots wear out over time.", When = h => h.S.NeedActive("goods") },
@@ -208,13 +229,14 @@ namespace Firstlight.Game.UI
         {
             if (_hint == null || ResearchOpen || EndOpen || GoneOpen || GoalsOpen || JobsOpen || StocksOpen || LawsOpen) return;   // the side panels sit where the card is
             float w = 520;
-            var text = new GUIContent(_hint.Text);
+            string body = HintText(_hint);
+            var text = new GUIContent(body);
             float th = SmallWrap.CalcHeight(text, w - 32);
             float h = 44 + th + 46;
             var r = Box(new Rect(VW / 2 - w / 2, TopBarHeight + 12, w, h));
             Fill(new Rect(r.x + 1, r.y + 1, r.width - 2, 3), Info);
             GUI.Label(new Rect(r.x + 16, r.y + 12, w - 32, 24), $"<b>{_hint.Title}</b>", Label);
-            GUI.Label(new Rect(r.x + 16, r.y + 40, w - 32, th), _hint.Text, SmallWrap);
+            GUI.Label(new Rect(r.x + 16, r.y + 40, w - 32, th), body, SmallWrap);
             if (GUI.Button(new Rect(r.x + 16, r.yMax - 40, 120, 28), "Got it", Button)) _hint = null;
             var where = _hint?.Where?.Invoke(this);
             if (where != null && GUI.Button(new Rect(r.x + 146, r.yMax - 40, 120, 28), "Show me", Button)) JumpTo(where.Value);
