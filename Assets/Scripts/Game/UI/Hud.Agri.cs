@@ -374,7 +374,7 @@ namespace Firstlight.Game.UI
             for (int k = 0; k < D.Balance.needs.Length; k++)
             {
                 var n = D.Balance.needs[k];
-                float met = S.NeedMet(n.id);
+                float met = _tNeedMet[k];
                 if (met < 0) continue;
                 if (x + 116 > right) return;
                 var r = new Rect(x, y, 116, 26);

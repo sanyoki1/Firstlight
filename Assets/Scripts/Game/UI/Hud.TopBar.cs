@@ -253,6 +253,7 @@ namespace Firstlight.Game.UI
         int _tPop, _tAdults, _tElders, _tHomeless, _tHousing;
         float _tHappy, _tFoodNeed, _tFoodStock;
         bool _tAllKnown;
+        float[] _tNeedMet = new float[0];
         float TFoodDays => _tFoodNeed <= 0 ? 99f : _tFoodStock / _tFoodNeed;
 
         void CountTotals()
@@ -285,6 +286,11 @@ namespace Firstlight.Game.UI
                 if (ready) { any = true; break; }
             }
             _tAllKnown = !any;
+            // How many people each need reaches (a loop over every citizen per need): the needs strip and its width read it
+            // up to 14 times a call (NeedsWidth ran once per stock shown).
+            var needs = S.Data.Balance.needs;
+            if (_tNeedMet.Length != needs.Length) _tNeedMet = new float[needs.Length];
+            for (int k = 0; k < needs.Length; k++) _tNeedMet[k] = S.NeedMet(needs[k].id);
         }
 
         /// <summary>"148  (86 adults, 19 elders, 43 children)".</summary>
@@ -332,7 +338,7 @@ namespace Firstlight.Game.UI
         float NeedsWidth()
         {
             int n = 0;
-            foreach (var need in D.Balance.needs) if (S.NeedMet(need.id) >= 0) n++;
+            for (int k = 0; k < D.Balance.needs.Length; k++) if (_tNeedMet[k] >= 0) n++;
             if (S.Age.order >= 1) n++;
             return (n + 1) * 120;                  // + happiness, always shown
         }
