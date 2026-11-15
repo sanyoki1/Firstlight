@@ -22,11 +22,59 @@ namespace Firstlight.Game
         public void Str(string v) { W.Write(v != null); if (v != null) W.Write(v); }
         public void F2(float2 v) { W.Write(v.x); W.Write(v.y); }
         public void I2(int2 v) { W.Write(v.x); W.Write(v.y); }
-        public void Floats(float[] a) { W.Write(a == null ? -1 : a.Length); if (a != null) foreach (var v in a) W.Write(v); }
-        public void Doubles(double[] a) { W.Write(a == null ? -1 : a.Length); if (a != null) foreach (var v in a) W.Write(v); }
+        // Arrays go in bulk: their bytes are copied in 64 KB chunks through one scratch buffer per thread, instead of one
+        // BinaryWriter call per value (about 200k calls for the map). The bytes are exactly what the per-value writes made:
+        // BinaryWriter writes little-endian IEEE/two's-complement bits, which is the memory layout on every PC this runs on
+        // (checked: a big-endian machine takes the per-value path), and a bool is written as 1 or 0.
+        [ThreadStatic] static byte[] _scratch;
+        static byte[] Scratch => _scratch ??= new byte[64 * 1024];
+
+        void Raw<T>(ReadOnlySpan<T> a) where T : unmanaged
+        {
+            var bytes = System.Runtime.InteropServices.MemoryMarshal.AsBytes(a);
+            var buf = Scratch;
+            for (int off = 0; off < bytes.Length; off += buf.Length)
+            {
+                int n = Math.Min(buf.Length, bytes.Length - off);
+                bytes.Slice(off, n).CopyTo(buf);
+                W.Write(buf, 0, n);
+            }
+        }
+
+        public void Floats(float[] a) { W.Write(a == null ? -1 : a.Length); if (a != null) Floats((ReadOnlySpan<float>)a, false); }
+        /// <summary>The same bytes as <see cref="Floats(float[])"/> of an array holding these values (no copy made).</summary>
+        public void Floats(ReadOnlySpan<float> a, bool withLength = true)
+        {
+            if (withLength) W.Write(a.Length);
+            if (BitConverter.IsLittleEndian) Raw(a); else foreach (var v in a) W.Write(v);
+        }
+        public void Doubles(double[] a)
+        {
+            W.Write(a == null ? -1 : a.Length);
+            if (a == null) return;
+            if (BitConverter.IsLittleEndian) Raw((ReadOnlySpan<double>)a); else foreach (var v in a) W.Write(v);
+        }
         public void Bytes(byte[] a) { W.Write(a == null ? -1 : a.Length); if (a != null) W.Write(a); }
-        public void Bools(bool[] a) { W.Write(a == null ? -1 : a.Length); if (a != null) foreach (var v in a) W.Write(v); }
-        public void Ints(int[] a) { W.Write(a == null ? -1 : a.Length); if (a != null) foreach (var v in a) W.Write(v); }
+        /// <summary>The same bytes as <see cref="Bytes(byte[])"/> of an array holding these values (no copy made).</summary>
+        public void Bytes(ReadOnlySpan<byte> a) { W.Write(a.Length); Raw(a); }
+        public void Bools(bool[] a)
+        {
+            W.Write(a == null ? -1 : a.Length);
+            if (a == null) return;
+            var buf = Scratch;
+            for (int off = 0; off < a.Length; off += buf.Length)
+            {
+                int n = Math.Min(buf.Length, a.Length - off);
+                for (int i = 0; i < n; i++) buf[i] = a[off + i] ? (byte)1 : (byte)0;
+                W.Write(buf, 0, n);
+            }
+        }
+        public void Ints(int[] a)
+        {
+            W.Write(a == null ? -1 : a.Length);
+            if (a == null) return;
+            if (BitConverter.IsLittleEndian) Raw((ReadOnlySpan<int>)a); else foreach (var v in a) W.Write(v);
+        }
         public void Strs(IList<string> a) { W.Write(a == null ? -1 : a.Count); if (a != null) foreach (var v in a) Str(v); }
 
         /// <summary>A length-prefixed block, so a reader can skip blocks it does not know.</summary>

@@ -515,10 +515,11 @@ namespace Firstlight.Game
             int n = W * H;
             w.Int(n);
             w.Bools(Tree); w.Bytes(TreeKind); w.Floats(TreeScale); w.Floats(TreeYaw);
-            var off = new float[n * 2]; for (int c = 0; c < n; c++) { off[c * 2] = TreeOffset[c].x; off[c * 2 + 1] = TreeOffset[c].y; }
-            w.Floats(off);
+            // The offsets as x0, y0, x1, y1, ... (a float2 is laid out x then y), and the committed walk costs, straight
+            // from where they are kept: no copies (they were 128 KB and 16 KB of garbage a save).
+            w.Floats(System.Runtime.InteropServices.MemoryMarshal.Cast<float2, float>((System.ReadOnlySpan<float2>)TreeOffset));
             w.Floats(Rock); w.Bools(Path); w.Ints(BuildingAt); w.Bools(Reserved); w.Bools(Open);
-            w.Bytes(WaterClass); w.Bytes(LiveCost); w.Bytes(Flow.Cost.ToArray());
+            w.Bytes(WaterClass); w.Bytes(LiveCost); w.Bytes(Flow.Cost.AsReadOnlySpan());
             var (hard, soft) = CostFlags; w.Bool(hard); w.Bool(soft);
             w.Bool(OreRevealed);
             w.Int(Herds.Count); foreach (var h in Herds) w.Float(h.Pop);

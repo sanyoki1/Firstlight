@@ -105,6 +105,10 @@ namespace Firstlight.Game
 
         static PendingSave _pending;
         static readonly object _gate = new();
+        // One header and one body buffer, reused by every save (only one save is ever being made or written).
+        static readonly MemoryStream _head = new(256), _body = new(1024 * 1024);
+        static SaveWriter _headW, _bodyW;
+        static readonly byte[] MagicBytes = System.Text.Encoding.ASCII.GetBytes(Magic);
 
         /// <summary>
         /// Waits until the save in flight (if any) is on disk or has failed. Called by every save operation, and when the
@@ -199,19 +203,20 @@ namespace Firstlight.Game
         /// <summary>The header and the uncompressed body, as the file will hold them (the body is gzipped by Commit).</summary>
         static (MemoryStream head, MemoryStream body) Serialize(Header h, Settlement s, AutoPlayer auto, WaterSim water, byte[] game, byte[] test)
         {
-            WaitPending();
+            WaitPending();                  // the buffers below belong to the save in flight until it is on disk
             PartsStart();
-            var head = new MemoryStream(256);
-            var w = new SaveWriter(head);
-            w.W.Write(System.Text.Encoding.ASCII.GetBytes(Magic));
+            var head = _head; head.SetLength(0);
+            var w = _headW ??= new SaveWriter(head);
+            w.W.Write(MagicBytes);
             w.Int(Version);
             w.Str(h.Name); w.Str(h.Kind); w.Int(h.Seed); w.Int(h.Day); w.Int(h.Year); w.Str(h.Season); w.Str(h.Age);
             w.Int(h.Population); w.Int(h.Difficulty); w.Long(h.SavedUtcTicks);
             w.W.Flush();
             // The body is written into memory first and compressed in one call: written straight into the GZipStream it
-            // made ~200k tiny deflate writes (30-44 ms and ~10 collections a save). The bytes saved mean the same.
-            var body = new MemoryStream(256 * 1024);
-            var b = new SaveWriter(body);
+            // made ~200k tiny deflate writes (30-44 ms and ~10 collections a save). The bytes saved mean the same. The
+            // buffer is kept from one save to the next (it grew 256 KB -> 512 KB -> 1 MB, new, in every save).
+            var body = _body; body.SetLength(0);
+            var b = _bodyW ??= new SaveWriter(body);
             b.Int(s.Map.W);
             b.Int(MapGenHash(s.Data.Balance));
             var goods = new List<string>(s.ResCount); foreach (var g in s.Data.Resources) goods.Add(g.id);
@@ -224,9 +229,8 @@ namespace Firstlight.Game
             b.Bool(auto != null);
             auto?.Write(b);
             Part(3);
-            float[] depth = null;
-            if (water != null) { depth = new float[water.Depth.Length]; water.Depth.CopyTo(depth); }
-            b.Floats(depth);
+            if (water != null) b.Floats(water.Depth.AsReadOnlySpan());     // straight from the water sim (was a 64 KB copy)
+            else b.Floats((float[])null);
             Part(4);
             b.Block(game);
             b.Block(test);
