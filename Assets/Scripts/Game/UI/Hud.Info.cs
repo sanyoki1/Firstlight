@@ -286,6 +286,8 @@ namespace Firstlight.Game.UI
             }
         }
 
+        readonly List<Settlement.HappinessPart> _happyParts = new();
+
         void DrawCitizen(Citizen c)
         {
             var r = BeginInfo(c.Name);
@@ -305,6 +307,7 @@ namespace Firstlight.Game.UI
             BarRow("Happiness", c.Happiness, c.Happiness > 0.6f ? Good : c.Happiness > bal.leaveHappiness ? Warn : Bad, $"{c.Happiness:P0}");
             BarRow("Warmth", math.saturate(c.Warmth / bal.warmthComfort), c.Cold ? Bad : Good, c.Cold ? "cold" : "warm");
             var needs = new List<string>();
+            if (c.Home == null) needs.Add(Col("no home", Warn));
             if (c.Hungry) needs.Add(Col("hungry", Bad));
             if (c.Cold) needs.Add(Col("cold", Bad));
             if (c.Sick) needs.Add(Col($"sick for {c.SickDays} more days" + (c.Treated ? ", treated" : ""), Warn));
@@ -314,6 +317,19 @@ namespace Firstlight.Game.UI
             if (c.DisputeDays > 0) needs.Add(Col($"in a dispute ({c.DisputeDays} days off work)", Warn));
             if (c.UnhappyDays > 0) needs.Add(Col($"unhappy {c.UnhappyDays} days, may leave", Bad));
             if (needs.Count > 0) Para(string.Join(", ", needs)); else Row(Col("Fed, warm and well" + (S.Age.order >= 1 ? ", with all it needs" : ""), Good), Small, 20);
+            // What holds happiness down, from the sim's own weighing of the needs (shown while the bar is not green).
+            if (c.Happiness < 0.6f)
+            {
+                float target = S.ExplainHappiness(c, _happyParts);
+                string toward = $"heading for {target:P0}";
+                if (_happyParts.Count == 0) Para(Col($"Every need is met: happiness is rising ({toward}).", Dim));
+                else
+                {
+                    var held = new List<string>();
+                    for (int i = 0; i < _happyParts.Count && i < 4; i++) held.Add(_happyParts[i].What);
+                    Para("Held down by: " + Col(string.Join(", ", held), Warn) + Col($"  ({toward})", Dim));
+                }
+            }
             Gap(4);
             Row("Tool  " + (c.Tool >= 0 ? $"{D.Resources[c.Tool].name}, {c.ToolLife:0} work days left" : Col("none", Faint)), Small, 20);
             Row("Clothing  " + (c.ClothingLife > 0 ? $"hide clothing, {c.ClothingLife:0} cold days left" : Col("none", Faint)), Small, 20);
