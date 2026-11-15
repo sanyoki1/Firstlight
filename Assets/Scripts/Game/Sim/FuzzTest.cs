@@ -633,6 +633,7 @@ namespace Firstlight.Game
             finally { data.Balance.copperDeposits = copper; }
 
             ok &= OverwriteCheck(data, s, ap, outDir);
+            ok &= BackgroundSaveCheck(data, s, ap, outDir);
             ok &= GoodsByIdCheck(data, good, s);
             ok &= UnknownIdsCheck(data, good, s, outDir);
             foreach (var file in ArgsAfter("-compatsave"))
@@ -752,6 +753,64 @@ namespace Firstlight.Game
             }
             catch (Exception e) { ok = false; notes.Add("EXCEPTION " + e); }
             Debug.Log($"[SaveCheck] overwrite: {string.Join("; ", notes)}{(ok ? "" : "  <-- WRONG")}");
+            return ok;
+        }
+
+        /// <summary>
+        /// Saves written on a worker thread (autosave, quicksave): from the same state and header, the file must be byte for
+        /// byte the one <see cref="SaveGame.Write"/> makes in the call, new or over an existing save; a read right after the
+        /// request must wait for it (never see a half-written file); a second request must wait for the first; and a
+        /// failure (a held file) must come back in the pending save's Error, not as an exception, with the old save intact.
+        /// </summary>
+        static bool BackgroundSaveCheck(GameData data, Settlement s, AutoPlayer ap, string outDir)
+        {
+            string dir = Path.Combine(outDir, "background");
+            if (Directory.Exists(dir)) Directory.Delete(dir, true);
+            Directory.CreateDirectory(dir);
+            var notes = new List<string>();
+            bool ok = true;
+            try
+            {
+                var h = SaveGame.HeaderFor(s, "background", "test");
+                var game = new byte[] { 1, 2, 3, 4, 5 };            // stands in for the game's view block
+                string sync = Path.Combine(dir, "sync" + SaveGame.Extension), bg = Path.Combine(dir, "bg" + SaveGame.Extension), bg2 = Path.Combine(dir, "bg2" + SaveGame.Extension);
+                SaveGame.Write(sync, h, s, ap, null, game, null);
+                var want = File.ReadAllBytes(sync);
+
+                var p = SaveGame.WriteInBackground(bg, "test", h, s, ap, null, game, null);
+                var hd = SaveGame.ReadHeader(bg, out string herr);         // must wait for the write, not read a partial file
+                bool waited = p.Done && p.Error == null && hd?.Name == "background";
+                bool same = File.ReadAllBytes(bg).AsSpan().SequenceEqual(want);
+                ok &= waited && same; notes.Add($"new file: {(same ? "byte-identical" : "DIFFERENT")} to the one written in the call ({want.Length} bytes), read after the request {(waited ? "waited for it" : "did NOT wait (" + herr + ")")}");
+
+                var p1 = SaveGame.WriteInBackground(bg, "test", h, s, ap, null, game, null);   // over the existing file (File.Replace)
+                var p2 = SaveGame.WriteInBackground(bg2, "test", h, s, ap, null, game, null);  // must wait for p1 first
+                bool firstDone = p1.Done;
+                SaveGame.WaitPending();
+                bool both = firstDone && p1.Error == null && p2.Error == null
+                            && File.ReadAllBytes(bg).AsSpan().SequenceEqual(want) && File.ReadAllBytes(bg2).AsSpan().SequenceEqual(want)
+                            && !File.Exists(bg + ".tmp") && !File.Exists(bg + ".bak") && !File.Exists(bg2 + ".tmp");
+                ok &= both; notes.Add($"overwrite + a second request: {(both ? "the second waited for the first; both byte-identical, no leftovers" : "WRONG")}");
+
+                var l = SaveGame.Read(bg2, data, out string lerr);
+                bool loads = l != null && Digest(l.Map, l.Sim, l.Auto).AsSpan().SequenceEqual(Digest(s.Map, s, ap)) && l.Game != null && l.Game.AsSpan().SequenceEqual(game);
+                l?.Map.Dispose();
+                ok &= loads; notes.Add($"loads the same state: {(loads ? "yes" : "NO (" + lerr + ")")}");
+
+                bool reported, intact;
+                using (new FileStream(bg, FileMode.Open, FileAccess.Read, FileShare.Read))    // held open: the replace fails on the worker
+                {
+                    var pf = SaveGame.WriteInBackground(bg, "test", SaveGame.HeaderFor(s, "held", "test"), s, ap, null, game, null);
+                    SaveGame.WaitPending();
+                    reported = pf.Done && pf.Error is IOException;
+                    notes.Add($"held file: {(pf.Error != null ? "failed on the worker (" + pf.Error.GetType().Name + "), reported in Error" : "NO error")}");
+                }
+                SaveGame.CleanStale(dir);
+                intact = SaveGame.ReadHeader(bg, out _)?.Name == "background" && !File.Exists(bg + ".tmp") && File.ReadAllBytes(bg).AsSpan().SequenceEqual(want);
+                ok &= reported && intact; notes.Add($"old save {(intact ? "intact" : "WRONG")}");
+            }
+            catch (Exception e) { ok = false; notes.Add("EXCEPTION " + e); }
+            Debug.Log($"[SaveCheck] background save: {string.Join("; ", notes)}{(ok ? "" : "  <-- WRONG")}");
             return ok;
         }
 
