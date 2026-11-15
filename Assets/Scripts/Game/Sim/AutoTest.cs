@@ -91,6 +91,7 @@ namespace Firstlight.Game
             var sw = System.Diagnostics.Stopwatch.StartNew();
             Settlement s = null;
             AutoPlayer ap = null;
+            EstimateCheck check = null; bool checkFailed = false;
             try
             {
                 float hour = data.Balance.dayLengthSeconds / 24f;
@@ -119,10 +120,13 @@ namespace Firstlight.Game
                 }
                 int totalDays = years * s.DaysPerYear;
                 bool saved = false;
+                check = new EstimateCheck(s);
                 while (rep.campfirePlaced && s.Day < totalDays)
                 {
                     s.Tick(hour);
                     ap.Think();
+                    try { check.Hour(); }   // reads only; a failure must not touch the report
+                    catch (Exception ce) { if (!checkFailed) Debug.Log($"[Estimate] check stopped: {ce.GetType().Name} {ce.Message}"); checkFailed = true; check = new EstimateCheck(s); }
                     int pop = s.Population;
                     // What people are doing at midday (the season rows are taken at midnight, when everyone sleeps).
                     if (s.DayFraction >= 0.5f && s.DayFraction < 0.5f + 1f / 24f) _noon = Detail(s);
@@ -160,6 +164,7 @@ namespace Firstlight.Game
                 Debug.LogException(e);
             }
             Application.logMessageReceived -= OnLog;
+            if (check != null && !checkFailed) check.Summary($"seed {seed}, difficulty {s.Diff.id}{(resume != null ? ", from a save" : "")}");
 
             if (s != null)
             {

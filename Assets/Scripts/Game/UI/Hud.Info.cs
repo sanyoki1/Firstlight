@@ -154,42 +154,31 @@ namespace Firstlight.Game.UI
                 _ly += 34;
             }
 
-            // Rate: per worker per workday x season x nearby x research, then each worker's speed (tools, mood).
-            float season = d.SeasonYield(S.Season), near = b.Fullness, research = string.IsNullOrEmpty(d.yieldTag) ? 1 : S.Effect("yield." + d.yieldTag);
-            float tools = 0, mood = 0; int n2 = 0;
-            foreach (var c in S.Citizens)
-            {
-                if (c.Job != b || c.Gone) continue;
-                n2++;
-                mood += math.lerp(D.Balance.workSpeedMin, 1f, math.saturate(c.Happiness / 0.6f));
-                tools += !d.usesTools ? 1f : c.Tool >= 0 ? D.Resources[c.Tool].toolSpeed : d.requiresTools ? 0f : D.Balance.noToolWorkSpeed;
-            }
-            float toolF = n2 > 0 ? tools / n2 : 1f, moodF = n2 > 0 ? mood / n2 : 1f;
-            float workers = b.Workers;
+            // Rate: the settlement's own estimate (the sim's factors: season, nearby, research, difficulty, and each
+            // worker's speed from mood, water and tools); the panel only formats it.
+            var est = S.EstimateWorkplace(b);
             if (d.knowledgePerWorker > 0)
             {
-                float elders = S.Citizens.Count(c => c.Job == b && S.IsElder(c));
-                float k = d.knowledgePerWorker * research * moodF * ((workers - elders) + elders * D.Balance.elderKnowledgeMult);
-                Row($"Knowledge  <b>about {k:0.#} a day</b>", Label);
+                Row($"Knowledge  <b>about {est.Knowledge:0.#} a day</b>", Label);
+                if (est.Elders > 0 && est.ElderKnowledge != D.Balance.elderKnowledgeMult)
+                    Row($"Elders learn x{est.ElderKnowledge:0.##} (x{D.Balance.elderKnowledgeMult:0.##}, laws x{est.ElderKnowledge / D.Balance.elderKnowledgeMult:0.##})", Small, 20);
             }
             if (d.outputs.Length > 0 && !d.crop)
             {
-                float common = season * near * research * toolF * moodF * workers;
                 var outs = new List<string>();
                 for (int i = 0; i < d.outputs.Length; i++)
-                {
-                    float per = S.OutputPerWorkday(b, i);
-                    if (per > 0) outs.Add($"{per * common:0.#} {ResName(d.outputs[i].id).ToLower()}");
-                }
+                    if (S.OutputPerWorkday(b, i) > 0) outs.Add($"{est.Outputs[i]:0.#} {ResName(d.outputs[i].id).ToLower()}");
                 Row("Makes  <b>about " + string.Join(", ", outs) + "</b> a day", Label);
                 if (d.inputs.Length > 0)
-                    Row("Uses  " + string.Join(", ", d.inputs.Select(i => $"{i.amount * common:0.#} {string.Join(" or ", i.ids.Select(ResName)).ToLower()}")) + " a day", Small, 20);
+                    Row("Uses  " + string.Join(", ", d.inputs.Select((g, i) => $"{est.Inputs[i]:0.#} {string.Join(" or ", g.ids.Select(ResName)).ToLower()}")) + " a day", Small, 20);
                 var f = new List<string>();
-                if (d.seasonYield != null && d.seasonYield.Length == 4) f.Add($"{S.SeasonName.ToLower()} x{season:0.##}");
-                if (d.HasNearby) f.Add($"{d.nearby.feature} {b.FeatureLeft:0} in reach x{near:0.##}");
-                if (d.usesTools) f.Add($"tools x{toolF:0.##}");
-                f.Add($"mood x{moodF:0.##}");
-                if (research != 1f) f.Add($"research x{research:0.##}");
+                if (d.seasonYield != null && d.seasonYield.Length == 4) f.Add($"{S.SeasonName.ToLower()} x{est.Season:0.##}");
+                if (d.HasNearby) f.Add($"{d.nearby.feature} {b.FeatureLeft:0} in reach x{est.Near:0.##}");
+                if (d.usesTools) f.Add($"tools x{est.Tools:0.##}");
+                f.Add($"mood x{est.Mood:0.##}");
+                if (est.NoWater > 0) f.Add($"no clean water x{est.Water:0.##}");
+                if (est.Research != 1f) f.Add($"research x{est.Research:0.##}");
+                if (est.Difficulty != 1f) f.Add($"{S.Diff.name.ToLower()} x{est.Difficulty:0.##}");
                 Para("At full workdays: " + string.Join(" · ", f) + (d.fieldWork ? ". Walking out and back takes some of the day." : "."));
                 if (b.OutTotal > 0.5f) Row($"Waiting to be carried to storage: {b.OutTotal:0}", Small, 20);
             }

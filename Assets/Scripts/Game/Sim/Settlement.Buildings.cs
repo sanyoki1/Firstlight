@@ -574,7 +574,8 @@ namespace Firstlight.Game
             if (d.knowledgePerWorker > 0)
             {
                 float mult = c.Age >= B.elderAge ? B.elderKnowledgeMult * Effect("knowledge.elders") : 1f;
-                AddKnowledge(d.knowledgePerWorker * frac * mult * Effect(b.YieldKey));
+                float learned = d.knowledgePerWorker * frac * mult * Effect(b.YieldKey);
+                AddKnowledge(learned); b.Learned += learned;
                 did = true;
             }
             if (d.outputs.Length == 0) return did;
@@ -626,6 +627,7 @@ namespace Firstlight.Game
                 }
                 Produced[b.OutRes[i]] += amt;
                 if (b.OutRes[i] == _grain) GrainProducedF += amt;
+                b.Made += amt;
             }
             if (field) RecountLoad(c);
             if (d.consumesFeaturePer > 0)

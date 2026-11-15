@@ -76,6 +76,8 @@ namespace Firstlight.Game
         internal int[][] InRes;
         internal string YieldKey;
         public string Status = "";           // short status line for the HUD ("No workers", "Needs tools", ...)
+        /// <summary>Made and learned here since the game started or was loaded (not saved; the auto-test's estimate check).</summary>
+        public double Made, Learned;
 
         /// <summary>Being rebuilt in place as this (Def.upgradesTo); it keeps working / housing as the old one meanwhile.</summary>
         public BuildingDef UpgradeTo;
