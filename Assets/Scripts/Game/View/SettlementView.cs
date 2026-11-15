@@ -596,6 +596,11 @@ namespace Firstlight.Game
 
         // ------------------------------------------------------------------ selection, ghost, radii
 
+        // A person's hover and selection rings say how they are (UX audit U8c): hungry or cold in the HUD's bad colour, sick
+        // in its warning colour, else the usual light ring.
+        static readonly Color RingBad = new(0.95f, 0.42f, 0.34f), RingSick = new(0.96f, 0.76f, 0.36f);
+        static Color PersonRing(Citizen c, Color normal) => c.Hungry || c.Cold ? RingBad : c.Sick ? RingSick : normal;
+
         void DrawOverlays()
         {
             var sel = new Color(0.95f, 0.9f, 0.7f);
@@ -615,8 +620,8 @@ namespace Firstlight.Game
             {
                 foreach (var (c, p) in Drawn)
                 {
-                    if (c == SelectedCitizen) _rings.Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), 0, new float3(0.45f, 1, 0.45f), Pal.Pack(sel)));
-                    else if (c == HoverCitizen) _rings.Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), 0, new float3(0.4f, 1, 0.4f), Pal.Pack(new Color(0.7f, 0.68f, 0.6f))));
+                    if (c == SelectedCitizen) _rings.Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), 0, new float3(0.45f, 1, 0.45f), Pal.Pack(PersonRing(c, sel))));
+                    else if (c == HoverCitizen) _rings.Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), 0, new float3(0.4f, 1, 0.4f), Pal.Pack(PersonRing(c, new Color(0.7f, 0.68f, 0.6f)))));
                 }
             }
             if (GhostDef != null)
