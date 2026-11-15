@@ -143,6 +143,7 @@ namespace Firstlight.Game
                     if (_waterCell[h] < 0 || !IsDrinkSpot(_waterCell[h])) _waterCell[h] = FindWateringPlace(herd.Pos);
                 }
 
+                GatherThreats(deer, n);
                 for (int i = 0; i < n; i++) Step(h, i, dt);
                 for (int i = n; i < deer.Length; i++)
                 {
@@ -397,12 +398,38 @@ namespace Firstlight.Game
 
         // ------------------------------------------------------------------ people: noticing, fleeing, kills
 
+        readonly List<(float2 pos, float notice)> _herdThreats = new();
+
+        /// <summary>
+        /// The people a herd could notice this frame: those within their notice range (times the largest state scale,
+        /// 1.3) of the circle round the herd's deer, kept in their order. Each deer then checks only these, so the cost
+        /// grows with herds x people rather than deer x people. A person a deer would notice is always kept (the deer
+        /// lies inside the circle, and its position does not change before its own check), so the deer behave exactly
+        /// as before.
+        /// </summary>
+        void GatherThreats(Deer[] deer, int n)
+        {
+            _herdThreats.Clear();
+            if (n == 0 || Threats.Count == 0) return;
+            float2 lo = deer[0].Pos, hi = deer[0].Pos;
+            for (int i = 1; i < n; i++) { lo = math.min(lo, deer[i].Pos); hi = math.max(hi, deer[i].Pos); }
+            float2 centre = (lo + hi) * 0.5f;
+            float radius = 0;
+            for (int i = 0; i < n; i++) radius = math.max(radius, math.distance(deer[i].Pos, centre));
+            radius += 0.5f;                                   // slack for rounding
+            foreach (var t in Threats)
+            {
+                float reach = radius + t.notice * 1.3f;
+                if (math.distancesq(t.pos, centre) < reach * reach) _herdThreats.Add(t);
+            }
+        }
+
         bool Threatened(in Deer d, out float2 from)
         {
             from = 0;
             float scale = d.State == DeerState.Drink ? 0.75f : d.State == DeerState.Alert ? 1.3f : 1f;
             float best = float.MaxValue;
-            foreach (var (pos, notice) in Threats)
+            foreach (var (pos, notice) in _herdThreats)
             {
                 float dist = math.distance(pos, d.Pos);
                 if (dist < notice * scale && dist < best) { best = dist; from = pos; }
