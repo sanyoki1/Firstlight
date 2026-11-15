@@ -16,9 +16,11 @@ namespace Firstlight.Game.UI
         sealed class GuideStep
         {
             public string Title, Why;
+            public Func<Hud, string> WhyNow;        // optional: the text with live numbers (instead of Why)
             public Func<Hud, bool> Done;
             public Func<Hud, string> Progress;      // optional "12 of 40" line
             public Func<Hud, BuildingDef> Build;    // optional: the building this step asks for (a button opens it)
+            public Func<Hud, BuildingDef> Build2;   // optional: a second building that unblocks the first (a second button)
         }
 
         static BuildingDef Def(Hud h, string id) => h.D.Building(id);
@@ -31,15 +33,59 @@ namespace Firstlight.Game.UI
             new() { Title = "Build a gatherers' camp", Why = "Roots, nuts and berries from the woods around it: the band's first steady food.", Done = h => Has(h, "gatherers_camp"), Build = h => Def(h, "gatherers_camp") },
             new() { Title = "Build a woodcutter", Why = "Wood for every building, and firewood: without it homes and the campfire go cold in winter.", Done = h => Has(h, "woodcutter"), Build = h => Def(h, "woodcutter") },
             new() { Title = "Build a storage pile", Why = "The campfire holds little; goods with nowhere to go pile up at the workplaces and spoil.", Done = h => Has(h, "storage_pile"), Build = h => Def(h, "storage_pile") },
+            // Ticks only when the fire is finished (it used to tick on the site, which the starting stone cannot finish
+            // once the woodcutter has taken its share), and points at a Stone Gatherer while stone is short.
             new() { Title = "Build the Elders' Fire and queue Basic Tools", Why = "Elders turn stories into knowledge; Basic Tools comes first because it unlocks tools, spears, mining and farming. Research is R.",
-                    Done = h => Has(h, "elders_fire") && (h.S.IsResearched("basic_tools") || h.S.ResearchQueue.Contains("basic_tools")), Build = h => Has(h, "elders_fire") ? null : Def(h, "elders_fire"),
-                    Progress = h => (Has(h, "elders_fire") ? Col("Elders' Fire placed", Good) : "Elders' Fire not placed") + "  ·  " + (h.S.IsResearched("basic_tools") || h.S.ResearchQueue.Contains("basic_tools") ? Col("Basic Tools queued", Good) : "Basic Tools not queued") },
+                    WhyNow = h => $"Elders turn stories into knowledge; Basic Tools comes first because it unlocks tools, spears, mining and farming. Research is R. The fire needs {h.FireStoneNeed():0} stone: a Stone Gatherer by the rocks brings more.",
+                    Done = h => h.S.CountBuildings("elders_fire") > 0 && BasicToolsQueued(h), Build = h => Has(h, "elders_fire") ? null : Def(h, "elders_fire"),
+                    Build2 = h => h.FireStoneShort(out _, out _) && !Has(h, "stone_gatherer") ? Def(h, "stone_gatherer") : null,
+                    Progress = h => h.FireProgress() + "  ·  " + (BasicToolsQueued(h) ? Col("Basic Tools queued", Good) : "Basic Tools not queued") },
             new() { Title = "Prepare for winter", Why = "Nothing grows in winter. Stock firewood for the homes and fire, and food for the cold days; raise a building's priority to push it.",
                     Done = h => h.S.WintersSurvived >= 1 || h.WinterReady(out _), Progress = h => { h.WinterReady(out string p); return p; } },
             new() { Title = "Build a toolmaker", Why = "Once Basic Tools is known: workers with tools work faster, and fields and mines need them.", Done = h => Has(h, "toolmaker"), Build = h => Def(h, "toolmaker"),
                     Progress = h => h.S.IsResearched("basic_tools") ? Col("Basic Tools is known", Good) : "Waiting for Basic Tools" },
             new() { Title = "Look at the goals (G)", Why = "Goals list the key research and milestones that lead to the Agricultural Age. From here the settlement is yours.", Done = h => h._goalsSeen },
         };
+
+        static bool BasicToolsQueued(Hud h) => h.S.IsResearched("basic_tools") || h.S.ResearchQueue.Contains("basic_tools");
+
+        /// <summary>Stone the Elders' Fire costs (from the data).</summary>
+        float FireStoneNeed()
+        {
+            var d = D.Building("elders_fire");
+            if (d != null) foreach (var c in d.cost) if (c.id == "stone") return c.amount;
+            return 0;
+        }
+
+        /// <summary>
+        /// Whether the Elders' Fire is short of stone: before it is placed, stone in store below its cost; once it is a
+        /// site, what it has (delivered, on the way, and in store) below what it needs. Never once it is built.
+        /// </summary>
+        bool FireStoneShort(out float have, out float need)
+        {
+            need = FireStoneNeed(); have = S.Stock("stone");
+            if (need <= 0 || S.CountBuildings("elders_fire") > 0) return false;
+            foreach (var b in S.Buildings)
+                if (b.IsSite && b.Def.id == "elders_fire")
+                    for (int i = 0; i < b.Def.cost.Length; i++)
+                        if (b.Def.cost[i].id == "stone") have += b.Delivered[i] + b.InTransitOf(i);
+            return have < need - 0.01f;
+        }
+
+        /// <summary>The step's first progress item: not placed / waiting for stone (6 / 8) / being built / built.</summary>
+        string FireProgress()
+        {
+            if (S.CountBuildings("elders_fire") > 0) return Col("Elders' Fire built", Good);
+            Building site = null;
+            foreach (var b in S.Buildings) if (b.IsSite && b.Def.id == "elders_fire") { site = b; break; }
+            bool shortOf = FireStoneShort(out float have, out float need);
+            if (site == null) return shortOf ? $"Elders' Fire not placed (stone {Col($"{have:0} / {need:0}", Warn)})" : "Elders' Fire not placed";
+            if (shortOf) return Col($"Elders' Fire: waiting for stone ({have:0} / {need:0})", Warn);
+            return $"Elders' Fire: being built ({site.Progress:P0})";
+        }
+
+        /// <summary>"a Lean-to", "an Elders' Fire".</summary>
+        static string Article(string name) => !string.IsNullOrEmpty(name) && "AEIOUaeiou".IndexOf(name[0]) >= 0 ? "an" : "a";
 
         int _guideStep;                 // first step not yet done
         bool _guideFrozen;              // -p4shots: a step shown on purpose stays
@@ -76,26 +122,33 @@ namespace Firstlight.Game.UI
             var st = Steps[_guideStep];
             string prog = st.Progress?.Invoke(this);
             var build = st.Build?.Invoke(this);
+            var build2 = st.Build2?.Invoke(this);
+            if (build != null && !S.IsUnlocked(build)) build = null;
+            if (build2 != null && !S.IsUnlocked(build2)) build2 = null;
+            if (build == null) { build = build2; build2 = null; }
             float w = 400;
-            var why = new GUIContent(st.Why);
-            float h = 44 + SmallWrap.CalcHeight(why, w - 28) + (prog != null ? 24 : 0) + (build != null && S.IsUnlocked(build) ? 36 : 0) + 12;
+            string whyText = st.WhyNow?.Invoke(this) ?? st.Why;
+            var why = new GUIContent(whyText);
+            float h = 44 + SmallWrap.CalcHeight(why, w - 28) + (prog != null ? 24 : 0) + (build != null ? 36 : 0) + 12;
             float x = BuildCategory != null ? 420 : 10;
             var r = Box(new Rect(x, VH - 60 - h - 8, w, h));
             Fill(new Rect(r.x + 1, r.y + 1, 3, r.height - 2), Accent);
             GUI.Label(new Rect(r.x + 14, r.y + 8, w - 90, 20), Col($"FIRST STEPS  {_guideStep + 1} / {Steps.Length}", Faint), new GUIStyle(Small) { fontSize = 12 });
             if (GUI.Button(new Rect(r.xMax - 64, r.y + 6, 56, 20), Col("hide", Dim), new GUIStyle(Button) { fontSize = 12 })) { GuideHidden = true; GameSettings.Current.guideDone = true; GameSettings.Save(); }
-            Tip(new Rect(r.xMax - 64, r.y + 6, 56, 20), "Hide the guide for this game (Settings can turn it back on).");
+            Tip(new Rect(r.xMax - 64, r.y + 6, 56, 20), "Hide the guide, in this game and in new ones. Settings > First-game guide brings it back for new games.");
             GUI.Label(new Rect(r.x + 14, r.y + 24, w - 28, 22), $"<b>{st.Title}</b>", Label);
             float y = r.y + 48;
             float wh = SmallWrap.CalcHeight(why, w - 28);
-            GUI.Label(new Rect(r.x + 14, y, w - 28, wh), st.Why, SmallWrap);
+            GUI.Label(new Rect(r.x + 14, y, w - 28, wh), whyText, SmallWrap);
             y += wh + 2;
             if (prog != null) { GUI.Label(new Rect(r.x + 14, y, w - 28, 22), prog, Small); y += 24; }
-            if (build != null && S.IsUnlocked(build))
-            {
-                var br = new Rect(r.x + 14, y + 2, 200, 28);
-                if (GUI.Button(br, $"Place a {build.name}", Mode == ToolMode.Place && PlaceDef == build ? ButtonOn : Button)) { BuildCategory = build.category; StartPlacing(build); }
-            }
+            if (build != null) GuideButton(new Rect(r.x + 14, y + 2, build2 != null ? 182 : 220, 28), build);
+            if (build2 != null) GuideButton(new Rect(r.x + 14 + 190, y + 2, 182, 28), build2);
+        }
+
+        void GuideButton(Rect br, BuildingDef build)
+        {
+            if (GUI.Button(br, $"Place {Article(build.name)} {build.name}", Mode == ToolMode.Place && PlaceDef == build ? ButtonOn : Button)) { BuildCategory = build.category; StartPlacing(build); }
         }
 
         // ------------------------------------------------------------------ one-time hints
