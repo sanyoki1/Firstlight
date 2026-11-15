@@ -308,6 +308,7 @@ namespace Firstlight.Game
             Hud.ToggleJobs(); yield return Run("panel jobs (1x)", s); Hud.ToggleJobs();
             Hud.ToggleStocks(); yield return Run("panel goods (1x)", s); Hud.ToggleStocks();
             Hud.ToggleGoals(); yield return Run("panel goals (1x)", s); Hud.ToggleGoals();
+            Hud.ToggleEvents(); yield return Run("panel events (1x)", s); Hud.ToggleEvents();
             Hud.ToggleResearch(); yield return Run("research screen (1x)", s); Hud.ToggleResearch();
             if (Sim.TownCenter != null) { Hud.Select(Sim.TownCenter); yield return Run("campfire selected (1x)", s); Hud.Select(null); }
             Citizen c = null; foreach (var x in Sim.Citizens) if (!x.Gone) { c = x; break; }
