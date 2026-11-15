@@ -767,7 +767,16 @@ namespace Firstlight.Game
                     float hour = data.Balance.dayLengthSeconds / 24f;
                     while (s.Day < day0 + days && s.Population > 0) { s.Tick(hour); ap.Think(); }
                     string resaved = Path.Combine(outDir, "compat-" + Path.GetFileNameWithoutExtension(file) + SaveGame.Extension);
-                    SaveGame.Write(resaved, SaveGame.HeaderFor(s, "compat", "test"), s, ap, null, null, null);
+                    // Timed: five writes of this game (the save's cost on the main thread, for docs/pass2/perf.md).
+                    var times = new List<double>(); int gc0 = GC.CollectionCount(0);
+                    for (int i = 0; i < 5; i++)
+                    {
+                        var sw = System.Diagnostics.Stopwatch.StartNew();
+                        SaveGame.Write(resaved, SaveGame.HeaderFor(s, "compat", "test"), s, ap, null, null, null);
+                        times.Add(sw.Elapsed.TotalMilliseconds);
+                    }
+                    Debug.Log($"[SaveTime] {Path.GetFileName(file)} (day {s.Day}, {s.Population} people, {s.Buildings.Count} buildings): save {times.Min():F1} ms min, {times.Average():F1} ms mean of 5 "
+                              + $"({string.Join(" ", times.Select(t => t.ToString("F1")))}), {new FileInfo(resaved).Length / 1024.0:F0} KB, {(GC.CollectionCount(0) - gc0) / 5.0:F1} collections per save");
                     again = SaveGame.Read(resaved, data, out string err2);
                     bool same = again != null && Digest(again.Map, again.Sim, again.Auto).SequenceEqual(Digest(l.Map, s, ap));
                     line = $"format {h?.Version}, day {day0} pop {pop0} -> day {s.Day} pop {s.Population}, {s.Buildings.Count(b => b.Active)} buildings, {s.ResearchLog.Count} topics, age {s.Age.name}; "

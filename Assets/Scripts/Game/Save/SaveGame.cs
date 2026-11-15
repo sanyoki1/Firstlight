@@ -92,8 +92,10 @@ namespace Firstlight.Game
                 w.Str(h.Name); w.Str(h.Kind); w.Int(h.Seed); w.Int(h.Day); w.Int(h.Year); w.Str(h.Season); w.Str(h.Age);
                 w.Int(h.Population); w.Int(h.Difficulty); w.Long(h.SavedUtcTicks);
                 w.W.Flush();
-                using var gz = new GZipStream(fs, System.IO.Compression.CompressionLevel.Fastest, true);
-                var b = new SaveWriter(gz);
+                // The body is written into memory first and compressed in one call: written straight into the GZipStream it
+                // made ~200k tiny deflate writes (30-44 ms and ~10 collections a save). The bytes saved mean the same.
+                var body = new MemoryStream(256 * 1024);
+                var b = new SaveWriter(body);
                 b.Int(s.Map.W);
                 b.Int(MapGenHash(s.Data.Balance));
                 var goods = new List<string>(s.ResCount); foreach (var g in s.Data.Resources) goods.Add(g.id);
@@ -109,6 +111,8 @@ namespace Firstlight.Game
                 b.Block(test);
                 b.Str("end");
                 b.W.Flush();
+                using var gz = new GZipStream(fs, System.IO.Compression.CompressionLevel.Fastest, true);
+                gz.Write(body.GetBuffer(), 0, (int)body.Length);
             }
             // Overwriting: swap the new file in with File.Replace, which keeps the old save (as .bak) until the new one is in
             // place, so a failed move (a scanner or sync client holding the file) or a crash never leaves the slot empty.
