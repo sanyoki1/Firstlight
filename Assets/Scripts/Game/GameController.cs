@@ -122,6 +122,7 @@ namespace Firstlight.Game
             if (HasArg("-autoplay")) Auto = new AutoPlayer(Sim);
             if (loaded == null) Sim.SetSpeed(ArgInt("-simspeed", 1));
             if (InMenu) { OrbitCamera.InputLocked = true; Cam.SetView(_menuFocus, 58f, 38f, 20f); }
+            if (InMenu && _openLoadScreen) { _openLoadScreen = false; Hud.ShowScreen(Hud.MenuScreen.Load); }   // after a fault: "Load a save"
             float quitAfter = ArgInt("-quitafter", 0);
             if (quitAfter > 0) StartCoroutine(QuitAfter(quitAfter));
 
@@ -179,10 +180,75 @@ namespace Firstlight.Game
                 if (kb.f6Key.wasPressedThisFrame) StartFlood();
                 if (kb.f7Key.wasPressedThisFrame) Band?.StartHunt();
             }
-            PerfProbe.Begin(PerfProbe.S.HudUpdate);
-            if (InMenu) MenuUpdate();
-            else if (!_demo) Hud.Update(Time.deltaTime);   // HUD keys and mouse (speed, panels, placing, selecting)
-            PerfProbe.End(PerfProbe.S.HudUpdate);
+            // Each part runs under its own guard (GameController.Errors.cs): an exception in the settlement's step or the
+            // HUD's update stops the game safely (paused, no more autosaves, a message); one in drawing is logged once
+            // and the rest of the frame still runs. Unattended runs quit with a non-zero code instead.
+            if (!_faulted)
+            {
+                PerfProbe.Begin(PerfProbe.S.HudUpdate);
+                try
+                {
+                    if (InMenu) MenuUpdate();
+                    else if (!_demo) Hud.Update(Time.deltaTime);   // HUD keys and mouse (speed, panels, placing, selecting)
+                }
+                catch (Exception e) { Fault("the interface's update", e); }
+                PerfProbe.End(PerfProbe.S.HudUpdate);
+            }
+            if (!_faulted)
+            {
+                try { SimStep(); }
+                catch (Exception e) { Fault("the settlement's step", e); }
+            }
+            try
+            {
+                Band?.Update(Time.deltaTime);     // first, so the deer see where people are this frame
+                PerfProbe.Begin(PerfProbe.S.Wild);
+                Wild.Update(Time.deltaTime);
+                PerfProbe.End(PerfProbe.S.Wild);
+            }
+            catch (Exception e) { DrawFault(0, "wildlife", e); }
+            try
+            {
+                PerfProbe.Begin(PerfProbe.S.Atmo);
+                WorldLighting.UpdateForZoom(Cam.Distance);
+                // Firelight at night, and trees cut away round the focus (or the selected person) when zoomed in.
+                SView.Night = InMenu || _demo ? 0 : 1f - Atmo.Daylight;
+                var sel = Hud?.SelectedCitizen;
+                float2 cut = sel != null && !sel.Gone ? sel.Pos : new float2(Cam.Focus.x, Cam.Focus.z);
+                SView.CutCenter = cut;
+                SView.CutRadius = 5f + Cam.Distance * 0.1f;
+                SView.CutStrength = InMenu || _demo || CanopyCutOff || Sim.NeedsCampfire ? 0 : math.saturate((27f - Cam.Distance) / 10f);
+                if (InMenu) Atmo.Apply(0.7f, 1.35f, 0f);          // the title backdrop: a late summer afternoon
+                else if (!_demo) { Atmo.Apply(Sim); View.HideGroundCover = Atmo.Snow > 0.4f; }
+                PerfProbe.End(PerfProbe.S.Atmo);
+            }
+            catch (Exception e) { DrawFault(1, "lighting", e); }
+            try
+            {
+                PerfProbe.Begin(PerfProbe.S.ViewDraw);
+                View.Draw(Time.time);
+                PerfProbe.End(PerfProbe.S.ViewDraw);
+            }
+            catch (Exception e) { DrawFault(2, "drawing the world", e); }
+            try
+            {
+                PerfProbe.Begin(PerfProbe.S.SViewDraw);
+                SView.Draw(Time.deltaTime);
+                PerfProbe.End(PerfProbe.S.SViewDraw);
+            }
+            catch (Exception e) { DrawFault(3, "drawing the settlement", e); }
+            try
+            {
+                PerfProbe.Begin(PerfProbe.S.Sound);
+                if (!_demo) Sound?.Update(Time.deltaTime);
+                PerfProbe.End(PerfProbe.S.Sound);
+            }
+            catch (Exception e) { DrawFault(4, "sound", e); }
+        }
+
+        /// <summary>The water, the walking costs, the settlement's step, the autosave and the auto-player: one frame's worth.</summary>
+        void SimStep()
+        {
             PerfProbe.Begin(PerfProbe.S.Water);
             UpdateWater(Time.deltaTime);
             PerfProbe.End(PerfProbe.S.Water);
@@ -203,6 +269,7 @@ namespace Firstlight.Game
                 PerfProbe.Begin(PerfProbe.S.Sim);
                 Sim.Update(Paused ? 0 : Time.deltaTime);
                 PerfProbe.End(PerfProbe.S.Sim);
+                FaultTestCheck();
                 PerfProbe.Begin(PerfProbe.S.Autosave);
                 if (!_demo && !Paused) Autosave(Sim.Day != dayBefore);
                 PerfProbe.End(PerfProbe.S.Autosave);
@@ -212,31 +279,6 @@ namespace Firstlight.Game
                 if (Auto != null && (_autoClock >= Data.Balance.dayLengthSeconds / 24f || Sim.NeedsCampfire)) { _autoClock = 0; Auto.Think(); }
                 PerfProbe.End(PerfProbe.S.Auto);
             }
-            Band?.Update(Time.deltaTime);     // first, so the deer see where people are this frame
-            PerfProbe.Begin(PerfProbe.S.Wild);
-            Wild.Update(Time.deltaTime);
-            PerfProbe.End(PerfProbe.S.Wild);
-            PerfProbe.Begin(PerfProbe.S.Atmo);
-            WorldLighting.UpdateForZoom(Cam.Distance);
-            // Firelight at night, and trees cut away round the focus (or the selected person) when zoomed in.
-            SView.Night = InMenu || _demo ? 0 : 1f - Atmo.Daylight;
-            var sel = Hud?.SelectedCitizen;
-            float2 cut = sel != null && !sel.Gone ? sel.Pos : new float2(Cam.Focus.x, Cam.Focus.z);
-            SView.CutCenter = cut;
-            SView.CutRadius = 5f + Cam.Distance * 0.1f;
-            SView.CutStrength = InMenu || _demo || CanopyCutOff || Sim.NeedsCampfire ? 0 : math.saturate((27f - Cam.Distance) / 10f);
-            if (InMenu) Atmo.Apply(0.7f, 1.35f, 0f);          // the title backdrop: a late summer afternoon
-            else if (!_demo) { Atmo.Apply(Sim); View.HideGroundCover = Atmo.Snow > 0.4f; }
-            PerfProbe.End(PerfProbe.S.Atmo);
-            PerfProbe.Begin(PerfProbe.S.ViewDraw);
-            View.Draw(Time.time);
-            PerfProbe.End(PerfProbe.S.ViewDraw);
-            PerfProbe.Begin(PerfProbe.S.SViewDraw);
-            SView.Draw(Time.deltaTime);
-            PerfProbe.End(PerfProbe.S.SViewDraw);
-            PerfProbe.Begin(PerfProbe.S.Sound);
-            if (!_demo) Sound?.Update(Time.deltaTime);
-            PerfProbe.End(PerfProbe.S.Sound);
         }
 
         void OnGUI()
@@ -248,7 +290,14 @@ namespace Firstlight.Game
             var prev = RenderTexture.active;
             if (shot) RenderTexture.active = _shotRT;
             PerfProbe.Begin(PerfProbe.S.OnGUI);
-            if (InMenu) Hud.OnMenuGUI(); else Hud.OnGUI();
+            if (_faulted) FaultGUI();
+            else
+            {
+                var matrix = GUI.matrix;
+                try { if (InMenu) Hud.OnMenuGUI(); else Hud.OnGUI(); }
+                catch (ExitGUIException) { throw; }
+                catch (Exception e) { GUI.matrix = matrix; DrawFault(5, "drawing the interface", e); }
+            }
             PerfProbe.End(PerfProbe.S.OnGUI);
             if (shot) { _guiDrawn = true; RenderTexture.active = prev; }
         }
