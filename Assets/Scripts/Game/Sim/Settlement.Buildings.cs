@@ -269,10 +269,12 @@ namespace Firstlight.Game
                     if (!CanPlace(d, o)) continue;
                     var p = FootprintCenter(d, o);
                     int near = Map.CountFeature("trees", p, 4);
-                    float score = math.min(Map.CountFeature("trees", p, 11), 45) * 0.5f
-                                + math.min(Map.CountFeature("rocks", p, 13), 8) * 2f
-                                + math.min(Map.CountFeature("water", p, 14), 12) * 0.8f
-                                + math.min(Map.CountFeature("wildlife", p, 18), 14) * 0.6f
+                    // Reach and caps from CampfireReach (trees 11/45, rock 13/8, water 14/12, game 18/14; the HUD's tip judges by them).
+                    var cr = CampfireReach;
+                    float score = math.min(Map.CountFeature(cr[0].feature, p, cr[0].radius), cr[0].full) * 0.5f
+                                + math.min(Map.CountFeature(cr[1].feature, p, cr[1].radius), cr[1].full) * 2f
+                                + math.min(Map.CountFeature(cr[2].feature, p, cr[2].radius), cr[2].full) * 0.8f
+                                + math.min(Map.CountFeature(cr[3].feature, p, cr[3].radius), cr[3].full) * 0.6f
                                 - near * 1.5f;
                     // Room to build: dry, clear cells close by.
                     int open = 0;

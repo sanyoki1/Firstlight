@@ -5,6 +5,7 @@ namespace Firstlight.Game
 {
     // Read-only explanations for the HUD: the parts of a figure the sim works out, as the sim works them out, so the panels
     // never re-derive a rule (and drift from it). Nothing here changes the settlement.
+    // (The one table here, CampfireReach, is read by SuggestCampfireSite too: same numbers it always used.)
     public sealed partial class Settlement
     {
         /// <summary>One input of a person's happiness: what it is ("no home", "hungry") and its value (1 = fully met).</summary>
@@ -48,5 +49,12 @@ namespace Firstlight.Game
             float avg = sum / count;
             return math.saturate((avg * (1f - B.happinessWorstWeight) + min * B.happinessWorstWeight) * Effect("happiness"));
         }
+
+        // The campfire site suggester's reach and the counts at which each feature stops adding to a site's score
+        // (SuggestCampfireSite reads them; the placement tip judges a spot's counts against the same figures).
+        public static readonly (string feature, string label, int radius, int full)[] CampfireReach =
+        {
+            ("trees", "trees", 11, 45), ("rocks", "rock", 13, 8), ("water", "water", 14, 12), ("wildlife", "game", 18, 14),
+        };
     }
 }

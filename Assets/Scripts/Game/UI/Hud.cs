@@ -288,7 +288,19 @@ namespace Firstlight.Game.UI
             var o = S.SuggestCampfireSite();
             var d = D.Buildings.Find(b => b.townCenter);
             var c = Settlement.FootprintCenter(d, o);
+            SuggestedSite = c;
             JumpTo(c);
+        }
+
+        /// <summary>The site "Show a good site" pointed at: marked on the ground until the campfire is placed.</summary>
+        public float2? SuggestedSite { get; private set; }
+
+        /// <summary>"trees 51 (plenty)": a count within the campfire's reach judged against the suggester's own cap.</summary>
+        static string Judged(string label, int n, int full)
+        {
+            if (n >= full) return $"{label} {Col($"{n} (plenty)", Good)}";
+            if (n * 3 >= full) return $"{label} {Col($"{n} (some)", Warn)}";
+            return $"{label} {Col(n == 0 ? "none" : $"{n} (few)", Bad)}";
         }
 
         public static int2 PlaceOrigin(BuildingDef d, int2 cell, int rot = 0)
@@ -366,6 +378,17 @@ namespace Firstlight.Game.UI
                 AddRadii(v, PlaceDef, Settlement.FootprintCenter(PlaceDef, o, PlaceRot));
             }
             else if (Selected != null && Selected.Alive) AddRadii(v, Selected.Def, Selected.Center);
+            // The suggested campfire site, after "Show a good site": a tight double ring of studs where the fire would
+            // stand and its warmth's reach, in the accent colour, until the campfire is placed.
+            if (!S.NeedsCampfire) SuggestedSite = null;
+            else if (SuggestedSite != null)
+            {
+                var sc = SuggestedSite.Value;
+                v.Radii.Add((sc, 1.2f, Accent));
+                v.Radii.Add((sc, 2.4f, Accent));
+                var tc = D.Buildings.Find(b => b.townCenter);
+                if (tc != null && tc.warmthRadius > 0) v.Radii.Add((sc, tc.warmthRadius, Accent));
+            }
         }
 
         static readonly Color RadiusWork = new(0.95f, 0.88f, 0.6f), RadiusWarm = new(1f, 0.62f, 0.35f), RadiusHealth = new(0.6f, 0.85f, 0.7f),
@@ -499,7 +522,7 @@ namespace Firstlight.Game.UI
             GUI.Label(new Rect(r.x + 20, r.y + 12, 620, 30), "Choose a site for the campfire", Title);
             GUI.Label(new Rect(r.x + 20, r.y + 44, 620, 40), "The band will settle around it. Look for open ground with woods, loose rock, water and game within reach.", SmallWrap);
             if (GUI.Button(new Rect(r.x + 20, r.y + 78, 190, 26), "Show a good site (Tab)", Button)) PointAtSuggestedSite();
-            GUI.Label(new Rect(r.x + 226, r.y + 78, 420, 26), "Left-click to place.   Wheel, WASD, Q/E, right-drag: camera", Small);
+            GUI.Label(new Rect(r.x + 226, r.y + 78, 420, 26), SuggestedSite != null ? "The gold ring marks it. Left-click to place the fire." : "Left-click to place.   Wheel, WASD, Q/E, right-drag: camera", Small);
         }
 
         /// <summary>Next to the ghost: what is being placed, why it can't go there, and how good the spot is.</summary>
@@ -547,8 +570,14 @@ namespace Firstlight.Game.UI
                 }
                 if (d.townCenter)
                 {
-                    // What a campfire here would have within reach (what the band will live off).
-                    lines.Add($"Within reach: trees {M.CountFeature("trees", c, 11)}, rock {M.CountFeature("rocks", c, 13)}, water {M.CountFeature("water", c, 14)}, game {M.CountFeature("wildlife", c, 18)}");
+                    // What a campfire here would have within reach (what the band will live off), judged against the counts
+                    // the site suggester stops adding at.
+                    if (SuggestedSite != null && math.distance(SuggestedSite.Value, c) < 1.5f) lines.Add(Col("The suggested site", Accent));
+                    var cr = Settlement.CampfireReach;
+                    lines.Add("Within reach: " + Judged(cr[0].label, M.CountFeature(cr[0].feature, c, cr[0].radius), cr[0].full) + ", " +
+                              Judged(cr[1].label, M.CountFeature(cr[1].feature, c, cr[1].radius), cr[1].full) + ",\n" +
+                              Judged(cr[2].label, M.CountFeature(cr[2].feature, c, cr[2].radius), cr[2].full) + ", " +
+                              Judged(cr[3].label, M.CountFeature(cr[3].feature, c, cr[3].radius), cr[3].full));
                     lines.Add(Col($"Warms homes within {d.warmthRadius}", Dim));
                 }
                 if (!string.IsNullOrEmpty(d.onDeposit)) lines.Add(Col($"On the {d.onDeposit} deposit: {S.DepositCells(d, PlaceOrigin(d, HoverCell, PlaceRot), PlaceRot)} cells (marked)", Good));
