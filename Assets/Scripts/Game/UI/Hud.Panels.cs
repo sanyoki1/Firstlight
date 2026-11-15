@@ -224,7 +224,15 @@ namespace Firstlight.Game.UI
                 Places(b => b.Def.IsWorkplace && !b.Def.crop && System.Array.Exists(b.Def.outputs, o => S.ResIndex(o.id) >= 0 && D.Resources[S.ResIndex(o.id)].isFood), "food workplaces");
         }
 
-        void CycleChip(string w)
+        /// <summary>A chip's tooltip: where a click goes (null when it has no place).</summary>
+        public string ChipTipText(string w)
+        {
+            ChipTargets(w, _chipTargets);
+            if (_chipTargets.Count == 0) return null;
+            return _chipTargets.Count == 1 ? "Click to go there." : $"Click to go to the {_chipTargets.Count} {_chipTargetName}, one at each click.";
+        }
+
+        public void CycleChip(string w)
         {
             string key = w.Length > 14 ? w.Substring(0, 14) : w;
             ChipTargets(w, _chipTargets);
@@ -282,7 +290,7 @@ namespace Firstlight.Game.UI
                 {
                     if (r.Contains(Event.current.mousePosition)) Fill(r, new Color(1, 1, 1, 0.04f));
                     if (GUI.Button(r, GUIContent.none, GUIStyle.none)) CycleChip(w);
-                    Tip(r, _chipTargets.Count == 1 ? $"Click to go to {_chipTargetName}." : $"Click to go to the {_chipTargets.Count} {_chipTargetName}, one at each click.");
+                    Tip(r, ChipTipText(w));
                 }
                 y += hh + 4;
             }
@@ -296,7 +304,7 @@ namespace Firstlight.Game.UI
             for (int i = S.Events.Count - 1; i >= 0 && _feedRows.Count < 7 && i >= S.Events.Count - 60; i--)
             {
                 var e = S.Events[i];
-                if (e.Severity == Severity.Warning && ShownAsChip(e.Text)) continue;
+                if (e.Severity != Severity.Bad && ShownAsChip(e.Text)) continue;   // (some chips are logged as Info)
                 if (_feedRows.Count > 0 && S.Events[_feedRows[_feedRows.Count - 1].idx].Text == e.Text) { var last = _feedRows[_feedRows.Count - 1]; _feedRows[_feedRows.Count - 1] = (last.idx, last.n + 1); continue; }
                 _feedRows.Add((i, 1));
             }

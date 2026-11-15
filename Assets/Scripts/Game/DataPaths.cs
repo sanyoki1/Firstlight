@@ -16,7 +16,7 @@ namespace Firstlight.Game
         // Modes nobody is playing: tests, screenshot drivers, probes. A plain "-seed N" or "-load FILE" is a person.
         static readonly string[] TestModes =
         {
-            "-autotest", "-fuzztest", "-uishots", "-p4shots", "-shots", "-shot", "-watershots", "-deershots", "-deerpair",
+            "-autotest", "-fuzztest", "-uishots", "-p4shots", "-guideshots", "-shots", "-shot", "-watershots", "-deershots", "-deerpair",
             "-huntshots", "-smoketest", "-smokecontinue", "-soak", "-perfprobe", "-faulttest", "-autoplay", "-reloadtest",
             "-benchmark", "-quitafter", "-batchmode", "-nographics",
         };

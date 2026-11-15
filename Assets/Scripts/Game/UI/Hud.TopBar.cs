@@ -113,9 +113,7 @@ namespace Firstlight.Game.UI
             var fr = new Rect(x, 5, 150, 42);
             GUI.Label(new Rect(x, 5, 150, 22), "Food " + Col(FoodDaysText(fd), fcol), Label);
             GUI.Label(new Rect(x, 27, 150, 20), $"{S.FoodStock:0} in store" + Arrow(_foodDelta, 0.5f), Small);
-            Tip(fr, $"Food in store lasts {fd:0.#} days at {S.DailyFoodNeed:0.#} a day (adults eat 1, children less). Change over the last day: {_foodDelta:+0.#;-0.#;0}.\n\n" +
-                    "Gatherers, hunters, fishers and, later, fields make it; it spoils in open piles (a granary keeps it). Winter makes little: stock up before it. Click for every good (T)." +
-                    HarvestOutlookLine());
+            Tip(fr, FoodTip());
             if (GUI.Button(fr, GUIContent.none, GUIStyle.none)) ToggleStocks();
 
             // Research progress (right side), then the panel buttons.
@@ -206,7 +204,7 @@ namespace Firstlight.Game.UI
                 if (b.Active) { fires++; workers += b.Flooded || b.Paused ? 0 : b.Workers; }
                 else if (b.UnderWork) site = true;
             }
-            if (fires == 0) return site ? "No elders: the Elders' Fire is not built yet" : "No elders: build an Elders' Fire";
+            if (fires == 0) return site ? "No elders: Elders' Fire unfinished" : "No elders: build an Elders' Fire";
             if (workers == 0) return fires == 1 ? "The Elders' Fire has no elders" : "The Elders' Fires have no elders";
             return null;
         }
@@ -238,6 +236,12 @@ namespace Firstlight.Game.UI
         }
 
         static string FoodDaysText(float fd) => fd >= 99 ? "-" : $"{fd:0.#} days";
+
+        /// <summary>The food figure's tooltip (also shown by -guideshots).</summary>
+        public string FoodTip() =>
+            $"Food in store lasts {S.FoodDays:0.#} days at {S.DailyFoodNeed:0.#} a day (adults eat 1, children less). Change over the last day: {_foodDelta:+0.#;-0.#;0}.\n\n" +
+            "Gatherers, hunters, fishers and, later, fields make it; it spoils in open piles (a granary keeps it). Winter makes little: stock up before it. Click for every good (T)." +
+            HarvestOutlookLine();
 
         /// <summary>Spring and summer, once there are fields: this year's expected harvest against the year's need (the same
         /// figures as the spring warning).</summary>
