@@ -357,7 +357,7 @@ namespace Firstlight.Game.UI
         void DrawNeedsStrip(float x, float y, float right)
         {
             {
-                float hp = S.AverageHappiness;
+                float hp = _tHappy;
                 var r = new Rect(x, y, 116, 26);
                 GUI.Label(new Rect(x, y + 3, 56, 20), "Happy", Small);
                 GUI.Label(new Rect(x + 56, y + 2, 56, 22), Col($"<b>{hp:P0}</b>", hp >= 0.6f ? Good : hp >= D.Balance.leaveHappiness + 0.05f ? Warn : Bad), Label);

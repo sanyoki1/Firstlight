@@ -98,9 +98,9 @@ namespace Firstlight.Game.UI
 
             // People.
             var (adults, elders, kids) = PeopleSplit();
-            int free = S.HousingCapacity - S.Population;
+            int free = _tHousing - _tPop;
             var pr = new Rect(x, 5, 236, 42);
-            GUI.Label(new Rect(x, 5, 236, 22), $"<b>{S.Population}</b> people  " + (S.Homeless > 0 ? Col($"{S.Homeless} homeless", Warn) : free > 0 ? Col($"{free} beds free", Dim) : Col("no free beds", Dim)), Label);
+            GUI.Label(new Rect(x, 5, 236, 22), $"<b>{_tPop}</b> people  " + (_tHomeless > 0 ? Col($"{_tHomeless} homeless", Warn) : free > 0 ? Col($"{free} beds free", Dim) : Col("no free beds", Dim)), Label);
             GUI.Label(new Rect(x, 27, 236, 20), $"{adults} adults · {kids} children · {elders} elders", Small);
             if (Over(pr)) Tip(pr, $"People: {S.Population}, housing for {S.HousingCapacity}. Babies are born to families with a home, free beds and food in store; migrants come when there are free beds, food and good spirits. Unhappy or starving people leave.\n\n" +
                     $"Happiness {S.AverageHappiness:P0}: the average and the worst of food, warmth, shelter, health (and later water, pots at home and faith). It sets how fast people work.\n\nBorn {S.Births}, arrived {S.Migrants}, left {S.Leavers}, died {S.TotalDeaths}." +
@@ -108,11 +108,11 @@ namespace Firstlight.Game.UI
             x += 240;
 
             // Food.
-            float fd = S.FoodDays;
+            float fd = TFoodDays;
             var fcol = fd < S.Data.Balance.foodWarnDays ? Bad : fd < 8 ? Warn : Good;
             var fr = new Rect(x, 5, 150, 42);
             GUI.Label(new Rect(x, 5, 150, 22), "Food " + Col(FoodDaysText(fd), fcol), Label);
-            GUI.Label(new Rect(x, 27, 150, 20), $"{S.FoodStock:0} in store" + Arrow(_foodDelta, 0.5f), Small);
+            GUI.Label(new Rect(x, 27, 150, 20), $"{_tFoodStock:0} in store" + Arrow(_foodDelta, 0.5f), Small);
             if (Over(fr)) Tip(fr, FoodTip());
             if (GUI.Button(fr, GUIContent.none, GUIStyle.none)) ToggleStocks();
 
@@ -127,7 +127,7 @@ namespace Firstlight.Game.UI
             string cur = S.CurrentResearch;
             var def = cur != null ? D.ResearchById(cur) : null;
             if (GUI.Button(rr, GUIContent.none, Button)) ToggleResearch();
-            bool allKnown = def == null && !S.AvailableResearch.Any();
+            bool allKnown = def == null && _tAllKnown;
             GUI.Label(new Rect(rx + 8, 7, rw - 14, 20), def != null ? $"Researching <b>{def.name}</b>" : allKnown ? Col("All research known", Good) : Col("Nothing being researched", Warn), Label14);
             // Second line: what holds research up when nothing makes knowledge (it used to look like it was running, at
             // "+0/day"), else the bar, the rate and about how many days the current topic has left.
@@ -216,16 +216,54 @@ namespace Firstlight.Game.UI
         /// <summary>People as the top bar splits them: adults (not counting elders), elders and children.</summary>
         (int adults, int elders, int children) PeopleSplit()
         {
-            int elders = 0;
-            foreach (var c in S.Citizens) if (!c.Gone && S.IsElder(c)) elders++;
-            return (S.Adults - elders, elders, S.Children);
+            return (_tAdults - _tElders, _tElders, _tPop - _tAdults);
+        }
+
+        // The settlement's totals the HUD prints, counted once per OnGUI call (CountTotals): each of Settlement's properties
+        // is a loop over every citizen or building, and the top bar alone read them nine times a call. The same loops and
+        // sums in the same order as those properties, so the figures are identical. HUD only: nothing in the sim reads them.
+        int _tPop, _tAdults, _tElders, _tHomeless, _tHousing;
+        float _tHappy, _tFoodNeed, _tFoodStock;
+        bool _tAllKnown;
+        float TFoodDays => _tFoodNeed <= 0 ? 99f : _tFoodStock / _tFoodNeed;
+
+        void CountTotals()
+        {
+            var b = S.Data.Balance;
+            int pop = 0, adults = 0, elders = 0, homeless = 0, housing = 0;
+            float happy = 0, need = 0;
+            foreach (var c in S.Citizens)
+            {
+                if (c.Gone) continue;
+                pop++;
+                bool adult = c.Age >= b.adultAge;
+                if (adult) adults++;
+                if (S.IsElder(c)) elders++;
+                if (c.Home == null) homeless++;
+                happy += c.Happiness;
+                need += adult ? b.foodPerAdult : b.foodPerChild;
+            }
+            foreach (var x in S.Buildings) if (x.Active) housing += x.Def.housing;
+            _tPop = pop; _tAdults = adults; _tElders = elders; _tHomeless = homeless; _tHousing = housing;
+            _tHappy = pop == 0 ? 0 : happy / pop;
+            _tFoodNeed = need; _tFoodStock = S.FoodStock;
+            // Every topic known (Settlement.AvailableResearch is empty), without its LINQ and delegates.
+            bool any = false;
+            foreach (var r in S.Data.Research)
+            {
+                if (S.IsResearched(r.id) || S.Data.AgeOrder(r.age) > S.Age.order) continue;
+                bool ready = true;
+                foreach (var p in r.prereqs) if (!S.IsResearched(p)) { ready = false; break; }
+                if (ready) { any = true; break; }
+            }
+            _tAllKnown = !any;
         }
 
         /// <summary>"148  (86 adults, 19 elders, 43 children)".</summary>
         string PeopleLine()
         {
             var (a, e, c) = PeopleSplit();
-            return $"{S.Population}  ({a} adults, {e} elders, {c} children)";
+            return $"{_tPop}  ({a} adults, {e} elders, {c} children)";
         }
 
         /// <summary>Tools of every kind in store (unrounded; shown with {:0} like every other good).</summary>

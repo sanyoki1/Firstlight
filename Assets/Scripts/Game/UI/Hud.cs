@@ -465,6 +465,7 @@ namespace Firstlight.Game.UI
             _rects.Clear();
             _tip = null;
             if (Hidden) { SwapRects(); return; }
+            CountTotals();
             var old = GUI.matrix;
             GUI.matrix = Matrix4x4.Scale(new Vector3(Scale, Scale, 1));
             if (S.NeedsCampfire)

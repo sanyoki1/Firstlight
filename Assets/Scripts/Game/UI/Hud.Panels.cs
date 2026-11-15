@@ -79,7 +79,7 @@ namespace Firstlight.Game.UI
         void DrawJobs()
         {
             var r = BeginSide("Jobs", 470, _jobsH, () => JobsOpen = false);
-            int adults = S.Adults, jobs = S.Citizens.Count(c => !c.Gone && c.Job != null), builders = S.Citizens.Count(c => !c.Gone && c.IsBuilder);
+            int adults = _tAdults, jobs = S.Citizens.Count(c => !c.Gone && c.Job != null), builders = S.Citizens.Count(c => !c.Gone && c.IsBuilder);
             int sick = S.Citizens.Count(c => !c.Gone && c.Sick && S.Citizens.Count > 0 && c.Age >= D.Balance.adultAge);
             int free = adults - jobs - builders - sick;
             var (onlyAdults, elders, kids) = PeopleSplit();
