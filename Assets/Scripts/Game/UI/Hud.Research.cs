@@ -98,8 +98,11 @@ namespace Firstlight.Game.UI
             if (GUI.Button(new Rect(r.xMax - 44, r.y + 12, 30, 28), "x", Button)) ResearchOpen = false;
             // Queue and knowledge.
             var q = S.ResearchQueue.Select((id, i) => $"{i + 1}. {D.ResearchById(id)?.name}" + (i == 0 ? $" {S.ResearchProgress(id):P0}" : "")).ToList();
+            int elders = S.Buildings.Where(b => b.Active && b.Def.knowledgePerWorker > 0).Sum(b => b.Workers);
+            string stalled = KnowledgeStalled();
             GUI.Label(new Rect(r.x + 180, r.y + 10, r.width - 260, 22),
-                $"Knowledge {Col($"+{_knowPerDay:0.#} a day", Accent)} from {S.Buildings.Where(b => b.Active && b.Def.knowledgePerWorker > 0).Sum(b => b.Workers)} thinkers" +
+                $"Knowledge {Col($"+{_knowPerDay:0.#} a day", Accent)} from {elders} elder{(elders == 1 ? "" : "s")}" +
+                (stalled != null ? "   " + Col(stalled, Warn) : "") +
                 (S.KnowledgeBank > 0.5f ? $"   ·   {S.KnowledgeBank:0} banked" : ""), Label);
             GUI.Label(new Rect(r.x + 180, r.y + 32, r.width - 260, 20), q.Count > 0 ? "Queue: " + string.Join("   ", q) : Col("The queue is empty: click a topic to research it. Knowledge is banked meanwhile.", Warn), Small);
             if (_researchMsg.Length > 0 && Time.unscaledTime - _researchMsgTime < 5f) GUI.Label(new Rect(r.x + 180, r.y + 52, r.width - 260, 20), Col(_researchMsg, Warn), Small);

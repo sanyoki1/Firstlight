@@ -129,10 +129,20 @@ namespace Firstlight.Game.UI
             if (GUI.Button(rr, GUIContent.none, Button)) ToggleResearch();
             bool allKnown = def == null && !S.AvailableResearch.Any();
             GUI.Label(new Rect(rx + 8, 7, rw - 14, 20), def != null ? $"Researching <b>{def.name}</b>" : allKnown ? Col("All research known", Good) : Col("Nothing being researched", Warn), new GUIStyle(Label) { fontSize = 14 });
-            Bar(new Rect(rx + 8, 30, rw - 98, 9), def != null ? S.ResearchProgress(cur) : 0, Accent);
-            GUI.Label(new Rect(rx + rw - 82, 25, 80, 18), $"+{_knowPerDay:0.#}/day", Small);
+            // Second line: what holds research up when nothing makes knowledge (it used to look like it was running, at
+            // "+0/day"), else the bar, the rate and about how many days the current topic has left.
+            string stalled = allKnown ? null : KnowledgeStalled();
+            if (stalled != null) GUI.Label(new Rect(rx + 8, 25, rw - 12, 18), Col(stalled, Warn), Small);
+            else
+            {
+                string eta = def != null && _knowPerDay > 0.05f ? $" · ~{math.max(1, math.ceil(def.cost * (1f - S.ResearchProgress(cur)) / _knowPerDay)):0} days" : "";
+                float lw = eta.Length > 0 ? 128 : 80;
+                Bar(new Rect(rx + 8, 30, rw - lw - 18, 9), def != null ? S.ResearchProgress(cur) : 0, Accent);
+                GUI.Label(new Rect(rx + rw - lw - 4, 25, lw + 2, 18), $"+{_knowPerDay:0.#}/day{eta}", new GUIStyle(Small) { alignment = TextAnchor.MiddleRight });
+            }
             Tip(rr, (def != null ? $"{def.name}: {S.ResearchProgress(cur):P0}. {S.ResearchQueue.Count} in the queue." : $"Nothing queued: knowledge is banked ({S.KnowledgeBank:0}) until you choose.") +
-                    $"\n\nKnowledge {_knowPerDay:0.#} a day, from staffed Elders' Fires (elders count more). More fires and more elders on them research faster. Open the research tree (R).");
+                    $"\n\nKnowledge {_knowPerDay:0.#} a day, from the elders at staffed Elders' Fires (old people count more). More fires and more elders on them research faster. Open the research tree (R)." +
+                    (stalled != null ? $"\n\n{stalled}: nothing makes knowledge now." : ""));
 
             string[] labels = { "Research", "Goals", "Jobs", "Help" };
             string[] keys = { "R", "G", "J", "F1" };
@@ -177,6 +187,24 @@ namespace Firstlight.Game.UI
         }
 
         // One source for the numbers more than one screen prints (top bar, goods panel, jobs, end screen), so they agree.
+
+        /// <summary>
+        /// Why no knowledge is being made, or null when some is: no Elders' Fire yet (or only its site), or no elders at
+        /// the ones there are. Read from the buildings, not the day's rate, so it shows at once.
+        /// </summary>
+        string KnowledgeStalled()
+        {
+            int fires = 0, workers = 0; bool site = false;
+            foreach (var b in S.Buildings)
+            {
+                if (b.Def.knowledgePerWorker <= 0) continue;
+                if (b.Active) { fires++; workers += b.Flooded || b.Paused ? 0 : b.Workers; }
+                else if (b.UnderWork) site = true;
+            }
+            if (fires == 0) return site ? "No elders: the Elders' Fire is not built yet" : "No elders: build an Elders' Fire";
+            if (workers == 0) return fires == 1 ? "The Elders' Fire has no elders" : "The Elders' Fires have no elders";
+            return null;
+        }
 
         /// <summary>People as the top bar splits them: adults (not counting elders), elders and children.</summary>
         (int adults, int elders, int children) PeopleSplit()
