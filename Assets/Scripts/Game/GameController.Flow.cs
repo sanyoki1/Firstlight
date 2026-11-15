@@ -63,6 +63,7 @@ namespace Firstlight.Game
         void Reload()
         {
             FinishBackgroundSave();         // a save still being written is finished (and reported) before the scene goes
+            if (_bgLastError != null && _next?.Mode == LaunchMode.Menu) MenuMessage = _bgLastError;   // the toast would go with the scene
             OrbitCamera.InputLocked = OrbitCamera.KeyboardCaptured = false;
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
         }
@@ -104,7 +105,7 @@ namespace Firstlight.Game
 
         // The autosave or quicksave being written on a worker thread, and what to say when it is done.
         SaveGame.PendingSave _bgSave;
-        string _bgDone;
+        string _bgDone, _bgLastError;
         float _bgSavedAtBefore;
         int _bgGc0, _bgDay, _bgPop;
 
@@ -147,12 +148,14 @@ namespace Firstlight.Game
             if (p.Error != null)
             {
                 _savedAt = _bgSavedAtBefore;
+                _bgLastError = $"Could not save: {p.Error.Message}";
                 Debug.LogWarning($"[Save] could not save to {p.Path}: {p.Error}");
-                Hud?.Toast($"Could not save: {p.Error.Message}");
+                Hud?.Toast(_bgLastError);
                 return;
             }
             Debug.Log($"[Save] {p.Kind} save to {p.Path}: {p.MainMs:F1} ms in the frame, on disk after {p.DiskMs:F1} ms: day {_bgDay}, population {_bgPop}");
             Debug.Log($"[SaveParts] {p.Kind}: {SaveGame.LastParts}; in the frame {p.MainMs:F1} ms (game block and serialize), {GC.CollectionCount(0) - _bgGc0} gc by now");
+            _bgLastError = null;
             if (PerfProbe.On) ProbeSaveOnDisk(p.DiskMs);
             if (_bgDone != null) Hud?.Toast(_bgDone);
         }
