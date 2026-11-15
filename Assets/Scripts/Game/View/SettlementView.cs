@@ -432,7 +432,10 @@ namespace Firstlight.Game
             if (!_vis.TryGetValue(c.Id, out var v)) v = new Vis { Pos = target, Yaw = c.Facing };
             float2 delta = target - v.Pos;
             float dist = math.length(delta);
-            float maxStep = (S.Data.Balance.walkSpeed * math.max(S.Speed, 0.01f) * 1.25f + 0.5f) * dt;
+            // At most a little faster than the fastest walk (on a path tile): a slower cap made walkers on paths trail
+            // behind their sim position at 4x and slide on after stopping. DrawPos already moves smoothly between steps.
+            var bal = S.Data.Balance;
+            float maxStep = (bal.walkSpeed * math.max(1f, bal.pathSpeed) * math.max(S.Speed, 0.01f) * 1.25f + 0.5f) * dt;
             bool moving = false;
             if (dist > 4f) v.Pos = target;
             else if (dist > 1e-3f)
