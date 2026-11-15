@@ -113,7 +113,8 @@ namespace Firstlight.Game.UI
             GUI.Label(new Rect(x, 5, 150, 22), "Food " + Col(FoodDaysText(fd), fcol), Label);
             GUI.Label(new Rect(x, 27, 150, 20), $"{S.FoodStock:0} in store" + Arrow(_foodDelta, 0.5f), Small);
             Tip(fr, $"Food in store lasts {fd:0.#} days at {S.DailyFoodNeed:0.#} a day (adults eat 1, children less). Change over the last day: {_foodDelta:+0.#;-0.#;0}.\n\n" +
-                    "Gatherers, hunters, fishers and, later, fields make it; it spoils in open piles (a granary keeps it). Winter makes little: stock up before it. Click for every good (T).");
+                    "Gatherers, hunters, fishers and, later, fields make it; it spoils in open piles (a granary keeps it). Winter makes little: stock up before it. Click for every good (T)." +
+                    HarvestOutlookLine());
             if (GUI.Button(fr, GUIContent.none, GUIStyle.none)) ToggleStocks();
 
             // Research progress (right side), then the panel buttons.
@@ -232,6 +233,17 @@ namespace Firstlight.Game.UI
         }
 
         static string FoodDaysText(float fd) => fd >= 99 ? "-" : $"{fd:0.#} days";
+
+        /// <summary>Spring and summer, once there are fields: this year's expected harvest against the year's need (the same
+        /// figures as the spring warning).</summary>
+        string HarvestOutlookLine()
+        {
+            if (S.Season > 1 || !S.HarvestOutlook(out float exp, out int fields, out int flax, out float need)) return "";
+            float have = exp + S.FoodStock;
+            return $"\n\nHarvest outlook: ~{exp:0} expected from {fields} field{(fields == 1 ? "" : "s")}" + (flax > 0 ? $" ({flax} on flax)" : "") +
+                   $", with {S.FoodStock:0} in store: " + Col($"{have:0} of ~{need:0}", have >= need ? Good : Warn) + " needed until autumn next year" +
+                   (have >= need ? "." : (S.Season == 0 ? ": sow more fields now." : ": too late to sow this year; more gatherers, hunters or fishers."));
+        }
 
         float ToolTrend()
         {

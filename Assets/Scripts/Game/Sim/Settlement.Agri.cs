@@ -68,6 +68,42 @@ namespace Firstlight.Game
             return b.Def.outputs[o].amount * math.min(1f, growth) * (1f - b.Harvested) * CropYieldMult(b);
         }
 
+        /// <summary>
+        /// The year's food outlook from the fields (the food tooltip and the spring warning use it): the harvest expected
+        /// from the food fields this year (<see cref="ExpectedHarvest"/>), how many fields there are and how many grow a
+        /// crop that isn't food (flax), and the food the people now need from today until autumn next year (the lean days
+        /// to this harvest, then a year of eating it; 0.7 as in the other food warnings, since gatherers, hunters and
+        /// fishers still bring some). False when there are no fields.
+        /// </summary>
+        public bool HarvestOutlook(out float expected, out int fields, out int nonFood, out float need)
+        {
+            expected = 0; fields = 0; nonFood = 0;
+            foreach (var b in Buildings)
+            {
+                if (!b.Active || !b.Def.crop || b.Def.outputs.Length == 0) continue;
+                fields++;
+                int o = b.Sown > 0 ? b.CropOut : math.clamp(b.Focus, 0, b.Def.outputs.Length - 1);
+                int r = ResIndex(b.Def.outputs[o].id);
+                if (r < 0 || !Data.Resources[r].isFood) { nonFood++; continue; }
+                expected += ExpectedHarvest(b);
+            }
+            need = DailyFoodNeed * (LeanDays() + DaysPerYear) * 0.7f;
+            return fields > 0;
+        }
+
+        /// <summary>
+        /// Spring, while sowing more still helps: the expected harvest and the stores fall short of what is needed until
+        /// autumn next year (a famine used to build up for years and show only when it could no longer be fixed).
+        /// </summary>
+        string HarvestWarning()
+        {
+            if (Season != 0 || !HarvestOutlook(out float exp, out int fields, out int flax, out float need)) return null;
+            float store = FoodStock;
+            if (exp + store >= need) return null;
+            return $"Expected harvest ~{exp:0} from {fields} field{(fields == 1 ? "" : "s")}" + (flax > 0 ? $" ({flax} on flax)" : "") +
+                   $" and {store:0} in store, against ~{need:0} needed until autumn next year: sow more fields now.";
+        }
+
         /// <summary>Daily: crops grow while sown (faster when tended in summer); a new year starts with bare fields.</summary>
         void DailyCrops()
         {

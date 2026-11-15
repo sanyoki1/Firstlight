@@ -486,6 +486,8 @@ namespace Firstlight.Game
                 float need = FoodNeedToSummer();
                 if (FoodStock < need && fd >= B.foodWarnDays) Warnings.Add($"Food stores won't last until summer ({FoodStock:0} of about {need:0}): more gatherers, hunters or fishers now.");
             }
+            string harvest = HarvestWarning();
+            if (harvest != null) Warnings.Add(harvest);
             if (Unrest >= B.unrestWarn) Warnings.Add($"Unrest is {(Unrest >= B.theftAt ? "high" : "rising")} ({Unrest:P0}): disputes and theft are likely.");
             if (OutbreakRisk >= B.outbreakWarn) Warnings.Add(OutbreakWarning());
             if (_needWater)
