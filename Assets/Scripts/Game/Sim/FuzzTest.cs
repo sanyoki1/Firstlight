@@ -635,7 +635,13 @@ namespace Firstlight.Game
             ok &= OverwriteCheck(data, s, ap, outDir);
             ok &= GoodsByIdCheck(data, good, s);
             ok &= UnknownIdsCheck(data, good, s, outDir);
-            foreach (var file in ArgsAfter("-compatsave")) ok &= CompatCheck(data, file, int.TryParse(ArgsAfter("-compatdays").FirstOrDefault(), out int cd) ? cd : 30, outDir);
+            foreach (var file in ArgsAfter("-compatsave"))
+            {
+                ok &= CompatCheck(data, file, int.TryParse(ArgsAfter("-compatdays").FirstOrDefault(), out int cd) ? cd : 30, outDir);
+                // The same with research and a law renamed in an older save (later games have laws in force).
+                var pre = SaveGame.Read(file, data, out _);
+                if (pre != null) { ok &= UnknownIdsCheck(data, file, pre.Sim, outDir); pre.Map.Dispose(); }
+            }
             Debug.Log($"[SaveCheck] {(ok ? "PASS" : "FAIL")}");
             return ok;
         }
@@ -649,7 +655,7 @@ namespace Firstlight.Game
             // A topic whose id is not also a good's or a building's (those strings are saved too).
             bool Plain(string id) => data.Resources.All(x => x.id != id) && data.Buildings.All(x => x.id != id);
             string topic = orig.ResearchQueue.FirstOrDefault(Plain) ?? data.Research.First(x => !x.known && orig.IsResearched(x.id) && Plain(x.id)).id;
-            string law = data.Laws.Count > 0 ? data.Laws[0].id : null;
+            string law = orig.ActiveLaws.OrderBy(x => x).FirstOrDefault(Plain) ?? (data.Laws.Count > 0 ? data.Laws[0].id : null);
             var bytes = File.ReadAllBytes(file);
             int headerLen = 0;
             for (int i = 4; i < bytes.Length - 1; i++) if (bytes[i] == 0x1f && bytes[i + 1] == 0x8b) { headerLen = i; break; }
@@ -671,8 +677,10 @@ namespace Firstlight.Game
                 }
             }
             Rename(topic);
+            int topicPlaces = renamed;
             if (law != null) Rename(law);
-            string path = Path.Combine(outDir, "unknown_ids" + SaveGame.Extension);
+            int lawPlaces = renamed - topicPlaces;
+            string path = Path.Combine(outDir, "unknown_ids-" + Path.GetFileNameWithoutExtension(file) + SaveGame.Extension);
             using (var fs = File.Create(path))
             {
                 fs.Write(bytes, 0, headerLen);
@@ -688,15 +696,16 @@ namespace Firstlight.Game
                 if (l != null)
                 {
                     var s = l.Sim; var ap = l.Auto ?? new AutoPlayer(s);
-                    bool clean = s.ResearchQueue.All(x => data.ResearchById(x) != null) && s.ActiveLaws.All(x => data.Laws.Any(d => d.id == x));
+                    bool clean = s.ResearchQueue.All(x => data.ResearchById(x) != null) && s.ActiveLaws.All(x => data.Laws.Any(d => d.id == x))
+                                 && (lawPlaces == 0 || !s.ActiveLaws.Contains(law));
                     float hour = data.Balance.dayLengthSeconds / 24f;
                     int day0 = s.Day;
                     while (s.Day < day0 + 2) { s.Tick(hour); ap.Think(); }
                     ok = clean;
                     detail = $"loaded, ids dropped: {(clean ? "yes" : "NO")}, ran to day {s.Day}";
                 }
-                Debug.Log($"[SaveCheck] unknown research '{topic}' and law '{law}' ({renamed} places renamed): {detail}{(ok ? "" : "  <-- WRONG")}");
-                return ok && renamed > 0;
+                Debug.Log($"[SaveCheck] unknown ids in {Path.GetFileName(file)}: research '{topic}' renamed in {topicPlaces} places, law '{law}' in {lawPlaces} (in force: {orig.ActiveLaws.Contains(law)}): {detail}{(ok ? "" : "  <-- WRONG")}");
+                return ok && topicPlaces > 0;
             }
             catch (Exception e) { Debug.Log($"[SaveCheck] unknown research/law: EXCEPTION {e}"); return false; }
             finally { l?.Map.Dispose(); }
