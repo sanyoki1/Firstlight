@@ -669,7 +669,7 @@ namespace Firstlight.Game.UI
             }
             if (!d.path) lines.Add(Col(d.townCenter ? "Left-click to place" : "Left-click to place, Shift for several, comma and period turn it, right-click to stop", Dim));
             string text = string.Join("\n", lines);
-            var style = new GUIStyle(Wrap) { fontSize = 15 };
+            var style = PlaceTip;
             float h = style.CalcHeight(new GUIContent(text), 360) + 14;
             var r = new Rect(at.x, at.y, 380, h);
             if (r.xMax > VW - 10) r.x = at.x - 420;

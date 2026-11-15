@@ -200,15 +200,18 @@ namespace Firstlight.Game.UI
         bool MenuButton(Rect r, string text, bool enabled = true)
         {
             _rects.Add(r);
-            return GUI.Button(r, enabled ? text : Col(text, Faint), enabled ? _menuBtn : new GUIStyle(_menuBtn) { normal = { background = ButtonDim.normal.background }, hover = { background = ButtonDim.normal.background } });
+            if (!enabled) _menuBtnDim ??= new GUIStyle(_menuBtn) { normal = { background = ButtonDim.normal.background }, hover = { background = ButtonDim.normal.background } };
+            return GUI.Button(r, enabled ? text : Col(text, Faint), enabled ? _menuBtn : _menuBtnDim);
         }
+
+        static GUIStyle _menuBtnDim;     // a disabled menu button (made once, not on every call)
 
         // ------------------------------------------------------------------ new game
 
         void DrawNewGame()
         {
             float x = 90, y = VH * 0.2f;
-            GUI.Label(new Rect(x, y, 520, 44), "New settlement", new GUIStyle(Title) { fontSize = 34 });
+            GUI.Label(new Rect(x, y, 520, 44), "New settlement", Title34);
             y += 64;
             GUI.Label(new Rect(x, y, 300, 24), "Map seed", Label);
             y += 28;
@@ -247,7 +250,7 @@ namespace Firstlight.Game.UI
         {
             float w = 820, h = 620;
             var r = Box(new Rect(G.InMenu ? 660 : VW / 2 - w / 2, VH / 2 - h / 2, w, h));
-            GUI.Label(new Rect(r.x + 24, r.y + 14, 400, 32), saving ? "Save the settlement" : "Load a settlement", new GUIStyle(Title) { fontSize = 24 });
+            GUI.Label(new Rect(r.x + 24, r.y + 14, 400, 32), saving ? "Save the settlement" : "Load a settlement", Title24);
             if (GUI.Button(new Rect(r.xMax - 40, r.y + 14, 26, 24), "x", Button)) MenuBack();
             float y = r.y + 58;
             if (saving)
@@ -319,7 +322,7 @@ namespace Firstlight.Game.UI
             }
             if (GUI.Button(new Rect(r.xMax - 184, by, 160, 38), "Back", Button)) MenuBack();
             if (!string.IsNullOrEmpty(_menuMsg)) GUI.Label(new Rect(r.x + 420, by, 230, 38), Col(_menuMsg, Warn), SmallWrap);
-            GUI.Label(new Rect(r.x + 24, r.yMax - 19, 770, 17), Col($"Saves are kept in {SaveGame.Dir.Replace('\\', '/')}", Dim), new GUIStyle(Small) { fontSize = Px(12) });
+            GUI.Label(new Rect(r.x + 24, r.yMax - 19, 770, 17), Col($"Saves are kept in {SaveGame.Dir.Replace('\\', '/')}", Dim), SmallFoot);
         }
 
         // ------------------------------------------------------------------ settings
@@ -329,7 +332,7 @@ namespace Firstlight.Game.UI
             var st = GameSettings.Current;
             float w = 640, h = _settingsH;
             var r = Box(new Rect(G.InMenu ? 660 : VW / 2 - w / 2, VH / 2 - h / 2, w, h));
-            GUI.Label(new Rect(r.x + 24, r.y + 14, 400, 32), "Settings", new GUIStyle(Title) { fontSize = 24 });
+            GUI.Label(new Rect(r.x + 24, r.y + 14, 400, 32), "Settings", Title24);
             if (GUI.Button(new Rect(r.xMax - 40, r.y + 14, 26, 24), "x", Button)) MenuBack();
             float y = r.y + 60, lx = r.x + 28, cx = r.x + 300;
             bool changed = false, display = false;
@@ -419,7 +422,7 @@ namespace Firstlight.Game.UI
                 {
                     float w = 400, h = 440;
                     var r = Box(new Rect(VW / 2 - w / 2, VH / 2 - h / 2, w, h));
-                    GUI.Label(new Rect(r.x, r.y + 18, w, 36), "Paused", new GUIStyle(Title) { fontSize = 28, alignment = TextAnchor.MiddleCenter });
+                    GUI.Label(new Rect(r.x, r.y + 18, w, 36), "Paused", Title28Center);
                     float y = r.y + 72, x = r.x + 40, bw = w - 80;
                     if (GUI.Button(new Rect(x, y, bw, 44), "Resume", _menuBtn)) CloseMenu();
                     y += 52;
@@ -435,7 +438,7 @@ namespace Firstlight.Game.UI
                     y += 56;
                     float min = G.SecondsSinceSave / 60f;
                     string saved = !G.Unsaved ? "Saved just now." : $"Last saved {(min < 1 ? "under a minute" : $"{min:0} minute{(min < 1.5f ? "" : "s")}")} of play ago.";
-                    var cs = new GUIStyle(Small) { alignment = TextAnchor.MiddleCenter };
+                    var cs = SmallCenter;
                     GUI.Label(new Rect(r.x, y - 4, w, 20), Col(saved, Dim), cs);
                     GUI.Label(new Rect(r.x, y + 16, w, 20), Col("F5 quicksave, F8 quickload", Dim), cs);
                     break;

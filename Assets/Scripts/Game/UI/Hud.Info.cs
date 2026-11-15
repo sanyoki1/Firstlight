@@ -33,7 +33,7 @@ namespace Firstlight.Game.UI
         {
             GUI.Label(new Rect(_lx, _ly, 120, 20), label, Small);
             Bar(new Rect(_lx + 120, _ly + 5, _lw - 200, 11), v, c);
-            GUI.Label(new Rect(_lx + _lw - 72, _ly, 72, 20), right, new GUIStyle(Small) { alignment = TextAnchor.MiddleRight });
+            GUI.Label(new Rect(_lx + _lw - 72, _ly, 72, 20), right, SmallRight);
             _ly += 22;
         }
 

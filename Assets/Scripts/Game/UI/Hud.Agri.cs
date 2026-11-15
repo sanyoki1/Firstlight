@@ -244,11 +244,11 @@ namespace Firstlight.Game.UI
             var w = 760f; var h = 500f;
             var r = Box(new Rect(VW / 2 - w / 2, VH / 2 - h / 2 - 20, w, h));
             Fill(new Rect(r.x + 1, r.y + 1, r.width - 2, r.height - 2), new Color(0.1f, 0.105f, 0.1f, 0.97f));
-            GUI.Label(new Rect(r.x, r.y + 22, w, 40), $"You have reached the {last.name}", new GUIStyle(Title) { fontSize = 30, alignment = TextAnchor.MiddleCenter });
+            GUI.Label(new Rect(r.x, r.y + 22, w, 40), $"You have reached the {last.name}", Title30Center);
             var up = S.AgeLog.FirstOrDefault(a => a.age == last.id);
             int days = up.age == last.id ? up.day : S.Day;
             float years = days / (float)S.DaysPerYear;
-            GUI.Label(new Rect(r.x + 40, r.y + 70, w - 80, 26), Col($"From a campfire to the edge of the {last.name} in {years:0.#} years.", Dim), new GUIStyle(Label) { alignment = TextAnchor.MiddleCenter });
+            GUI.Label(new Rect(r.x + 40, r.y + 70, w - 80, 26), Col($"From a campfire to the edge of the {last.name} in {years:0.#} years.", Dim), LabelCenter);
             float y = r.y + 112, cx = r.x + 70, cw = (w - 140) / 2;
             int buildings = S.Buildings.Count(b => b.Active && !b.Def.path);
             var lines = new (string, string)[]
@@ -269,7 +269,7 @@ namespace Firstlight.Game.UI
                 y += 28;
             }
             y += 10;
-            var note = new GUIStyle(SmallWrap) { alignment = TextAnchor.UpperCenter, fontSize = 15 };
+            var note = Note15Center;
             GUI.Label(new Rect(r.x + 50, y, w - 100, 50), $"This build ends here: the buildings and research of the {last.name} are not in it yet. You can keep playing the settlement as a sandbox for as long as you like.", note);
             // Keep playing, or save it now, or leave (Main menu asks first when there is unsaved play).
             float by = r.yMax - 60, bw = 200;
@@ -309,9 +309,9 @@ namespace Firstlight.Game.UI
             Fill(new Rect(0, 0, VW, VH), new Color(0, 0, 0, 0.35f));
             var r = Box(new Rect(VW / 2 - w / 2, VH / 2 - h / 2 - 20, w, h));
             Fill(new Rect(r.x + 1, r.y + 1, r.width - 2, r.height - 2), new Color(0.1f, 0.105f, 0.1f, 0.97f));
-            GUI.Label(new Rect(r.x, r.y + 22, w, 40), "The settlement is empty", new GUIStyle(Title) { fontSize = 30, alignment = TextAnchor.MiddleCenter });
+            GUI.Label(new Rect(r.x, r.y + 22, w, 40), "The settlement is empty", Title30Center);
             float years = S.Day / (float)S.DaysPerYear;
-            GUI.Label(new Rect(r.x + 40, r.y + 70, w - 80, 26), Col($"The last of its people are gone after {years:0.#} years, in the {S.Age.name}.", Dim), new GUIStyle(Label) { alignment = TextAnchor.MiddleCenter });
+            GUI.Label(new Rect(r.x + 40, r.y + 70, w - 80, 26), Col($"The last of its people are gone after {years:0.#} years, in the {S.Age.name}.", Dim), LabelCenter);
             float y = r.y + 112, cx = r.x + 70;
             var lines = new (string, string)[]
             {
@@ -327,7 +327,7 @@ namespace Firstlight.Game.UI
                 GUI.Label(new Rect(cx + 170, y, w - 140 - 170, 24), $"<b>{v}</b>", Label);
                 y += 28;
             }
-            GUI.Label(new Rect(r.x + 50, y + 8, w - 100, 44), "Nobody new will come to an empty camp. Load a save to try again from an earlier point, or start a new settlement.", new GUIStyle(SmallWrap) { alignment = TextAnchor.UpperCenter, fontSize = 15 });
+            GUI.Label(new Rect(r.x + 50, y + 8, w - 100, 44), "Nobody new will come to an empty camp. Load a save to try again from an earlier point, or start a new settlement.", Note15Center);
             float by = r.yMax - 60, bw = 190;
             if (GUI.Button(new Rect(r.x + w / 2 - bw * 1.5f - 12, by, bw, 38), "<b>Load a save</b>", ButtonOn)) { GoneOpen = false; OpenMenu(); ShowScreen(MenuScreen.Load); }
             if (GUI.Button(new Rect(r.x + w / 2 - bw / 2, by, bw, 38), "Main menu", Button)) { GoneOpen = false; G.ToMainMenu(); }

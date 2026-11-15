@@ -48,7 +48,7 @@ namespace Firstlight.Game.UI
 
         void DrawEventRows(Rect view)
         {
-            _evStyle ??= new GUIStyle(Label) { fontSize = 14, wordWrap = true };
+            _evStyle ??= FeedRow;
             float textW = view.width - 120;
             if (_evCount != S.Events.Count || _evProblemsBuilt != _eventsProblems || _evWidthBuilt != textW)
             {

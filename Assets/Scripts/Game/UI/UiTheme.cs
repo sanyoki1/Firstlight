@@ -107,8 +107,29 @@ namespace Firstlight.Game.UI
             ButtonOn = ButtonStyle(_btnOn, _btnOnHover, _btnActive, new Color(1f, 0.93f, 0.78f));
             ButtonDim = ButtonStyle(_btn, _btn, _btn, Faint);
             ButtonDim.normal.background = ButtonDim.hover.background = ButtonDim.active.background = Box(new Color(0.15f, 0.155f, 0.15f, 1f), new Color(0.27f, 0.28f, 0.26f, 1f));
+            // Variants the panels used to copy on every call (a GUIStyle is a native object with a finalizer): made once here.
+            // Those copied from Small follow its size floor (FontFloor), as a copy made at the call did.
+            SmallRight = new GUIStyle(Small) { alignment = TextAnchor.MiddleRight };
+            SmallCenter = new GUIStyle(Small) { alignment = TextAnchor.MiddleCenter };
+            SmallFoot = new GUIStyle(Small);
+            Label14 = new GUIStyle(Label) { fontSize = 14 };
+            LabelCenter = new GUIStyle(Label) { alignment = TextAnchor.MiddleCenter };
+            FeedRow = new GUIStyle(Label) { fontSize = 14, wordWrap = true };
+            PlaceTip = new GUIStyle(Wrap) { fontSize = 15 };
+            Title24 = new GUIStyle(Title) { fontSize = 24 };
+            Title28Center = new GUIStyle(Title) { fontSize = 28, alignment = TextAnchor.MiddleCenter };
+            Title30Center = new GUIStyle(Title) { fontSize = 30, alignment = TextAnchor.MiddleCenter };
+            Title34 = new GUIStyle(Title) { fontSize = 34 };
+            Note15Center = new GUIStyle(SmallWrap) { alignment = TextAnchor.UpperCenter, fontSize = 15 };
+            Button12 = new GUIStyle(Button) { fontSize = 12 };
+            NodeSub = new GUIStyle(Small) { fontSize = 12 };
+            NodeUnlocks = new GUIStyle(Small) { fontSize = 11 };
             _floorFor = -1; FontFloor();
         }
+
+        /// <summary>Made once in <see cref="Ensure"/> (see there).</summary>
+        public static GUIStyle SmallRight, SmallCenter, SmallFoot, Label14, LabelCenter, FeedRow, PlaceTip, Title24, Title28Center, Title30Center, Title34,
+            Note15Center, Button12, NodeSub, NodeUnlocks;
 
         /// <summary>Smallest text on screen, in real pixels: the small styles grow when the layout is scaled down.</summary>
         public const float MinTextPx = 13f;
@@ -126,6 +147,8 @@ namespace Firstlight.Game.UI
             _floorFor = s;
             int small = Mathf.Clamp(Mathf.RoundToInt(MinTextPx / s), 14, 16);   // at most the 16 of normal text, so rows still hold it
             Small.fontSize = SmallWrap.fontSize = small;
+            SmallRight.fontSize = SmallCenter.fontSize = small;
+            SmallFoot.fontSize = Px(12);
             Tip.fontSize = Chip.fontSize = ChipGood.fontSize = Mathf.Max(15, small);
         }
 
@@ -133,7 +156,21 @@ namespace Firstlight.Game.UI
         public static int Px(int size) => Mathf.Max(size, Mathf.Min(16, Mathf.RoundToInt(MinTextPx / Scale)));
 
         public static string Hex(Color c) => ColorUtility.ToHtmlStringRGB(c);
-        public static string Col(string text, Color c) => $"<color=#{Hex(c)}>{text}</color>";
+        public static string Col(string text, Color c) => string.Concat(Tag(c), text, "</color>");
+
+        // "<color=#RRGGBB>" for each colour asked for, made once (Col used to format the hex on every call).
+        static readonly Color[] _tagCols = new Color[64];
+        static readonly string[] _tags = new string[64];
+        static int _nTags;
+
+        /// <summary>The opening colour tag for a colour (the same text as before: "&lt;color=#" + Hex + "&gt;").</summary>
+        public static string Tag(Color c)
+        {
+            for (int i = 0; i < _nTags; i++) if (_tagCols[i].Equals(c)) return _tags[i];
+            string t = "<color=#" + Hex(c) + ">";
+            if (_nTags < _tags.Length) { _tagCols[_nTags] = c; _tags[_nTags++] = t; }
+            return t;
+        }
 
         public static void Fill(Rect r, Color c)
         {

@@ -128,7 +128,7 @@ namespace Firstlight.Game.UI
             var def = cur != null ? D.ResearchById(cur) : null;
             if (GUI.Button(rr, GUIContent.none, Button)) ToggleResearch();
             bool allKnown = def == null && !S.AvailableResearch.Any();
-            GUI.Label(new Rect(rx + 8, 7, rw - 14, 20), def != null ? $"Researching <b>{def.name}</b>" : allKnown ? Col("All research known", Good) : Col("Nothing being researched", Warn), new GUIStyle(Label) { fontSize = 14 });
+            GUI.Label(new Rect(rx + 8, 7, rw - 14, 20), def != null ? $"Researching <b>{def.name}</b>" : allKnown ? Col("All research known", Good) : Col("Nothing being researched", Warn), Label14);
             // Second line: what holds research up when nothing makes knowledge (it used to look like it was running, at
             // "+0/day"), else the bar, the rate and about how many days the current topic has left.
             string stalled = allKnown ? null : KnowledgeStalled();
@@ -138,7 +138,7 @@ namespace Firstlight.Game.UI
                 string eta = def != null && _knowPerDay > 0.05f ? $" · ~{math.max(1, math.ceil(def.cost * (1f - S.ResearchProgress(cur)) / _knowPerDay)):0} days" : "";
                 float lw = eta.Length > 0 ? 128 : 80;
                 Bar(new Rect(rx + 8, 30, rw - lw - 18, 9), def != null ? S.ResearchProgress(cur) : 0, Accent);
-                GUI.Label(new Rect(rx + rw - lw - 4, 25, lw + 2, 18), $"+{_knowPerDay:0.#}/day{eta}", new GUIStyle(Small) { alignment = TextAnchor.MiddleRight });
+                GUI.Label(new Rect(rx + rw - lw - 4, 25, lw + 2, 18), $"+{_knowPerDay:0.#}/day{eta}", SmallRight);
             }
             if (Over(rr)) Tip(rr, (def != null ? $"{def.name}: {S.ResearchProgress(cur):P0}. {S.ResearchQueue.Count} in the queue." : $"Nothing queued: knowledge is banked ({S.KnowledgeBank:0}) until you choose.") +
                     $"\n\nKnowledge {_knowPerDay:0.#} a day, from the elders at staffed Elders' Fires (old people count more). More fires and more elders on them research faster. Open the research tree (R)." +
@@ -186,7 +186,7 @@ namespace Firstlight.Game.UI
             if (G.Auto != null)
             {
                 var ar2 = Box(new Rect(VW - 330, VH - (VW - 330 < 1290 ? 98 : 40), 320, 30), UiTheme.Header);   // above the build bar when the screen is narrow
-                GUI.Label(new Rect(ar2.x + 12, ar2.y, 300, 30), Col("Auto-player is running the settlement (F9)", Info), new GUIStyle(Label) { fontSize = 14 });
+                GUI.Label(new Rect(ar2.x + 12, ar2.y, 300, 30), Col("Auto-player is running the settlement (F9)", Info), Label14);
             }
         }
 

@@ -199,8 +199,8 @@ namespace Firstlight.Game.UI
             BarRow("Storage", S.StorageUsed / math.max(1, S.StorageCapacity), S.StorageUsed > S.StorageCapacity * 0.9f ? Warn : Info, $"{S.StorageUsed:0}/{S.StorageCapacity}");
             Gap(4);
             GUI.Label(new Rect(_lx, _ly, 180, 20), "Good", Small);
-            GUI.Label(new Rect(_lx + 180, _ly, 80, 20), "In store", new GUIStyle(Small) { alignment = TextAnchor.MiddleRight });
-            GUI.Label(new Rect(_lx + 270, _ly, 90, 20), "Last day", new GUIStyle(Small) { alignment = TextAnchor.MiddleRight });
+            GUI.Label(new Rect(_lx + 180, _ly, 80, 20), "In store", SmallRight);
+            GUI.Label(new Rect(_lx + 270, _ly, 90, 20), "Last day", SmallRight);
             _ly += 22;
             for (int i = 0; i < S.ResCount; i++)
             {
@@ -416,7 +416,7 @@ namespace Firstlight.Game.UI
                 var col = e.Severity == Severity.Bad ? Bad : e.Severity == Severity.Warning ? Warn : Text;
                 string line = repeats > 1 ? $"{e.Text}  {Col($"x{repeats}", Faint)}" : e.Text;
                 var content = new GUIContent(line);
-                var style = new GUIStyle(Label) { fontSize = 14, wordWrap = true };
+                var style = FeedRow;
                 float wd = math.min(520, style.CalcSize(content).x + 26 + (e.HasPlace ? 14 : 0));
                 float hh = math.max(24, style.CalcHeight(content, wd - 14 - (e.HasPlace ? 14 : 0)) + 6);
                 var r = new Rect(10, y, wd, hh);

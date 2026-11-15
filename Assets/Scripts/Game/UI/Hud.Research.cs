@@ -94,7 +94,7 @@ namespace Firstlight.Game.UI
             if (_nodes == null) LayoutResearch();
             var r = Box(new Rect(14, TopBarHeight + 4, VW - 28, VH - TopBarHeight - 18));
             Fill(new Rect(r.x + 1, r.y + 1, r.width - 2, r.height - 2), new Color(0.095f, 0.1f, 0.1f, 1f));   // opaque: a screen of its own
-            GUI.Label(new Rect(r.x + 20, r.y + 12, 300, 30), "Research", new GUIStyle(Title) { fontSize = 24 });
+            GUI.Label(new Rect(r.x + 20, r.y + 12, 300, 30), "Research", Title24);
             if (GUI.Button(new Rect(r.xMax - 44, r.y + 12, 30, 28), "x", Button)) ResearchOpen = false;
             // Queue and knowledge.
             var q = S.ResearchQueue.Select((id, i) => $"{i + 1}. {D.ResearchById(id)?.name}" + (i == 0 ? $" {S.ResearchProgress(id):P0}" : "")).ToList();
@@ -177,13 +177,13 @@ namespace Firstlight.Game.UI
                 RState.Locked => Col("Needs " + string.Join(", ", d.prereqs.Where(p => !S.IsResearched(p)).Select(p => D.ResearchById(p)?.name)), Dim),
                 _ => $"{d.cost:0} knowledge" + (d.key ? Col("  ·  key", Accent) : ""),
             };
-            GUI.Label(new Rect(r.x + 12, r.y + 28, r.width - 20, 18), sub, new GUIStyle(Small) { fontSize = 12 });
+            GUI.Label(new Rect(r.x + 12, r.y + 28, r.width - 20, 18), sub, NodeSub);
             float prog = S.ResearchProgress(d.id);
             if (st != RState.Known && prog > 0) Bar(new Rect(r.x + 12, r.yMax - 14, r.width - 24, 7), prog, Accent);
             else
             {
                 var unlocks = D.Buildings.Where(b => b.unlockedBy == d.id).Select(b => b.name).ToList();
-                if (unlocks.Count > 0 && r.height > 56) GUI.Label(new Rect(r.x + 12, r.y + 46, r.width - 20, 16), Col("Unlocks " + string.Join(", ", unlocks), st == RState.Known ? new Color(0.5f, 0.6f, 0.48f) : Dim), new GUIStyle(Small) { fontSize = 11 });
+                if (unlocks.Count > 0 && r.height > 56) GUI.Label(new Rect(r.x + 12, r.y + 46, r.width - 20, 16), Col("Unlocks " + string.Join(", ", unlocks), st == RState.Known ? new Color(0.5f, 0.6f, 0.48f) : Dim), NodeUnlocks);
             }
             if (Over(r)) Tip(r, ResearchTip(d, st));
         }

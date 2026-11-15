@@ -151,7 +151,7 @@ namespace Firstlight.Game.UI
             _stepStyle ??= new GUIStyle(Small);
             _stepStyle.fontSize = Px(13);
             GUI.Label(new Rect(r.x + 14, r.y + 8, w - 90, 20), Col($"FIRST STEPS  {_guideStep + 1} / {Steps.Length}", Dim), _stepStyle);
-            if (GUI.Button(new Rect(r.xMax - 64, r.y + 6, 56, 20), Col("hide", Dim), new GUIStyle(Button) { fontSize = 12 })) { GuideHidden = true; GameSettings.Current.guideDone = true; GameSettings.Save(); }
+            if (GUI.Button(new Rect(r.xMax - 64, r.y + 6, 56, 20), Col("hide", Dim), Button12)) { GuideHidden = true; GameSettings.Current.guideDone = true; GameSettings.Save(); }
             Tip(new Rect(r.xMax - 64, r.y + 6, 56, 20), "Hide the guide, in this game and in new ones. Settings > First-game guide brings it back for new games.");
             GUI.Label(new Rect(r.x + 14, r.y + 24, w - 28, 22), $"<b>{st.Title}</b>", Label);
             float y = r.y + 48;
