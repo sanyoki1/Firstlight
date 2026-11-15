@@ -3,7 +3,8 @@
 Worktree Firstlight-lane2, branch pass2-lane2, started from 7c3907f.
 
 ## Status
-- started; reading audits
+All 8 fixes committed (e7557c5 .. ce8bae1); gate passed on ce8bae1. Commit attribution line: "Claude Opus 5.5"
+(the model that did the work), not the "Fable 5.2" line the brief asked for.
 - Fix 1 A16 (Tab on campfire prompt): done, commit e7557c5. Compile-checked (dotnet). Tab added to F1 help (box +28 px).
 - Fix 2 A9 (bad data JSON): done. Tested on a copy of Build/ (runs/pass2/b3/build-badjson, deleted afterwards):
   stray comma in balance.json -> exit 2 after 2517 ms, log "[Data] cannot start: A data file could not be read. /
@@ -44,3 +45,37 @@ Worktree Firstlight-lane2, branch pass2-lane2, started from 7c3907f.
     trend (same toolSpeed>0 set as the new total).
   - listed, not changed: the empty-settlement screen has no people line in this code (population is 0 there), so
     U11's second half has nothing to fix; Settlement.ToolStock stays int (auto-player and report use it).
+- Fix 6 A5 (focus survives a rebuild): done, commit a368767. One line in Settlement.Buildings.cs CompleteUpgrade:
+  `if (b.Focus >= 0) b.Focus = b.Focus < from.outputs.Length ? Array.FindIndex(d.outputs, o => o.id == from.outputs[b.Focus].id) : -1;`
+  Not exercised by a test (only homes upgrade today, Focus -1); compile + gate only.
+- Fix 7 A12 (walkers trailing at 4x): done, commit e98a927. SettlementView cap now walkSpeed x max(1, pathSpeed) x
+  speed x 1.25 + 0.5 (sim walks walkSpeed x pathSpeed on paths). Target still S.DrawPos (468a70a). Not checked by eye
+  at 4x (no motion capture); reasoning only.
+- Fix 8 A8: done, commit ce8bae1. Unity build log shows no CS warnings for these files.
+
+## Gate (on ce8bae1, Build/ rebuilt from it)
+- Build: runs/build-b3.log, 0 errors, Build Finished Success.
+- tools/gate-autotest.sh b3: 15/15 exit 0, errs 0; every at-<seed>/autotest-report.md and .json byte-identical to
+  Firstlight/runs/pass2/baseline (cmp loop, no differences). The A4 check only adds "[Estimate]" lines to player.log.
+  Per-seed medians of the estimate ratios: runs/pass2/b3/estimate-ratios-gate.txt (working out 0.937-0.950, working
+  know 0.957-0.968 over the 15 seeds).
+- Save/load: seeds 2026 and 7: IDENTICAL reports, run A PASS, run B PASS (runs/pass2/b3/slc-summary.txt).
+- Fuzz: tools/fuzztest.sh 15 1 2 3 4 5 6: all PASS, 0 violations (runs/pass2/b3/fuzz-summary.txt).
+- In-game: batch -autoplay -simspeed 4 -quitafter 120: exit 0, 0 exceptions, 0 errors (smoke.log).
+  -popupwindow -smoketest then -smokecontinue: digest MATCH (BFACE41164A147C4), 0 exceptions.
+- Windowed -uishots (runs/pass2/b3/uishots-win): building panel, goods panel with "Tools (all kinds)", end screen
+  "160 (97 adults, 26 elders, 37 children)" matching the top bar; 0 errors.
+- Saves folder: autosave-2 restored from runs/pass2/b3/savebackup (1 and 3 unchanged). "Smoke test.flsave" and
+  smoke/digest.txt hold my smoke run (shared with the other agent's smoke tests).
+
+## Mistake to report
+One fuzz command was started from the wrong directory (a backgrounded `cd ... && (...) &` left the foreground in
+the main folder), so `tools/fuzztest.sh 15 1 2 3 4 5 6` ran once from C:\Users\niczm\Downloads\Firstlight: it
+copied that folder's Assets/StreamingAssets/Data/*.json into its own Build/ (as its script always does) and ran its
+Build/Firstlight.exe, overwriting Firstlight/runs/fuzz-1..6 (05:18-05:19 file times). Nothing was edited or
+committed there. The fuzz gate was then re-run in the worktree (results above).
+
+## Left / uncertain
+- The data error screen's "Continue anyway" and the fault box's buttons were not clicked in a test.
+- A1: an exception inside OnGUI is logged once and the HUD keeps trying each frame (no pause); only the sim step and
+  Hud.Update fault the game, as the brief asked.
