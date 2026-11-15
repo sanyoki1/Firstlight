@@ -9,7 +9,17 @@ namespace Firstlight.Game.UI
     // Research screen (R): the tree in columns by age, prerequisite lines, queue by clicking.
     public sealed partial class Hud
     {
-        sealed class Node { public ResearchDef Def; public int Col, Row; public Rect R; }
+        sealed class Node
+        {
+            public ResearchDef Def; public int Col, Row; public Rect R;
+            // Made when the research state changes (a topic learned, the queue or the age changes), not on every call.
+            public RState State; public string Title, Badge, Sub, Unlocks;
+        }
+        // The state the node texts were made for, and the screen size the rectangles were laid out for.
+        int _rsLog = -1, _rsAge = -1; Settlement _rsSim; readonly List<string> _rsQueue = new();
+        float _rsVW = -1, _rsVH = -1;
+        string[] _ageHead;
+        string _rsHead, _rsQueueTxt, _rsMsg, _rsFoot, _rsEmpty;
         List<Node> _nodes;
         Dictionary<string, Node> _byId;
         int _cols, _rows;
@@ -89,39 +99,108 @@ namespace Firstlight.Game.UI
             else _researchMsg = "";
         }
 
+        /// <summary>Whether a topic was learned or the queue or the age changed since the node texts were made.</summary>
+        bool ResearchStateChanged()
+        {
+            bool same = _rsSim == S && _rsLog == S.ResearchLog.Count && _rsAge == S.Age.order && _rsQueue.Count == S.ResearchQueue.Count;
+            for (int i = 0; same && i < _rsQueue.Count; i++) same = _rsQueue[i] == S.ResearchQueue[i];
+            if (same) return false;
+            _rsSim = S; _rsLog = S.ResearchLog.Count; _rsAge = S.Age.order;
+            _rsQueue.Clear(); _rsQueue.AddRange(S.ResearchQueue);
+            return true;
+        }
+
+        /// <summary>A node's state and texts (what DrawNode used to build on every call).</summary>
+        void MakeNode(Node n)
+        {
+            var d = n.Def; var st = StateOf(d);
+            n.State = st;
+            Color title = st switch
+            {
+                RState.Known => new Color(0.78f, 0.9f, 0.72f),
+                RState.Current => new Color(1f, 0.93f, 0.76f),
+                RState.Queued => new Color(0.95f, 0.88f, 0.72f),
+                RState.Available => Text,
+                _ => Dim,
+            };
+            n.Title = $"<b>{Col(d.name, title)}</b>";
+            int qi = S.ResearchQueue.IndexOf(d.id);
+            n.Badge = qi >= 0 ? $"<b>{Col((qi + 1).ToString(), new Color(0.15f, 0.12f, 0.08f))}</b>" : st == RState.Known ? Col("✓", Good) : null;
+            n.Sub = st switch
+            {
+                RState.Known => Col(d.cost > 0 ? "Known" : "Known from the start", new Color(0.55f, 0.7f, 0.5f)),
+                RState.AgeLocked => Col($"{D.Age(d.age)?.name}", Faint),
+                RState.Locked => Col("Needs " + string.Join(", ", d.prereqs.Where(p => !S.IsResearched(p)).Select(p => D.ResearchById(p)?.name)), Dim),
+                _ => $"{d.cost:0} knowledge" + (d.key ? Col("  ·  key", Accent) : ""),
+            };
+            var unlocks = D.Buildings.Where(b => b.unlockedBy == d.id).Select(b => b.name).ToList();
+            n.Unlocks = unlocks.Count > 0 ? Col("Unlocks " + string.Join(", ", unlocks), st == RState.Known ? new Color(0.5f, 0.6f, 0.48f) : Dim) : null;
+        }
+
         void DrawResearch()
         {
             if (_nodes == null) LayoutResearch();
+            if (ResearchStateChanged() || _ageHead == null)
+            {
+                foreach (var n in _nodes) MakeNode(n);
+                _ageHead = new string[_ageCols.Count];
+                for (int i = 0; i < _ageCols.Count; i++)
+                {
+                    var a = D.Age(_ageCols[i].age);
+                    bool reached = a.order <= S.Age.order;
+                    _ageHead[i] = (reached ? Col(a.name, Accent) : Col(a.name, Dim)) + (a.id == S.Age.id ? Col("   (now)", Dim) : reached ? "" : Col("   (reach it to research these)", Dim));
+                }
+            }
             var r = Box(new Rect(14, TopBarHeight + 4, VW - 28, VH - TopBarHeight - 18));
             Fill(new Rect(r.x + 1, r.y + 1, r.width - 2, r.height - 2), new Color(0.095f, 0.1f, 0.1f, 1f));   // opaque: a screen of its own
             GUI.Label(new Rect(r.x + 20, r.y + 12, 300, 30), "Research", Title24);
             if (GUI.Button(new Rect(r.xMax - 44, r.y + 12, 30, 28), "x", Button)) ResearchOpen = false;
             // Queue and knowledge.
-            var q = S.ResearchQueue.Select((id, i) => $"{i + 1}. {D.ResearchById(id)?.name}" + (i == 0 ? $" {S.ResearchProgress(id):P0}" : "")).ToList();
-            int elders = S.Buildings.Where(b => b.Active && b.Def.knowledgePerWorker > 0).Sum(b => b.Workers);
+            int elders = 0;
+            foreach (var b in S.Buildings) if (b.Active && b.Def.knowledgePerWorker > 0) elders += b.Workers;
             string stalled = KnowledgeStalled();
-            GUI.Label(new Rect(r.x + 180, r.y + 10, r.width - 260, 22),
-                $"Knowledge {Col($"+{_knowPerDay:0.#} a day", Accent)} from {elders} elder{(elders == 1 ? "" : "s")}" +
-                (stalled != null ? "   " + Col(stalled, Warn) : "") +
-                (S.KnowledgeBank > 0.5f ? $"   ·   {S.KnowledgeBank:0} banked" : ""), Label);
-            GUI.Label(new Rect(r.x + 180, r.y + 32, r.width - 260, 20), q.Count > 0 ? "Queue: " + string.Join("   ", q) : Col("The queue is empty: click a topic to research it. Knowledge is banked meanwhile.", Warn), Small);
-            if (_researchMsg.Length > 0 && Time.unscaledTime - _researchMsgTime < 5f) GUI.Label(new Rect(r.x + 180, r.y + 52, r.width - 260, 20), Col(_researchMsg, Warn), Small);
+            _tl.Begin().S("Knowledge ").C(Accent).S("+").F(_knowPerDay, "0.#").S(" a day").E().S(" from ").I(elders).S(elders == 1 ? " elder" : " elders");
+            if (stalled != null) _tl.S("   ").C(Warn).S(stalled).E();
+            if (S.KnowledgeBank > 0.5f) _tl.S("   ·   ").F(S.KnowledgeBank, "0").S(" banked");
+            GUI.Label(new Rect(r.x + 180, r.y + 10, r.width - 260, 22), _tl.To(ref _rsHead), Label);
+            string queue;
+            if (S.ResearchQueue.Count > 0)
+            {
+                _tl.Begin().S("Queue: ");
+                for (int i = 0; i < S.ResearchQueue.Count; i++)
+                {
+                    string id = S.ResearchQueue[i];
+                    if (i > 0) _tl.S("   ");
+                    _tl.I(i + 1).S(". ").S(D.ResearchById(id)?.name);
+                    if (i == 0) _tl.S(" ").F(S.ResearchProgress(id), "P0");
+                }
+                queue = _tl.To(ref _rsQueueTxt);
+            }
+            else queue = _rsEmpty ??= Col("The queue is empty: click a topic to research it. Knowledge is banked meanwhile.", Warn);
+            GUI.Label(new Rect(r.x + 180, r.y + 32, r.width - 260, 20), queue, Small);
+            if (_researchMsg.Length > 0 && Time.unscaledTime - _researchMsgTime < 5f) GUI.Label(new Rect(r.x + 180, r.y + 52, r.width - 260, 20), _tl.Begin().C(Warn).S(_researchMsg).E().To(ref _rsMsg), Small);
             GUI.Label(new Rect(r.x + 20, r.yMax - 28, r.width - 40, 22),
-                Col("Click: queue it (missing prerequisites are queued first)   ·   Right-click: remove from the queue   ·   Esc or R: close", Dim), Small);
+                _rsFoot ??= Col("Click: queue it (missing prerequisites are queued first)   ·   Right-click: remove from the queue   ·   Esc or R: close", Dim), Small);
 
             // Grid.
             float top = r.y + 110, bottom = r.yMax - 36, left = r.x + 20, width = r.width - 40;
             float colW = width / _cols, nodeW = math.min(236, colW - 30), rowH = math.min(88, (bottom - top) / _rows), nodeH = math.min(70, rowH - 10);
-            foreach (var (age, from, to) in _ageCols)
+            for (int i = 0; i < _ageCols.Count; i++)
             {
+                var (age, from, to) = _ageCols[i];
                 var a = D.Age(age);
                 bool reached = a.order <= S.Age.order;
                 var hr = new Rect(left + from * colW + 4, top - 40, (to - from + 1) * colW - 8, 28);
                 Fill(hr, reached ? new Color(0.2f, 0.19f, 0.15f, 1) : new Color(0.13f, 0.13f, 0.13f, 1));
-                GUI.Label(hr, (reached ? Col(a.name, Accent) : Col(a.name, Dim)) + (a.id == S.Age.id ? Col("   (now)", Dim) : reached ? "" : Col("   (reach it to research these)", Dim)), Center);
+                GUI.Label(hr, _ageHead[i], Center);
                 if (from > 0) Fill(new Rect(left + from * colW - 1, top - 40, 2, bottom - top + 40), new Color(0.3f, 0.3f, 0.28f, 0.6f));
             }
-            foreach (var n in _nodes) n.R = new Rect(left + n.Col * colW + (colW - nodeW) / 2, top + n.Row * rowH + (rowH - nodeH) / 2, nodeW, nodeH);
+            // Laid out again only when the screen's (virtual) size changes.
+            if (_rsVW != VW || _rsVH != VH)
+            {
+                foreach (var n in _nodes) n.R = new Rect(left + n.Col * colW + (colW - nodeW) / 2, top + n.Row * rowH + (rowH - nodeH) / 2, nodeW, nodeH);
+                _rsVW = VW; _rsVH = VH;
+            }
 
             // Prerequisite lines (elbows), drawn under the nodes.
             foreach (var n in _nodes)
@@ -142,7 +221,7 @@ namespace Firstlight.Game.UI
 
         void DrawNode(Node n)
         {
-            var d = n.Def; var st = StateOf(d); var r = n.R;
+            var d = n.Def; var st = n.State; var r = n.R;
             Color bg, border, title;
             switch (st)
             {
@@ -161,30 +240,18 @@ namespace Firstlight.Game.UI
                 ClickResearch(d.id, ev.button == 1);
                 ev.Use();
             }
-            GUI.Label(new Rect(r.x + 12, r.y + 6, r.width - 50, 22), $"<b>{Col(d.name, title)}</b>", Label);
-            int qi = S.ResearchQueue.IndexOf(d.id);
-            if (qi >= 0)
+            GUI.Label(new Rect(r.x + 12, r.y + 6, r.width - 50, 22), n.Title, Label);
+            if (S.ResearchQueue.IndexOf(d.id) >= 0)
             {
                 var qr = new Rect(r.xMax - 30, r.y + 6, 22, 22);
                 Fill(qr, Accent);
-                GUI.Label(qr, $"<b>{Col((qi + 1).ToString(), new Color(0.15f, 0.12f, 0.08f))}</b>", Center);
+                GUI.Label(qr, n.Badge, Center);
             }
-            else if (st == RState.Known) GUI.Label(new Rect(r.xMax - 30, r.y + 6, 22, 22), Col("✓", Good), Center);
-            string sub = st switch
-            {
-                RState.Known => Col(d.cost > 0 ? "Known" : "Known from the start", new Color(0.55f, 0.7f, 0.5f)),
-                RState.AgeLocked => Col($"{D.Age(d.age)?.name}", Faint),
-                RState.Locked => Col("Needs " + string.Join(", ", d.prereqs.Where(p => !S.IsResearched(p)).Select(p => D.ResearchById(p)?.name)), Dim),
-                _ => $"{d.cost:0} knowledge" + (d.key ? Col("  ·  key", Accent) : ""),
-            };
-            GUI.Label(new Rect(r.x + 12, r.y + 28, r.width - 20, 18), sub, NodeSub);
+            else if (st == RState.Known) GUI.Label(new Rect(r.xMax - 30, r.y + 6, 22, 22), n.Badge, Center);
+            GUI.Label(new Rect(r.x + 12, r.y + 28, r.width - 20, 18), n.Sub, NodeSub);
             float prog = S.ResearchProgress(d.id);
             if (st != RState.Known && prog > 0) Bar(new Rect(r.x + 12, r.yMax - 14, r.width - 24, 7), prog, Accent);
-            else
-            {
-                var unlocks = D.Buildings.Where(b => b.unlockedBy == d.id).Select(b => b.name).ToList();
-                if (unlocks.Count > 0 && r.height > 56) GUI.Label(new Rect(r.x + 12, r.y + 46, r.width - 20, 16), Col("Unlocks " + string.Join(", ", unlocks), st == RState.Known ? new Color(0.5f, 0.6f, 0.48f) : Dim), NodeUnlocks);
-            }
+            else if (n.Unlocks != null && r.height > 56) GUI.Label(new Rect(r.x + 12, r.y + 46, r.width - 20, 16), n.Unlocks, NodeUnlocks);
             if (Over(r)) Tip(r, ResearchTip(d, st));
         }
 
