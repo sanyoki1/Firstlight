@@ -172,19 +172,20 @@ namespace Firstlight.Game.UI
                 bool tools = id == "tools";
                 float amt = tools ? ToolsInStore() : S.StockTotals[r];
                 if (shown >= AlwaysShown && amt < 0.5f && S.Produced[r] < 0.5f) continue;
-                if (x + 116 > right - NeedsWidth()) break;
-                var sr = new Rect(x, y2, 112, 26);
+                if (x + 120 > right - NeedsWidth()) break;
+                var sr = new Rect(x, y2, 116, 26);
                 float trend = tools ? ToolTrend() : Trend(r);
-                GUI.Label(new Rect(x, y2 + 3, 64, 20), tools ? "Tools" : D.Resources[r].name, Small);
-                GUI.Label(new Rect(x + 62, y2 + 2, 50, 22), $"<b>{amt:0}</b>" + Arrow(trend, 0.3f), Label);
+                // Name 68 wide (the small text grows when the layout is scaled down: "Firewood" ran into its figure at 720p).
+                GUI.Label(new Rect(x, y2 + 3, 68, 20), tools ? "Tools" : D.Resources[r].name, Small);
+                GUI.Label(new Rect(x + 68, y2 + 2, 50, 22), $"<b>{amt:0}</b>" + Arrow(trend, 0.3f), Label);
                 Tip(sr, (StockTips.TryGetValue(id, out var t) ? t : D.Resources[r].name) + $"\n\n{amt:0.#} in store, {trend:+0.#;-0.#;0} over the last day. Click for every good (T).");
                 if (GUI.Button(sr, GUIContent.none, GUIStyle.none)) ToggleStocks();
-                x += 116; shown++;
+                x += 120; shown++;
             }
             DrawNeedsStrip(math.max(x + 10, right - NeedsWidth()), y2, right);
             if (G.Auto != null)
             {
-                var ar2 = Box(new Rect(VW - 330, VH - 40, 320, 30), UiTheme.Header);
+                var ar2 = Box(new Rect(VW - 330, VH - (VW - 330 < 1290 ? 98 : 40), 320, 30), UiTheme.Header);   // above the build bar when the screen is narrow
                 GUI.Label(new Rect(ar2.x + 12, ar2.y, 300, 30), Col("Auto-player is running the settlement (F9)", Info), new GUIStyle(Label) { fontSize = 14 });
             }
         }

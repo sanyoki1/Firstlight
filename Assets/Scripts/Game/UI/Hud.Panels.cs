@@ -23,6 +23,14 @@ namespace Firstlight.Game.UI
 
         float _goalsH = 300, _jobsH = 300, _stocksH = 300;
 
+        sealed class JobRow
+        {
+            public BuildingDef Def; public Building First; public int N, W, Max, Hi, Lo, Paused; public string Note;
+            public void Reset(BuildingDef d) { Def = d; First = null; N = W = Max = Hi = Lo = Paused = 0; Note = null; }
+        }
+        readonly List<JobRow> _jobRowPool = new();
+        Vector2 _jobsScroll;
+
         // ------------------------------------------------------------------ goals
 
         void DrawGoals()
@@ -90,35 +98,57 @@ namespace Firstlight.Game.UI
             Gap(2);
             GUI.Label(new Rect(_lx, _ly, 200, 20), "Workplace", Small);
             GUI.Label(new Rect(_lx + 200, _ly, 80, 20), "Workers", Small);
-            GUI.Label(new Rect(_lx + 300, _ly, 150, 20), "Priority", Small);
+            GUI.Label(new Rect(_lx + 312, _ly, 130, 20), "Priority", Small);
             _ly += 22;
+            // The rows (gathered first, so a list taller than the screen scrolls instead of running off the bottom).
+            int nRows = 0;
+            float content = 0;
             foreach (var g in S.Buildings.Where(b => b.Active && b.Def.IsWorkplace).GroupBy(b => b.Def).OrderBy(g => g.Key.category).ThenBy(g => g.Key.name))
             {
-                int w = 0, max = 0, hi = 0, lo = 0, paused = 0, n = 0;
-                Building first = null, shortB = null;
+                if (nRows == _jobRowPool.Count) _jobRowPool.Add(new JobRow());
+                var jr = _jobRowPool[nRows++]; jr.Reset(g.Key);
+                Building shortB = null;
                 foreach (var b in g)
                 {
-                    first ??= b; n++;
-                    w += b.Workers; max += b.Def.maxWorkers;
-                    if (b.Priority == Priority.High) hi++; else if (b.Priority == Priority.Low) lo++;
-                    if (b.Paused) paused++;
+                    jr.First ??= b; jr.N++;
+                    jr.W += b.Workers; jr.Max += b.Def.maxWorkers;
+                    if (b.Priority == Priority.High) jr.Hi++; else if (b.Priority == Priority.Low) jr.Lo++;
+                    if (b.Paused) jr.Paused++;
                     if (shortB == null && b.Workers < b.Def.maxWorkers) shortB = b;
                 }
-                string note = JobNote(g.Key, shortB ?? first, w, max, free, hiWorkers, normalWorkers, builders);
-                var row = new Rect(_lx - 6, _ly, _lw + 12, note != null ? 42 : 24);
-                if (GUI.Button(row, GUIContent.none, GUIStyle.none)) { Select(first); JumpTo(first.Center); }
+                jr.Note = JobNote(g.Key, shortB ?? jr.First, jr.W, jr.Max, free, hiWorkers, normalWorkers, builders);
+                content += jr.Note != null ? 43 : 25;
+            }
+            float avail = VH - 70 - _ly - 40;
+            bool scroll = content > avail;
+            float lx0 = _lx, ly0 = _ly, lw0 = _lw;
+            if (scroll)
+            {
+                _jobsScroll = GUI.BeginScrollView(new Rect(_lx - 6, _ly, _lw + 12, avail), _jobsScroll, new Rect(0, 0, _lw - 6, content));
+                _lx = 6; _ly = 0; _lw -= 18;
+            }
+            for (int k = 0; k < nRows; k++)
+            {
+                var jr = _jobRowPool[k];
+                var row = new Rect(_lx - 6, _ly, _lw + 12, jr.Note != null ? 42 : 24);
+                if (GUI.Button(row, GUIContent.none, GUIStyle.none)) { Select(jr.First); JumpTo(jr.First.Center); }
                 if (row.Contains(Event.current.mousePosition)) Fill(row, new Color(1, 1, 1, 0.05f));
-                GUI.Label(new Rect(_lx, _ly, 200, 24), n > 1 ? $"{g.Key.name} x{n}" : g.Key.name, Label);
+                GUI.Label(new Rect(_lx, _ly, 200, 24), jr.N > 1 ? $"{jr.Def.name} x{jr.N}" : jr.Def.name, Label);
                 // An empty bar draws no colour, so the count carries it: red at none, amber short, green full.
-                var wc = w >= max ? Good : w == 0 ? Bad : Warn;
-                if (w == 0) Fill(new Rect(_lx + 200, _ly + 7, 50, 10), new Color(Bad.r, Bad.g, Bad.b, 0.28f));
-                else Bar(new Rect(_lx + 200, _ly + 7, 50, 10), w / (float)math.max(1, max), wc);
-                GUI.Label(new Rect(_lx + 256, _ly, 44, 24), Col($"{w}/{max}", wc), Label);
-                string p = (hi > 0 ? Col($"{hi} high ", Accent) : "") + (lo > 0 ? Col($"{lo} low ", Dim) : "") + (paused > 0 ? Col($"{paused} paused", Warn) : "");
-                GUI.Label(new Rect(_lx + 300, _ly, 150, 24), p.Length > 0 ? p : Col("normal", Dim), Small);
+                var wc = jr.W >= jr.Max ? Good : jr.W == 0 ? Bad : Warn;
+                if (jr.W == 0) Fill(new Rect(_lx + 200, _ly + 7, 50, 10), new Color(Bad.r, Bad.g, Bad.b, 0.28f));
+                else Bar(new Rect(_lx + 200, _ly + 7, 50, 10), jr.W / (float)math.max(1, jr.Max), wc);
+                GUI.Label(new Rect(_lx + 256, _ly, 52, 24), Col($"{jr.W}/{jr.Max}", wc), Label);
+                string p = (jr.Hi > 0 ? Col($"{jr.Hi} high ", Accent) : "") + (jr.Lo > 0 ? Col($"{jr.Lo} low ", Dim) : "") + (jr.Paused > 0 ? Col($"{jr.Paused} paused", Warn) : "");
+                GUI.Label(new Rect(_lx + 312, _ly, _lw - 312, 24), p.Length > 0 ? p : Col("normal", Dim), Small);
                 _ly += 24;
-                if (note != null) { GUI.Label(new Rect(_lx + 12, _ly - 2, _lw - 12, 18), Col(note, Dim), Small); _ly += 18; }
+                if (jr.Note != null) { GUI.Label(new Rect(_lx + 12, _ly - 2, _lw - 12, 18), Col(jr.Note, Dim), Small); _ly += 18; }
                 _ly += 1;
+            }
+            if (scroll)
+            {
+                GUI.EndScrollView();
+                _lx = lx0; _lw = lw0; _ly = ly0 + avail;
             }
             Gap(4);
             Para(Col("Click a row to select it. Priorities and pausing are set on each building.", Dim));
@@ -146,11 +176,11 @@ namespace Firstlight.Game.UI
             {
                 if (free > 0) return null;                         // filled at the next shift change
                 var before = new List<string>(3);
-                if (b.Priority < Priority.High && hiWorkers > 0) before.Add("High-priority jobs");
+                if (b.Priority < Priority.High && hiWorkers > 0) before.Add("High jobs");
                 if (b.Priority < Priority.High && builders > 0) before.Add("builders");
                 if (b.Priority == Priority.Low && normalWorkers > 0) before.Add("Normal jobs");
                 if (before.Count == 0) return w == 0 ? "Nobody left to take it: more people, or raise its priority" : null;
-                return $"Short: everyone is taken by {string.Join(" and ", before)} first";
+                return before.Count == 1 ? $"Short: {(before[0] == "High jobs" ? "High-priority jobs" : before[0])} take everyone first" : $"Short: taken first by {string.Join(", ", before.GetRange(0, before.Count - 1))} and {before[before.Count - 1]}";
             }
             return b.Status switch
             {
@@ -200,14 +230,14 @@ namespace Firstlight.Game.UI
 
         void DrawHelp()
         {
-            var r = Box(new Rect(VW / 2 - 360, VH / 2 - 390, 720, 780));
+            var r = Box(new Rect(VW / 2 - 410, VH / 2 - 390, 820, 780));
             GUI.Label(new Rect(r.x + 20, r.y + 12, 400, 28), "Controls", Title);
             if (GUI.Button(new Rect(r.xMax - 34, r.y + 12, 24, 22), "x", Button)) HelpOpen = false;
             string[,] keys =
             {
                 { "W A S D, arrows, middle-drag", "Move the camera (or push the pointer to the screen edge)" },
                 { "Q / E, right-drag", "Turn and tilt the camera" },
-                { "Wheel, PageUp / PageDown, + / -", "Zoom in and out" },
+                { "Wheel, PgUp / PgDn, + / -", "Zoom in and out" },
                 { "Home or H", "Camera back to the campfire" },
                 { "Left-click", "Select a building or person; place what you are building" },
                 { "Tab", "Before the campfire is placed: show a good site for it" },
@@ -231,16 +261,16 @@ namespace Firstlight.Game.UI
                 { "F11", "Hide the interface" },
             };
             float y = r.y + 50;
-            // Key names up to "Wheel, PageUp / PageDown, + / -" fit their 270-wide column (the long ones used to clip at 210).
+            // Key names and their texts fit their columns (290 and 480 wide; the long ones used to clip at 210 and 400).
             for (int i = 0; i < keys.GetLength(0); i++)
             {
-                GUI.Label(new Rect(r.x + 24, y, 270, 26), $"<b>{keys[i, 0]}</b>", Label);
-                GUI.Label(new Rect(r.x + 300, y, 400, 26), keys[i, 1], Label);
+                GUI.Label(new Rect(r.x + 24, y, 290, 26), $"<b>{keys[i, 0]}</b>", Label);
+                GUI.Label(new Rect(r.x + 320, y, 480, 26), keys[i, 1], Label);
                 y += 27;
             }
-            GUI.Label(new Rect(r.x + 24, y + 2, 672, 22), Col("Hover any number for what moves it; click an event (›) to go there.", Dim), Small);
+            GUI.Label(new Rect(r.x + 24, y + 2, 772, 22), Col("Hover any number for what moves it; click an event (›) to go there.", Dim), Small);
             if (GUI.Button(new Rect(r.x + 24, r.yMax - 46, 160, 30), "Game menu (Esc)", Button)) { HelpOpen = false; OpenMenu(); }
-            GUI.Label(new Rect(r.x + 200, r.yMax - 46, 500, 30), Col("Saves itself at the start of every season.", Faint), Small);
+            GUI.Label(new Rect(r.x + 200, r.yMax - 46, 500, 30), Col("Saves itself at the start of every season.", Dim), Small);
         }
 
         // ------------------------------------------------------------------ warnings and events

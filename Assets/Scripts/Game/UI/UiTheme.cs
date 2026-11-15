@@ -11,7 +11,9 @@ namespace Firstlight.Game.UI
     {
         public static readonly Color Text = new(0.90f, 0.88f, 0.83f);
         public static readonly Color Dim = new(0.74f, 0.72f, 0.67f);
-        public static readonly Color Faint = new(0.55f, 0.54f, 0.51f);
+        // Faint is for decoration and disabled things only (ticks, "-", key letters on buttons), never for text the player
+        // needs; 0.64 (was 0.55) so even that reads on the 0.11 panel.
+        public static readonly Color Faint = new(0.64f, 0.63f, 0.59f);
         public static readonly Color Good = new(0.58f, 0.80f, 0.52f);
         public static readonly Color Warn = new(0.93f, 0.74f, 0.38f);
         public static readonly Color Bad = new(0.92f, 0.45f, 0.38f);
@@ -24,10 +26,12 @@ namespace Firstlight.Game.UI
         static bool _ready;
 
         /// <summary>Scale from virtual (1080 high) to real pixels.</summary>
-        // At least 0.75: at 1280x720 the layout is 1707 wide instead of 1920 and the text stays readable.
-        // At most Screen.height / 800: the tallest panels (settings, help) are about 760 high and must fit, or a large
+        // The fit to the screen height is at least 0.85 (it was 0.75: at 1280x720 the 14 px small text came out at 10 px);
+        // at 1280x720 the layout is 1506 x 847 virtual pixels, and the top bar drops goods from the right as designed.
+        // The player's interface size multiplies that (a size below 100% can still go smaller, down to 0.6).
+        // At most Screen.height / 800: the tallest panels (settings, help) are about 780 high and must fit, or a large
         // interface size pushed their Back buttons off the bottom of the screen (160% at 1080p or 720p).
-        public static float Scale => Mathf.Clamp(Mathf.Min(Screen.height / 1080f * UserScale, Screen.height / 800f), 0.75f, 3f);
+        public static float Scale => Mathf.Clamp(Mathf.Min(Mathf.Max(Screen.height / 1080f, 0.85f) * UserScale, Screen.height / 800f), 0.6f, 3f);
         /// <summary>The player's interface size setting (1 = the 1080-high layout fitted to the screen height).</summary>
         public static float UserScale = 1f;
         public static float VW => Screen.width / Scale;
@@ -66,7 +70,7 @@ namespace Firstlight.Game.UI
         /// <summary>Builds the styles (call from OnGUI: GUI.skin only exists there).</summary>
         public static void Ensure()
         {
-            if (_ready) return;
+            if (_ready) { FontFloor(); return; }
             _ready = true;
             White = Box(Color.white, Color.white);
             _panel = Box(new Color(0.105f, 0.11f, 0.11f, 0.94f), new Color(0.30f, 0.31f, 0.29f, 1f));
@@ -103,7 +107,29 @@ namespace Firstlight.Game.UI
             ButtonOn = ButtonStyle(_btnOn, _btnOnHover, _btnActive, new Color(1f, 0.93f, 0.78f));
             ButtonDim = ButtonStyle(_btn, _btn, _btn, Faint);
             ButtonDim.normal.background = ButtonDim.hover.background = ButtonDim.active.background = Box(new Color(0.15f, 0.155f, 0.15f, 1f), new Color(0.27f, 0.28f, 0.26f, 1f));
+            _floorFor = -1; FontFloor();
         }
+
+        /// <summary>Smallest text on screen, in real pixels: the small styles grow when the layout is scaled down.</summary>
+        public const float MinTextPx = 13f;
+        static float _floorFor = -1;
+
+        /// <summary>
+        /// Keeps the small text (14 px in the layout) at about 13 real pixels or more: when the scale is below 1 the small
+        /// styles get a larger size (15 at 0.85). Only looked at again when the scale changes.
+        /// </summary>
+        static void FontFloor()
+        {
+            float s = Scale;
+            if (s == _floorFor) return;
+            _floorFor = s;
+            int small = Mathf.Max(14, Mathf.RoundToInt(MinTextPx / s));
+            Small.fontSize = SmallWrap.fontSize = small;
+            Tip.fontSize = Chip.fontSize = ChipGood.fontSize = Mathf.Max(15, small);
+        }
+
+        /// <summary>A layout size of at least <see cref="MinTextPx"/> real pixels (for styles made with a smaller size).</summary>
+        public static int Px(int size) => Mathf.Max(size, Mathf.RoundToInt(MinTextPx / Scale));
 
         public static string Hex(Color c) => ColorUtility.ToHtmlStringRGB(c);
         public static string Col(string text, Color c) => $"<color=#{Hex(c)}>{text}</color>";

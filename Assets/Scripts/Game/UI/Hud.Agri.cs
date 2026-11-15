@@ -35,7 +35,7 @@ namespace Firstlight.Game.UI
             if (S.Season <= 2 && expect > 1) Row($"Expected harvest  <b>about {expect:0} {cropName}</b>", Label);
             var notes = new List<string>();
             if (d.irrigationRadius > 0)
-                notes.Add(b.Irrigated ? (S.Effect("yield.irrigated") > 1f ? Col($"Irrigated: +{S.Effect("yield.irrigated") - 1f:P0}", Good) : Col("Water in reach: Irrigation would raise the harvest", Dim)) : Col("No water in reach to irrigate", Faint));
+                notes.Add(b.Irrigated ? (S.Effect("yield.irrigated") > 1f ? Col($"Irrigated: +{S.Effect("yield.irrigated") - 1f:P0}", Good) : Col("Water in reach: Irrigation would raise the harvest", Dim)) : Col("No water in reach to irrigate", Dim));
             if (S.Season == 1) notes.Add(Col("Tended crops grow faster", Dim));
             if (S.Season == 3) notes.Add(Col("Nothing grows in winter; the farmers do other work", Dim));
             if (notes.Count > 0) Para(string.Join("   ", notes));
@@ -82,7 +82,7 @@ namespace Firstlight.Game.UI
             }
             bool can = S.CanUpgrade(b, out string why);
             var r = new Rect(_lx, _ly, _lw, 30);
-            string label = can ? $"Rebuild as a {t.name}  " + Col(Cost(t), Dim) : Col($"Rebuild as a {t.name}  ({why})", Faint);
+            string label = can ? $"Rebuild as a {t.name}  " + Col(Cost(t), Dim) : Col($"Rebuild as a {t.name}  ({why})", Dim);
             if (GUI.Button(r, label, can ? Button : ButtonDim) && can) UpgradeSelected();
             string gain = t.housing > 0 ? $"Houses {t.housing} (now {b.Def.housing}), warmth {t.homeWarmth:0.##} (now {b.Def.homeWarmth:0.##}). " : "";
             Tip(r, $"{gain}Builders bring the materials and rebuild it where it stands; people keep living here meanwhile.\n\n{t.description}");
@@ -336,6 +336,20 @@ namespace Firstlight.Game.UI
 
         // ------------------------------------------------------------------ needs in the top bar
 
+        /// <summary>A need's tooltip in the top bar (public for -panelshots, which shows it without a mouse).</summary>
+        public string NeedTipFor(string id)
+        {
+            var n = S.Need(id);
+            return n == null ? null : NeedTip(n, S.NeedMet(id));
+        }
+
+        string NeedTip(NeedDef n, float met) =>
+            (n.id == "water" ? $"Clean water: {met:P0} of people live where they can get it. Homes near the river or within a well's reach have it; without it people also fall sick more."
+             : n.id == "goods" ? $"Pots at home: {met:P0} of people live in a household with pots in use. Pots wear out; a clay pit and potters keep them coming (the Pottery figure on the left is the pots in store, not yet handed out)."
+             : n.id == "faith" ? $"Faith: {met:P0} of people live within reach of a staffed Shaman's Hut; without it unrest grows."
+             : $"{n.name}: {met:P0} of people have it.") +
+            $" Unmet, it holds a person's happiness down to about {n.unmet:P0}.";
+
         /// <summary>A need's short top-bar label, naming what it measures.</summary>
         static string NeedLabel(NeedDef n) => n.id switch { "water" => "Water", "goods" => "Pots", "faith" => "Faith", _ => n.name };
 
@@ -359,11 +373,7 @@ namespace Firstlight.Game.UI
                 // Labelled by what they measure: "Pots" (households with pots in use), not "Pottery" (the stock on the left).
                 GUI.Label(new Rect(x, y + 3, 56, 20), NeedLabel(n), Small);
                 GUI.Label(new Rect(x + 56, y + 2, 56, 22), Col($"<b>{met:P0}</b>", met >= 0.9f ? Good : met >= 0.6f ? Warn : Bad), Label);
-                Tip(r, (n.id == "water" ? $"Clean water: {met:P0} of people live where they can get it. Homes near the river or within a well's reach have it; without it people also fall sick more."
-                       : n.id == "goods" ? $"Pots at home: {met:P0} of people live in a household with pots in use. Pots wear out; a clay pit and potters keep them coming (the Pottery figure on the left is the pots in store, not yet handed out)."
-                       : n.id == "faith" ? $"Faith: {met:P0} of people live within reach of a staffed Shaman's Hut; without it unrest grows."
-                       : $"{n.name}: {met:P0} of people have it.") +
-                       $" Unmet, it holds a person's happiness down to about {n.unmet:P0}.");
+                if (r.Contains(Event.current.mousePosition)) Tip(r, NeedTip(n, met));
                 x += 120;
             }
             if (S.Age.order >= 1 && x + 116 <= right)

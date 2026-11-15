@@ -41,7 +41,7 @@ namespace Firstlight.Game.UI
             // Builders: how many people are kept on construction while there are sites.
             GUI.Label(new Rect(x, y + 4, 100, 20), "Builders", Small);
             int sites = S.Sites.Count();
-            GUI.Label(new Rect(x, y + 24, 110, 20), sites > 0 ? $"{sites} site{(sites == 1 ? "" : "s")} open" : Col("no sites", Faint), Small);
+            GUI.Label(new Rect(x, y + 24, 110, 20), sites > 0 ? $"{sites} site{(sites == 1 ? "" : "s")} open" : Col("no sites", Dim), Small);
             if (GUI.Button(new Rect(x + 108, y + 11, 30, 28), "-", Button)) S.SetBuilders(S.BuildersWanted - 1);
             GUI.Label(new Rect(x + 140, y + 11, 36, 28), $"<b>{S.BuildersWanted}</b>", Center);
             if (GUI.Button(new Rect(x + 178, y + 11, 30, 28), "+", Button)) S.SetBuilders(S.BuildersWanted + 1);
@@ -49,6 +49,8 @@ namespace Firstlight.Game.UI
 
             if (BuildCategory != null) DrawCategory(BuildCategory, y);
         }
+
+        GUIStyle _costStyle, _summaryStyle;
 
         void DrawCategory(string cat, float barY)
         {
@@ -65,9 +67,14 @@ namespace Firstlight.Game.UI
                 var row = new Rect(r.x + 8, y, w - 16, rowH - 4);
                 bool on = Mode == ToolMode.Place && PlaceDef == d;
                 if (GUI.Button(row, GUIContent.none, ok ? (on ? ButtonOn : Button) : ButtonDim) && ok) StartPlacing(d);
-                GUI.Label(new Rect(row.x + 10, row.y + 4, 220, 22), ok ? $"<b>{d.name}</b>" : Col(d.name, Faint), Label);
-                GUI.Label(new Rect(row.x + 10, row.y + 26, 360, 20), ok ? Cost(d) : Col("Needs " + (D.ResearchById(d.unlockedBy)?.name ?? d.unlockedBy), Faint), new GUIStyle(Small) { fontSize = 13 });
-                GUI.Label(new Rect(row.x + 200, row.y + 4, 176, 22), Col(Summary(d), ok ? Dim : Faint), new GUIStyle(Small) { alignment = TextAnchor.MiddleRight });
+                // Locked rows in Dim, not Faint: "Needs Pottery" is what the player needs to read.
+                GUI.Label(new Rect(row.x + 10, row.y + 4, 220, 22), ok ? $"<b>{d.name}</b>" : Col(d.name, Dim), Label);
+                _costStyle ??= new GUIStyle(Small);
+                _costStyle.fontSize = Px(13);
+                GUI.Label(new Rect(row.x + 10, row.y + 26, 360, 20), ok ? Cost(d) : Col("Needs " + (D.ResearchById(d.unlockedBy)?.name ?? d.unlockedBy), Warn), _costStyle);
+                _summaryStyle ??= new GUIStyle(Small) { alignment = TextAnchor.MiddleRight };
+                _summaryStyle.fontSize = Small.fontSize;
+                GUI.Label(new Rect(row.x + 200, row.y + 4, 176, 22), Col(Summary(d), Dim), _summaryStyle);
                 Tip(row, Describe(d));
                 y += rowH;
             }

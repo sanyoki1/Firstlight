@@ -105,7 +105,7 @@ namespace Firstlight.Game.UI
             float fuel = math.max(20f, S.FuelNeedUntilSpring()), food = math.max(1f, S.FoodNeedToSummer());
             float haveFuel = S.Stock(D.Balance.fuelResource), haveFood = S.FoodStock;
             progress = $"Firewood {Col($"{haveFuel:0} / {fuel:0}", haveFuel >= fuel ? Good : Warn)}   Food {Col($"{haveFood:0} / {food:0}", haveFood >= food ? Good : Warn)}" +
-                       (S.Season < 2 ? Col("   (counted from autumn)", Faint) : "");
+                       (S.Season < 2 ? Col("   (counted from autumn)", Dim) : "");
             return haveFuel >= fuel && haveFood >= food;
         }
 
@@ -148,7 +148,9 @@ namespace Firstlight.Game.UI
             float x = BuildCategory != null ? 420 : 10;
             var r = Box(new Rect(x, VH - 60 - h - 8, w, h));
             Fill(new Rect(r.x + 1, r.y + 1, 3, r.height - 2), Accent);
-            GUI.Label(new Rect(r.x + 14, r.y + 8, w - 90, 20), Col($"FIRST STEPS  {_guideStep + 1} / {Steps.Length}", Faint), new GUIStyle(Small) { fontSize = 12 });
+            _stepStyle ??= new GUIStyle(Small);
+            _stepStyle.fontSize = Px(13);
+            GUI.Label(new Rect(r.x + 14, r.y + 8, w - 90, 20), Col($"FIRST STEPS  {_guideStep + 1} / {Steps.Length}", Dim), _stepStyle);
             if (GUI.Button(new Rect(r.xMax - 64, r.y + 6, 56, 20), Col("hide", Dim), new GUIStyle(Button) { fontSize = 12 })) { GuideHidden = true; GameSettings.Current.guideDone = true; GameSettings.Save(); }
             Tip(new Rect(r.xMax - 64, r.y + 6, 56, 20), "Hide the guide, in this game and in new ones. Settings > First-game guide brings it back for new games.");
             GUI.Label(new Rect(r.x + 14, r.y + 24, w - 28, 22), $"<b>{st.Title}</b>", Label);
@@ -160,6 +162,8 @@ namespace Firstlight.Game.UI
             if (build != null) GuideButton(new Rect(r.x + 14, y + 2, build2 != null ? 182 : 220, 28), build);
             if (build2 != null) GuideButton(new Rect(r.x + 14 + 190, y + 2, 182, 28), build2);
         }
+
+        GUIStyle _stepStyle;
 
         void GuideButton(Rect br, BuildingDef build)
         {

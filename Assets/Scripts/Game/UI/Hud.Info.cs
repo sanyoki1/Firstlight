@@ -236,7 +236,7 @@ namespace Firstlight.Game.UI
         {
             Gap(4);
             BarRow("Residents", b.Residents / (float)math.max(1, b.Def.housing), Good, $"{b.Residents} / {b.Def.housing}");
-            Row(b.Residents == 0 ? Col("Empty", Faint) : b.Heated ? Col("Heated: firewood today", Good) : S.Data.Balance.firewoodPerHome[S.Season] > 0 ? Col("No firewood today: cold inside", Bad) : "No fire needed this season", Small, 20);
+            Row(b.Residents == 0 ? Col("Empty", Dim) : b.Heated ? Col("Heated: firewood today", Good) : S.Data.Balance.firewoodPerHome[S.Season] > 0 ? Col("No firewood today: cold inside", Bad) : "No fire needed this season", Small, 20);
             bool warm = S.TownCenter != null && math.distance(S.TownCenter.Center, b.Center) <= S.TownCenter.Def.warmthRadius;
             Row(warm ? "Within the campfire's warmth" : b.Def.homeWarmth >= 0.6f ? Col("Outside the campfire's warmth (warm enough when heated)", Dim) : Col("Outside the campfire's warmth", Warn), Small, 20);
             var has = new List<string>();
@@ -260,7 +260,7 @@ namespace Firstlight.Game.UI
                 if (k + 1 < items.Count) GUI.Label(new Rect(_lx + _lw / 2, _ly, _lw / 2, 20), $"{D.Resources[items[k + 1]].name}  <b>{b.Store[items[k + 1]]:0}</b>", Small);
                 _ly += 20;
             }
-            if (items.Count == 0) Row(Col("Empty", Faint), Small, 20);
+            if (items.Count == 0) Row(Col("Empty", Dim), Small, 20);
         }
 
         // ------------------------------------------------------------------ citizens
@@ -331,8 +331,8 @@ namespace Firstlight.Game.UI
                 }
             }
             Gap(4);
-            Row("Tool  " + (c.Tool >= 0 ? $"{D.Resources[c.Tool].name}, {c.ToolLife:0} work days left" : Col("none", Faint)), Small, 20);
-            Row("Clothing  " + (c.ClothingLife > 0 ? $"{c.ClothingLife:0} cold days left" : Col("none", Faint)), Small, 20);
+            Row("Tool  " + (c.Tool >= 0 ? $"{D.Resources[c.Tool].name}, {c.ToolLife:0} work days left" : Col("none", Warn)), Small, 20);
+            Row("Clothing  " + (c.ClothingLife > 0 ? $"{c.ClothingLife:0} cold days left" : Col("none", Dim)), Small, 20);
             Gap(6);
             float bx = _lx;
             if (c.Job != null && GUI.Button(new Rect(bx, _ly, 130, 28), "Workplace", Button)) { var j = c.Job; Select(j); JumpTo(j.Center); }

@@ -319,7 +319,7 @@ namespace Firstlight.Game.UI
             }
             if (GUI.Button(new Rect(r.xMax - 184, by, 160, 38), "Back", Button)) MenuBack();
             if (!string.IsNullOrEmpty(_menuMsg)) GUI.Label(new Rect(r.x + 420, by, 230, 38), Col(_menuMsg, Warn), SmallWrap);
-            GUI.Label(new Rect(r.x + 24, r.yMax - 16, 600, 14), Col($"Saves are kept in {SaveGame.Dir.Replace('\\', '/')}", Faint), new GUIStyle(Small) { fontSize = 11 });
+            GUI.Label(new Rect(r.x + 24, r.yMax - 19, 770, 17), Col($"Saves are kept in {SaveGame.Dir.Replace('\\', '/')}", Dim), new GUIStyle(Small) { fontSize = Px(12) });
         }
 
         // ------------------------------------------------------------------ settings
@@ -437,7 +437,7 @@ namespace Firstlight.Game.UI
                     string saved = !G.Unsaved ? "Saved just now." : $"Last saved {(min < 1 ? "under a minute" : $"{min:0} minute{(min < 1.5f ? "" : "s")}")} of play ago.";
                     var cs = new GUIStyle(Small) { alignment = TextAnchor.MiddleCenter };
                     GUI.Label(new Rect(r.x, y - 4, w, 20), Col(saved, Dim), cs);
-                    GUI.Label(new Rect(r.x, y + 16, w, 20), Col("F5 quicksave, F8 quickload", Faint), cs);
+                    GUI.Label(new Rect(r.x, y + 16, w, 20), Col("F5 quicksave, F8 quickload", Dim), cs);
                     break;
                 }
             }

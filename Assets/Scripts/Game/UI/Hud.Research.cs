@@ -118,7 +118,7 @@ namespace Firstlight.Game.UI
                 bool reached = a.order <= S.Age.order;
                 var hr = new Rect(left + from * colW + 4, top - 40, (to - from + 1) * colW - 8, 28);
                 Fill(hr, reached ? new Color(0.2f, 0.19f, 0.15f, 1) : new Color(0.13f, 0.13f, 0.13f, 1));
-                GUI.Label(hr, (reached ? Col(a.name, Accent) : Col(a.name, Dim)) + (a.id == S.Age.id ? Col("   (now)", Dim) : reached ? "" : Col("   (reach it to research these)", Faint)), Center);
+                GUI.Label(hr, (reached ? Col(a.name, Accent) : Col(a.name, Dim)) + (a.id == S.Age.id ? Col("   (now)", Dim) : reached ? "" : Col("   (reach it to research these)", Dim)), Center);
                 if (from > 0) Fill(new Rect(left + from * colW - 1, top - 40, 2, bottom - top + 40), new Color(0.3f, 0.3f, 0.28f, 0.6f));
             }
             foreach (var n in _nodes) n.R = new Rect(left + n.Col * colW + (colW - nodeW) / 2, top + n.Row * rowH + (rowH - nodeH) / 2, nodeW, nodeH);
@@ -174,7 +174,7 @@ namespace Firstlight.Game.UI
             {
                 RState.Known => Col(d.cost > 0 ? "Known" : "Known from the start", new Color(0.55f, 0.7f, 0.5f)),
                 RState.AgeLocked => Col($"{D.Age(d.age)?.name}", Faint),
-                RState.Locked => Col("Needs " + string.Join(", ", d.prereqs.Where(p => !S.IsResearched(p)).Select(p => D.ResearchById(p)?.name)), Faint),
+                RState.Locked => Col("Needs " + string.Join(", ", d.prereqs.Where(p => !S.IsResearched(p)).Select(p => D.ResearchById(p)?.name)), Dim),
                 _ => $"{d.cost:0} knowledge" + (d.key ? Col("  ·  key", Accent) : ""),
             };
             GUI.Label(new Rect(r.x + 12, r.y + 28, r.width - 20, 18), sub, new GUIStyle(Small) { fontSize = 12 });

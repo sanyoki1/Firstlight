@@ -77,7 +77,7 @@ namespace Firstlight.Game.UI
                     var row = new Rect(0, y, view.width - 18, hh);
                     if (e.HasPlace && row.Contains(Event.current.mousePosition)) Fill(row, new Color(1, 1, 1, 0.05f));
                     Fill(new Rect(0, y + 2, 3, hh - 4), e.Severity == Severity.Info ? Faint : col);
-                    GUI.Label(new Rect(10, y + 2, 92, 20), Col(EventDate(e.Day), Faint), Small);
+                    GUI.Label(new Rect(10, y + 2, 92, 20), Col(EventDate(e.Day), Dim), Small);   // Faint was nearly invisible here
                     GUI.Label(new Rect(104, y + 2, textW, hh - 4), Col(e.Text, e.Severity == Severity.Info ? Text : col), _evStyle);
                     if (e.HasPlace)
                     {
