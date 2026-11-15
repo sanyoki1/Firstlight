@@ -36,7 +36,7 @@
   "campfireWarmth": 0.2,
   "clothingWearDays": 64,
 
-  "starveDamage": 0.12,
+  "starveDamage": 0.06,
   "coldDamage": 0.25,
   "sickDamage": 0.05,
   "recoverPerDay": 0.05,
