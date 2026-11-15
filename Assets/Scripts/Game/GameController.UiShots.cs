@@ -263,7 +263,7 @@ namespace Firstlight.Game
             Cam.Cam.targetTexture = _shotRT;
             _pendingShot = path; _guiDrawn = false;
             float speed = Sim.Speed;
-            if (speed == 0) Sim.SetSpeed(1);          // the top bar shows 1x, not the hand-driven pause
+            if (speed == 0 && !_shotKeepPause) Sim.SetSpeed(1);          // the top bar shows 1x, not the hand-driven pause
             yield return new WaitForEndOfFrame();
             if (Application.isBatchMode)
             {

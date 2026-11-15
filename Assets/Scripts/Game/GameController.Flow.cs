@@ -36,7 +36,7 @@ namespace Firstlight.Game
         public SoundScape Sound { get; private set; }
 
         /// <summary>Started for a test or a clip (no menu, no autosaves, no settings applied to the window).</summary>
-        static bool CommandLineMode => new[] { "-seed", "-autoplay", "-uishots", "-p4shots", "-guideshots", "-shots", "-watershots", "-deershots", "-deerpair", "-huntshots", "-load", "-benchmark" }.Any(HasArg);
+        static bool CommandLineMode => new[] { "-seed", "-autoplay", "-uishots", "-p4shots", "-guideshots", "-panelshots", "-shots", "-watershots", "-deershots", "-deerpair", "-huntshots", "-load", "-benchmark" }.Any(HasArg);
 
         /// <summary>The in-game menu is open: the settlement waits.</summary>
         public bool Paused => Hud != null && Hud.MenuOpen;
@@ -196,7 +196,7 @@ namespace Firstlight.Game
 
         static bool? _noAutosaveMode;
         /// <summary>Started for screenshots or by the auto-player: no autosaves (the flags are looked up once).</summary>
-        static bool NoAutosaveMode => _noAutosaveMode ??= (HasArg("-uishots") || HasArg("-p4shots") || HasArg("-guideshots") || HasArg("-autoplay")) && !HasArg("-faulttest");   // -faulttest checks that a fault stops them
+        static bool NoAutosaveMode => _noAutosaveMode ??= (HasArg("-uishots") || HasArg("-p4shots") || HasArg("-guideshots") || HasArg("-panelshots") || HasArg("-autoplay")) && !HasArg("-faulttest");   // -faulttest checks that a fault stops them
         float _autosaveDue = -1f;           // real time this season's autosave is due (-1 = none waiting)
 
         /// <summary>
