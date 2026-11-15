@@ -180,6 +180,69 @@ namespace Firstlight.Game.UI
             return -1;
         }
 
+        float2? FirstOf(string id) { foreach (var b in S.Buildings) if (b.Active && b.Def.id == id) return b.Center; return null; }
+
+        /// <summary>A tool has been used up (worn out, or swapped for a better one once worn).</summary>
+        bool ToolWornOut()
+        {
+            for (int r = 0; r < S.ResCount; r++) if (D.Resources[r].toolSpeed > 0 && S.Consumed[r] >= 1) return true;
+            return false;
+        }
+
+        /// <summary>A lived-in home that can now be rebuilt as a better one where it stands.</summary>
+        bool CanRebuildAHome()
+        {
+            foreach (var b in S.Buildings)
+            {
+                if (!b.Active || b.Def.housing <= 0 || string.IsNullOrEmpty(b.Def.upgradesTo)) continue;
+                var t = D.Building(b.Def.upgradesTo);
+                if (t != null && S.IsUnlocked(t)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>"The Bronze Age needs Writing and Bronze Working researched, and: reach 80 people, ...".</summary>
+        string NextAgeNeeds()
+        {
+            var next = D.Age(S.Age.next);
+            var research = S.Age.keyResearch.Select(k => D.ResearchById(k)?.name ?? k).ToList();
+            var goals = S.Milestones.Select(m => m.Label.Length > 0 ? char.ToLower(m.Label[0]) + m.Label.Substring(1) : m.Label).ToList();
+            string r = research.Count == 0 ? "" : research.Count == 1 ? research[0] : string.Join(", ", research.Take(research.Count - 1)) + " and " + research[research.Count - 1];
+            return $"The {next?.name} needs {r} researched, and: {string.Join(", ", goals)}. Goals (G) tracks them; advancing is up to you.";
+        }
+
+        // Timers for the builders and priorities hints (game time; looked at twice a second, not every frame).
+        float _sitesWaitingSince = -1, _emptyJobSince = -1, _hintTimersAt = -1;
+        Building _emptyJob;
+
+        void UpdateHintTimers()
+        {
+            if (Time.unscaledTime - _hintTimersAt < 0.5f) return;
+            _hintTimersAt = Time.unscaledTime;
+            if (!S.IsWorkTime) return;                   // nights neither start nor reset them
+            // Two or more sites with nobody on them while every builder is busy.
+            int waiting = 0;
+            foreach (var b in S.Buildings)
+            {
+                if (!b.UnderWork) continue;
+                bool someone = false;
+                foreach (var c in S.Citizens) if (c.IsBuilder && c.TaskB2 == b) { someone = true; break; }
+                if (!someone) waiting++;
+            }
+            bool short_ = S.BuildersWanted > 0 && waiting >= 2;
+            if (!short_) _sitesWaitingSince = -1; else if (_sitesWaitingSince < 0) _sitesWaitingSince = S.Time;
+            // A workplace that wants workers has none while another is full (higher priorities took them).
+            Building empty = null; bool full = false;
+            foreach (var b in S.Buildings)
+            {
+                if (!b.Active || !b.Def.IsWorkplace || b.Paused || b.Flooded || b.Def.maxWorkers <= 0) continue;
+                if (b.Workers >= b.Def.maxWorkers) full = true;
+                else if (b.Workers == 0 && b.Status != "Nothing to do this season" && b.Status != "The harvest is in") empty ??= b;
+            }
+            if (empty == null || !full) { _emptyJobSince = -1; _emptyJob = null; }
+            else if (_emptyJobSince < 0) { _emptyJobSince = S.Time; _emptyJob = empty; }
+        }
+
         /// <summary>A hint's text with its live numbers (when it has them).</summary>
         string HintText(HintDef h) => h.TextNow?.Invoke(this) ?? h.Text;
 
@@ -189,6 +252,8 @@ namespace Firstlight.Game.UI
             // numbers. The id stays "winter" so a save that has seen the old hint does not show this one again.
             new() { Id = "winter", Title = "Winter is coming", Text = "Nothing grows in winter and little is gathered. Homes burn firewood every day; people without warmth, food or a roof lose health. Before it comes: set a woodcutter to Firewood and keep gatherers and hunters busy.",
                     TextNow = h => h.WinterHintText(), When = h => h.S.Season >= 2 },
+            new() { Id = "make_firewood", Title = "Firewood only", Text = "A woodcutter can make only firewood: open it and choose Make: Firewood. Its building wood goes into firewood instead.",
+                    When = h => h.S.CountBuildings("woodcutter") > 0 && h.S.Warnings.Exists(w => w.StartsWith("Not enough firewood")), Where = h => h.FirstOf("woodcutter") },
             new() { Id = "death", Title = "Someone has died", Text = "Events (V) lists every death and its cause. Cold means not enough firewood, homes or clothing; hunger means too little food; sickness spreads in crowded homes. Old age is natural.",
                     TextNow = h => h.LastDeath() is string d ? $"{d} Cold means not enough firewood, homes or clothing; hunger means too little food; sickness spreads in crowded homes. Old age is natural. Events (V) lists every death." : null,
                     When = h => h.S.TotalDeaths > 0, Where = h => h.LastDeathPlace() },
@@ -200,6 +265,22 @@ namespace Firstlight.Game.UI
             new() { Id = "ore", Title = "Ore deposits found", Text = "Prospecting shows copper and tin as stained ground with outcrops. Mines must stand on their deposit; the placement shows where it is.", When = h => h.M.OreRevealed },
             new() { Id = "flood", Title = "The river is rising", Text = "In spring the river can flood the low ground beside it. Buildings under water stop working and stored goods spoil, but flooded fields grow more that year.", When = h => h.S.FloodWarned || h.S.Flooding, Where = h => h.FloodSpot() },
             new() { Id = "traders", Title = "Traders", Text = "Traders call in spring, summer and autumn and offer what the settlement is short of for its biggest surplus. Accept or decline; the offer stands until the end of the next day.", When = h => h.S.PendingTrade != null },
+            // Mechanics nothing explained before (UX audit U19). One at a time, in this order; each closes by itself.
+            new() { Id = "tools_wear", Title = "Tools wear out", Text = "Tools wear out with use. A toolmaker keeps them coming; workers pick up the best tools in store.",
+                    When = h => h.ToolWornOut() },
+            new() { Id = "builders", Title = "Builders", Text = "Only a few people build. Raise Builders (bottom bar) to finish sites faster; they go back to other work when nothing is left to build.",
+                    TextNow = h => $"Only {h.S.BuildersWanted} {(h.S.BuildersWanted == 1 ? "person builds" : "people build")}. Raise Builders (bottom bar) to finish sites faster; they go back to other work when nothing is left to build.",
+                    When = h => h._sitesWaitingSince >= 0 && h.S.Time - h._sitesWaitingSince > 2f * h.D.Balance.dayLengthSeconds },
+            new() { Id = "priorities", Title = "Jobs fill by priority", Text = "Jobs fill by priority: High first, then builders, then Normal, then Low. Set it in the building's panel; Jobs (J) shows them all.",
+                    When = h => h._emptyJobSince >= 0 && h.S.Time - h._emptyJobSince > h.D.Balance.dayLengthSeconds, Where = h => h._emptyJob != null && h._emptyJob.Alive ? h._emptyJob.Center : null },
+            new() { Id = "rebuild", Title = "Rebuild in place", Text = "Lean-tos and hide tents can be rebuilt as thatched huts where they stand: select one and choose Rebuild. The people living there stay meanwhile.",
+                    When = h => h.CanRebuildAHome() },
+            new() { Id = "clay", Title = "Clay", Text = "Clay is dug at a Clay Pit on the river's clay beds; the placement shows them. Potters fire it into pottery.",
+                    When = h => h.S.IsResearched("pottery") },
+            new() { Id = "tin", Title = "Tin is far away", Text = "There is one small tin deposit, usually far out in the hills. A Tin Mine must stand on it; traders sometimes bring tin.",
+                    When = h => h.S.IsResearched("bronze_working") },
+            new() { Id = "next_age", Title = "What the next age needs", Text = "Goals (G) lists the key research and milestones the next age needs.",
+                    TextNow = h => h.NextAgeNeeds(), When = h => h.S.Age != null && h.S.Age.order >= 1 && !string.IsNullOrEmpty(h.S.Age.next) },
         };
 
         readonly HashSet<string> _hintsSeen = new();
@@ -225,6 +306,7 @@ namespace Firstlight.Game.UI
 
         void UpdateHints()
         {
+            UpdateHintTimers();
             // A hint whose moment has passed goes by itself (an undismissed "Winter has come" stood into the summer of
             // year 12 in the screenshot run, and held back every later hint).
             if (_hint != null && !_hintForced && !_hint.When(this)) _hint = null;
