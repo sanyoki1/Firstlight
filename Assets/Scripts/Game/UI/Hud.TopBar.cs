@@ -97,9 +97,7 @@ namespace Firstlight.Game.UI
             x += 4 * 42 + 16;
 
             // People.
-            int elders = 0;
-            foreach (var c in S.Citizens) if (!c.Gone && S.IsElder(c)) elders++;
-            int adults = S.Adults - elders, kids = S.Children;
+            var (adults, elders, kids) = PeopleSplit();
             int free = S.HousingCapacity - S.Population;
             var pr = new Rect(x, 5, 236, 42);
             GUI.Label(new Rect(x, 5, 236, 22), $"<b>{S.Population}</b> people  " + (S.Homeless > 0 ? Col($"{S.Homeless} homeless", Warn) : free > 0 ? Col($"{free} beds free", Dim) : Col("no free beds", Dim)), Label);
@@ -112,7 +110,7 @@ namespace Firstlight.Game.UI
             float fd = S.FoodDays;
             var fcol = fd < S.Data.Balance.foodWarnDays ? Bad : fd < 8 ? Warn : Good;
             var fr = new Rect(x, 5, 150, 42);
-            GUI.Label(new Rect(x, 5, 150, 22), "Food " + Col(fd >= 99 ? "-" : $"{fd:0.#} days", fcol), Label);
+            GUI.Label(new Rect(x, 5, 150, 22), "Food " + Col(FoodDaysText(fd), fcol), Label);
             GUI.Label(new Rect(x, 27, 150, 20), $"{S.FoodStock:0} in store" + Arrow(_foodDelta, 0.5f), Small);
             Tip(fr, $"Food in store lasts {fd:0.#} days at {S.DailyFoodNeed:0.#} a day (adults eat 1, children less). Change over the last day: {_foodDelta:+0.#;-0.#;0}.\n\n" +
                     "Gatherers, hunters, fishers and, later, fields make it; it spoils in open piles (a granary keeps it). Winter makes little: stock up before it. Click for every good (T).");
@@ -159,7 +157,7 @@ namespace Firstlight.Game.UI
                 int r = S.ResIndex(id);
                 if (r < 0) continue;
                 bool tools = id == "tools";
-                float amt = tools ? S.ToolStock : S.StockTotals[r];
+                float amt = tools ? ToolsInStore() : S.StockTotals[r];
                 if (shown >= AlwaysShown && amt < 0.5f && S.Produced[r] < 0.5f) continue;
                 if (x + 116 > right - NeedsWidth()) break;
                 var sr = new Rect(x, y2, 112, 26);
@@ -177,6 +175,33 @@ namespace Firstlight.Game.UI
                 GUI.Label(new Rect(ar2.x + 12, ar2.y, 300, 30), Col("Auto-player is running the settlement (F9)", Info), new GUIStyle(Label) { fontSize = 14 });
             }
         }
+
+        // One source for the numbers more than one screen prints (top bar, goods panel, jobs, end screen), so they agree.
+
+        /// <summary>People as the top bar splits them: adults (not counting elders), elders and children.</summary>
+        (int adults, int elders, int children) PeopleSplit()
+        {
+            int elders = 0;
+            foreach (var c in S.Citizens) if (!c.Gone && S.IsElder(c)) elders++;
+            return (S.Adults - elders, elders, S.Children);
+        }
+
+        /// <summary>"148  (86 adults, 19 elders, 43 children)".</summary>
+        string PeopleLine()
+        {
+            var (a, e, c) = PeopleSplit();
+            return $"{S.Population}  ({a} adults, {e} elders, {c} children)";
+        }
+
+        /// <summary>Tools of every kind in store (unrounded; shown with {:0} like every other good).</summary>
+        float ToolsInStore()
+        {
+            float t = 0;
+            for (int r = 0; r < S.ResCount; r++) if (D.Resources[r].toolSpeed > 0) t += S.StockTotals[r];
+            return t;
+        }
+
+        static string FoodDaysText(float fd) => fd >= 99 ? "-" : $"{fd:0.#} days";
 
         float ToolTrend()
         {

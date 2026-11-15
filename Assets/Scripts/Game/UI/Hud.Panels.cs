@@ -73,7 +73,8 @@ namespace Firstlight.Game.UI
             int adults = S.Adults, jobs = S.Citizens.Count(c => !c.Gone && c.Job != null), builders = S.Citizens.Count(c => !c.Gone && c.IsBuilder);
             int sick = S.Citizens.Count(c => !c.Gone && c.Sick && S.Citizens.Count > 0 && c.Age >= D.Balance.adultAge);
             int free = adults - jobs - builders - sick;
-            Para($"{adults} adults: {jobs} in jobs, {builders} building, {Col($"{free} free", free > 0 ? Good : Dim)} (they haul goods), {sick} sick. {S.Children} children.", Wrap);
+            var (onlyAdults, elders, kids) = PeopleSplit();
+            Para($"{onlyAdults} adults and {elders} elders: {jobs} in jobs, {builders} building, {Col($"{free} free", free > 0 ? Good : Dim)} (they haul goods), {sick} sick. {kids} children.", Wrap);
             Gap(2);
             GUI.Label(new Rect(_lx, _ly, 200, 20), "Workplace", Small);
             GUI.Label(new Rect(_lx + 200, _ly, 80, 20), "Workers", Small);
@@ -118,6 +119,16 @@ namespace Firstlight.Game.UI
                 GUI.Label(new Rect(_lx + 180, _ly, 80, 22), $"<b>{amt:0}</b>", Right);
                 float t = Trend(i);
                 GUI.Label(new Rect(_lx + 270, _ly, 90, 22), math.abs(t) < 0.05f ? Col("-", Faint) : Col($"{t:+0.#;-0.#}", t > 0 ? Good : Bad), Right);
+                _ly += 23;
+            }
+            // Tools of all kinds together: the top bar's "Tools" figure.
+            float tools = ToolsInStore();
+            if (tools >= 0.05f)
+            {
+                GUI.Label(new Rect(_lx, _ly, 180, 22), Col("Tools (all kinds)", Dim), Label);
+                GUI.Label(new Rect(_lx + 180, _ly, 80, 22), $"<b>{tools:0}</b>", Right);
+                float tt = ToolTrend();
+                GUI.Label(new Rect(_lx + 270, _ly, 90, 22), math.abs(tt) < 0.05f ? Col("-", Faint) : Col($"{tt:+0.#;-0.#}", tt > 0 ? Good : Bad), Right);
                 _ly += 23;
             }
             _stocksH = _ly - r.y + 10;

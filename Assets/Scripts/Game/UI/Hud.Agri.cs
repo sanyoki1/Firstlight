@@ -253,13 +253,13 @@ namespace Firstlight.Game.UI
             int buildings = S.Buildings.Count(b => b.Active && !b.Def.path);
             var lines = new (string, string)[]
             {
-                ("People", $"{S.Population}  ({S.Adults} adults, {S.Children} children)"),
+                ("People", PeopleLine()),
                 ("Born / arrived", $"{S.Births} born, {S.Migrants} came to stay"),
                 ("Left / died", $"{S.Leavers} left, {S.TotalDeaths} died" + (S.Deaths.Count > 0 ? $" ({string.Join(", ", S.Deaths.OrderByDescending(kv => kv.Value).Take(3).Select(kv => $"{kv.Key} {kv.Value}"))})" : "")),
                 ("Buildings", $"{buildings}, {S.PathCount} path tiles"),
                 ("Research", $"{S.ResearchLog.Count} topics learned"),
                 ("Winters", $"{S.WintersSurvived} survived"),
-                ("Food in store", $"{S.FoodStock:0} ({S.FoodDays:0} days)"),
+                ("Food in store", $"{S.FoodStock:0} ({FoodDaysText(S.FoodDays)})"),
             };
             foreach (var (k, v) in lines)
             {
