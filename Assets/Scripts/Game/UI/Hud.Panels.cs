@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Unity.Mathematics;
 using UnityEngine;
@@ -75,28 +76,89 @@ namespace Firstlight.Game.UI
             int free = adults - jobs - builders - sick;
             var (onlyAdults, elders, kids) = PeopleSplit();
             Para($"{onlyAdults} adults and {elders} elders: {jobs} in jobs, {builders} building, {Col($"{free} free", free > 0 ? Good : Dim)} (they haul goods), {sick} sick. {kids} children.", Wrap);
+            // Places that want workers now (not paused, flooded or out of season), how many are filled, and who carries.
+            int places = 0, filled = 0, hiWorkers = 0, normalWorkers = 0;
+            foreach (var b in S.Buildings)
+            {
+                if (!b.Active || !b.Def.IsWorkplace) continue;
+                if (b.Priority == Priority.High) hiWorkers += b.Workers; else if (b.Priority == Priority.Normal) normalWorkers += b.Workers;
+                if (JobIdle(b) != null) continue;
+                places += b.Def.maxWorkers; filled += b.Workers;
+            }
+            Row($"Places: {places}, filled {filled}" + (places > filled ? Col($" · short of {places - filled} worker{(places - filled == 1 ? "" : "s")}", Warn) : Col(" · all filled", Good)), Label);
+            if (free <= 0) Row(Col("Nobody is free to haul: goods wait at workplaces", Warn), Label);
             Gap(2);
             GUI.Label(new Rect(_lx, _ly, 200, 20), "Workplace", Small);
             GUI.Label(new Rect(_lx + 200, _ly, 80, 20), "Workers", Small);
-            GUI.Label(new Rect(_lx + 290, _ly, 150, 20), "Priority", Small);
+            GUI.Label(new Rect(_lx + 300, _ly, 150, 20), "Priority", Small);
             _ly += 22;
             foreach (var g in S.Buildings.Where(b => b.Active && b.Def.IsWorkplace).GroupBy(b => b.Def).OrderBy(g => g.Key.category).ThenBy(g => g.Key.name))
             {
-                int w = g.Sum(b => b.Workers), max = g.Sum(b => b.Def.maxWorkers);
-                int hi = g.Count(b => b.Priority == Priority.High), lo = g.Count(b => b.Priority == Priority.Low), paused = g.Count(b => b.Paused);
-                var row = new Rect(_lx - 6, _ly, _lw + 12, 24);
-                if (GUI.Button(row, GUIContent.none, GUIStyle.none)) { var first = g.First(); Select(first); JumpTo(first.Center); }
+                int w = 0, max = 0, hi = 0, lo = 0, paused = 0, n = 0;
+                Building first = null, shortB = null;
+                foreach (var b in g)
+                {
+                    first ??= b; n++;
+                    w += b.Workers; max += b.Def.maxWorkers;
+                    if (b.Priority == Priority.High) hi++; else if (b.Priority == Priority.Low) lo++;
+                    if (b.Paused) paused++;
+                    if (shortB == null && b.Workers < b.Def.maxWorkers) shortB = b;
+                }
+                string note = JobNote(g.Key, shortB ?? first, w, max, free, hiWorkers, normalWorkers, builders);
+                var row = new Rect(_lx - 6, _ly, _lw + 12, note != null ? 42 : 24);
+                if (GUI.Button(row, GUIContent.none, GUIStyle.none)) { Select(first); JumpTo(first.Center); }
                 if (row.Contains(Event.current.mousePosition)) Fill(row, new Color(1, 1, 1, 0.05f));
-                GUI.Label(new Rect(_lx, _ly, 200, 24), g.Count() > 1 ? $"{g.Key.name} x{g.Count()}" : g.Key.name, Label);
-                Bar(new Rect(_lx + 200, _ly + 7, 50, 10), w / (float)math.max(1, max), w == max ? Good : w == 0 ? Bad : Warn);
-                GUI.Label(new Rect(_lx + 254, _ly, 40, 24), $"{w}/{max}", Small);
+                GUI.Label(new Rect(_lx, _ly, 200, 24), n > 1 ? $"{g.Key.name} x{n}" : g.Key.name, Label);
+                // An empty bar draws no colour, so the count carries it: red at none, amber short, green full.
+                var wc = w >= max ? Good : w == 0 ? Bad : Warn;
+                if (w == 0) Fill(new Rect(_lx + 200, _ly + 7, 50, 10), new Color(Bad.r, Bad.g, Bad.b, 0.28f));
+                else Bar(new Rect(_lx + 200, _ly + 7, 50, 10), w / (float)math.max(1, max), wc);
+                GUI.Label(new Rect(_lx + 256, _ly, 44, 24), Col($"{w}/{max}", wc), Label);
                 string p = (hi > 0 ? Col($"{hi} high ", Accent) : "") + (lo > 0 ? Col($"{lo} low ", Dim) : "") + (paused > 0 ? Col($"{paused} paused", Warn) : "");
-                GUI.Label(new Rect(_lx + 300, _ly, 150, 24), p.Length > 0 ? p : Col("normal", Faint), Small);
-                _ly += 25;
+                GUI.Label(new Rect(_lx + 300, _ly, 150, 24), p.Length > 0 ? p : Col("normal", Dim), Small);
+                _ly += 24;
+                if (note != null) { GUI.Label(new Rect(_lx + 12, _ly - 2, _lw - 12, 18), Col(note, Dim), Small); _ly += 18; }
+                _ly += 1;
             }
             Gap(4);
             Para(Col("Click a row to select it. Priorities and pausing are set on each building.", Dim));
             _jobsH = _ly - r.y + 8;
+        }
+
+        /// <summary>Why a workplace wants nobody now (its status as the sim sets it), or null when it takes workers.</summary>
+        static string JobIdle(Building b) => b.Paused ? "paused" : b.Flooded ? "flooded" : b.Status switch
+        {
+            "Nothing to do this season" => "nothing to do this season",
+            "The harvest is in" => "the harvest is in",
+            _ => null,
+        };
+
+        /// <summary>
+        /// The faint line under a Jobs row: why it is short of workers (paused, out of season, or who came first: jobs fill
+        /// High first, then builders, then Normal with fields first, then Low), or what stops the workers it has.
+        /// </summary>
+        string JobNote(BuildingDef d, Building b, int w, int max, int free, int hiWorkers, int normalWorkers, int builders)
+        {
+            if (b == null) return null;
+            string idle = JobIdle(b);
+            if (idle != null) return w < max ? Cap(idle) : null;
+            if (w < max)
+            {
+                if (free > 0) return null;                         // filled at the next shift change
+                var before = new List<string>(3);
+                if (b.Priority < Priority.High && hiWorkers > 0) before.Add("High-priority jobs");
+                if (b.Priority < Priority.High && builders > 0) before.Add("builders");
+                if (b.Priority == Priority.Low && normalWorkers > 0) before.Add("Normal jobs");
+                if (before.Count == 0) return w == 0 ? "Nobody left to take it: more people, or raise its priority" : null;
+                return $"Short: everyone is taken by {string.Join(" and ", before)} first";
+            }
+            return b.Status switch
+            {
+                "Needs tools" => "Its workers need tools",
+                "Waiting for inputs" => "Waiting for its inputs",
+                "Waiting for goods to be carried off" => "Full: waiting for haulers",
+                _ => null,
+            };
         }
 
         // ------------------------------------------------------------------ stocks
