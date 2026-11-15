@@ -565,9 +565,72 @@ namespace Firstlight.Game
             finally { data.Balance.copperDeposits = copper; }
 
             ok &= GoodsByIdCheck(data, good, s);
+            ok &= UnknownIdsCheck(data, good, s, outDir);
             foreach (var file in ArgsAfter("-compatsave")) ok &= CompatCheck(data, file, int.TryParse(ArgsAfter("-compatdays").FirstOrDefault(), out int cd) ? cd : 30, outDir);
             Debug.Log($"[SaveCheck] {(ok ? "PASS" : "FAIL")}");
             return ok;
+        }
+
+        /// <summary>
+        /// A save naming research and a law this build does not have (the ids are renamed inside the gzip body, every
+        /// place they are stored): it must load, drop them, and run on for a day without an exception.
+        /// </summary>
+        static bool UnknownIdsCheck(GameData data, string file, Settlement orig, string outDir)
+        {
+            // A topic whose id is not also a good's or a building's (those strings are saved too).
+            bool Plain(string id) => data.Resources.All(x => x.id != id) && data.Buildings.All(x => x.id != id);
+            string topic = orig.ResearchQueue.FirstOrDefault(Plain) ?? data.Research.First(x => !x.known && orig.IsResearched(x.id) && Plain(x.id)).id;
+            string law = data.Laws.Count > 0 ? data.Laws[0].id : null;
+            var bytes = File.ReadAllBytes(file);
+            int headerLen = 0;
+            for (int i = 4; i < bytes.Length - 1; i++) if (bytes[i] == 0x1f && bytes[i + 1] == 0x8b) { headerLen = i; break; }
+            byte[] body;
+            using (var gz = new System.IO.Compression.GZipStream(new MemoryStream(bytes, headerLen, bytes.Length - headerLen), System.IO.Compression.CompressionMode.Decompress))
+            using (var ms = new MemoryStream()) { gz.CopyTo(ms); body = ms.ToArray(); }
+            int renamed = 0;
+            void Rename(string id)
+            {
+                // A saved string is a 'present' flag (1), a length byte and the UTF-8 bytes: match all of it, so ids that
+                // merely contain this one are left alone.
+                var pat = new byte[] { 1, (byte)id.Length }.Concat(System.Text.Encoding.UTF8.GetBytes(id)).ToArray();
+                for (int i = 0; i + pat.Length <= body.Length; i++)
+                {
+                    int k = 0; while (k < pat.Length && body[i + k] == pat[k]) k++;
+                    if (k < pat.Length) continue;
+                    for (int j = 2; j < pat.Length; j++) body[i + j] = (byte)'z';
+                    renamed++;
+                }
+            }
+            Rename(topic);
+            if (law != null) Rename(law);
+            string path = Path.Combine(outDir, "unknown_ids" + SaveGame.Extension);
+            using (var fs = File.Create(path))
+            {
+                fs.Write(bytes, 0, headerLen);
+                using var gz = new System.IO.Compression.GZipStream(fs, System.IO.Compression.CompressionLevel.Fastest);
+                gz.Write(body, 0, body.Length);
+            }
+            SaveGame.Loaded l = null;
+            try
+            {
+                l = SaveGame.Read(path, data, out string err);
+                bool ok = l != null;
+                string detail = l == null ? "load refused (" + err + ")" : "";
+                if (l != null)
+                {
+                    var s = l.Sim; var ap = l.Auto ?? new AutoPlayer(s);
+                    bool clean = s.ResearchQueue.All(x => data.ResearchById(x) != null) && s.ActiveLaws.All(x => data.Laws.Any(d => d.id == x));
+                    float hour = data.Balance.dayLengthSeconds / 24f;
+                    int day0 = s.Day;
+                    while (s.Day < day0 + 2) { s.Tick(hour); ap.Think(); }
+                    ok = clean;
+                    detail = $"loaded, ids dropped: {(clean ? "yes" : "NO")}, ran to day {s.Day}";
+                }
+                Debug.Log($"[SaveCheck] unknown research '{topic}' and law '{law}' ({renamed} places renamed): {detail}{(ok ? "" : "  <-- WRONG")}");
+                return ok && renamed > 0;
+            }
+            catch (Exception e) { Debug.Log($"[SaveCheck] unknown research/law: EXCEPTION {e}"); return false; }
+            finally { l?.Map.Dispose(); }
         }
 
         static IEnumerable<string> ArgsAfter(string name)

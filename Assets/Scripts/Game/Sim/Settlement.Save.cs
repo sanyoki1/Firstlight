@@ -171,9 +171,13 @@ namespace Firstlight.Game
             Unrest = r.Float(); UnrestTarget = r.Float(); OutbreakRisk = r.Float();
             _needWater = r.Bool(); _needGoods = r.Bool(); _needFaith = r.Bool();
 
-            _researched.Clear(); foreach (var id in r.Strs()) _researched.Add(id);
-            _progress.Clear(); for (int i = 0, n = r.Int(); i < n; i++) _progress[r.Str()] = r.Float();
-            ResearchQueue.Clear(); ResearchQueue.AddRange(r.Strs());
+            // Research and law ids the data no longer has are dropped (they would throw later, inside Tick).
+            var unknown = new SortedSet<string>();
+            bool Known(string id) { if (id != null && Data.ResearchById(id) != null) return true; unknown.Add(id ?? "(none)"); return false; }
+            bool KnownLaw(string id) { foreach (var l in Data.Laws) if (l.id == id) return true; unknown.Add("law " + (id ?? "(none)")); return false; }
+            _researched.Clear(); foreach (var id in r.Strs()) if (Known(id)) _researched.Add(id);
+            _progress.Clear(); for (int i = 0, n = r.Int(); i < n; i++) { string id = r.Str(); float p = r.Float(); if (Known(id)) _progress[id] = p; }
+            ResearchQueue.Clear(); foreach (var id in r.Strs()) if (Known(id)) ResearchQueue.Add(id);
             string ageId = r.Str();
             Age = Data.Age(ageId) ?? throw new InvalidDataException($"unknown age '{ageId}'");
             // Milestones: matched to this build's list for the age (v2 by key, v1 by position); a saved one the data no
@@ -195,8 +199,9 @@ namespace Firstlight.Game
             if (savedMs.Count > 0) UnityEngine.Debug.LogWarning($"[Save] milestones this build does not have were dropped: {string.Join(", ", savedMs.ConvertAll(x => x.key ?? "?"))}");
             ResearchLog.Clear(); for (int i = 0, n = r.Int(); i < n; i++) ResearchLog.Add((r.Str(), r.Int()));
             AgeLog.Clear(); for (int i = 0, n = r.Int(); i < n; i++) AgeLog.Add((r.Str(), r.Int()));
-            _laws.Clear(); foreach (var id in r.Strs()) _laws.Add(id);
-            _lawChanged.Clear(); for (int i = 0, n = r.Int(); i < n; i++) _lawChanged[r.Str()] = r.Int();
+            _laws.Clear(); foreach (var id in r.Strs()) if (KnownLaw(id)) _laws.Add(id);
+            _lawChanged.Clear(); for (int i = 0, n = r.Int(); i < n; i++) { string id = r.Str(); int day = r.Int(); if (KnownLaw(id)) _lawChanged[id] = day; }
+            if (unknown.Count > 0) UnityEngine.Debug.LogWarning($"[Save] research or laws this build does not have were dropped: {string.Join(", ", unknown)}");
 
             FloodDay = r.Int(); FloodStrength = r.Float(); FloodEndDay = r.Int(); Floods = r.Int();
             AutoTrade = r.Bool(); TradesDeclined = r.Int(); Difficulty = r.Int();
