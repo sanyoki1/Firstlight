@@ -193,12 +193,13 @@ namespace Firstlight.Game
             PerfProbe.End(PerfProbe.S.Commit);
             if (Sim != null && !InMenu)
             {
-                PerfProbe.Begin(PerfProbe.S.Autosave);
-                if (!_demo && !Paused) Autosave();
-                PerfProbe.End(PerfProbe.S.Autosave);
+                int dayBefore = Sim.Day;
                 PerfProbe.Begin(PerfProbe.S.Sim);
                 Sim.Update(Paused ? 0 : Time.deltaTime);
                 PerfProbe.End(PerfProbe.S.Sim);
+                PerfProbe.Begin(PerfProbe.S.Autosave);
+                if (!_demo && !Paused) Autosave(Sim.Day != dayBefore);
+                PerfProbe.End(PerfProbe.S.Autosave);
                 // The auto-player thinks once per game hour, like in the auto-test.
                 _autoClock += Time.deltaTime * Sim.Speed;
                 PerfProbe.Begin(PerfProbe.S.Auto);

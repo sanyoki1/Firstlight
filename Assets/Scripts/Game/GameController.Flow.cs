@@ -109,14 +109,25 @@ namespace Firstlight.Game
             LoadGame(p);
         }
 
-        /// <summary>At the start of each season, if autosaves are on: the oldest of three autosave slots.</summary>
-        void Autosave()
+        float _autosaveDue = -1f;           // real time this season's autosave is due (-1 = none waiting)
+
+        /// <summary>
+        /// At the start of each season, if autosaves are on: the oldest of three autosave slots. Called after the sim's
+        /// step. The save waits a second after the season begins, and never shares a frame with a day tick, so the season
+        /// start (the daily step and its path rebuild) and the save are two short hitches instead of one long one.
+        /// </summary>
+        void Autosave(bool dayTicked)
         {
             if (Sim.NeedsCampfire || Sim.Population == 0 || HasArg("-uishots") || HasArg("-p4shots") || HasArg("-autoplay")) return;
             int season = Sim.Day / Data.Balance.daysPerSeason;
             if (_autosaveSeason < 0) { _autosaveSeason = season; return; }
-            if (season == _autosaveSeason) return;
-            _autosaveSeason = season;
+            if (season != _autosaveSeason)
+            {
+                _autosaveSeason = season;
+                if (GameSettings.Current.autosave) _autosaveDue = Time.realtimeSinceStartup + 1f;
+            }
+            if (_autosaveDue < 0 || dayTicked || Time.realtimeSinceStartup < _autosaveDue) return;
+            _autosaveDue = -1f;
             if (!GameSettings.Current.autosave) return;
             string err = SaveTo(SaveGame.NextAutosave(), $"Autosave: {Sim.SeasonName}, year {Sim.Year + 1}", "auto");
             Hud.Toast(err ?? "Autosaved");
