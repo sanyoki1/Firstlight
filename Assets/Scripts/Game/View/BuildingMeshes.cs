@@ -16,7 +16,7 @@ namespace Firstlight.Game
         static readonly Dictionary<string, (Mesh body, Mesh glow, float height)> _defs = new();
         static readonly Dictionary<int, Mesh> _siteMarks = new(), _scaffolds = new();
         static readonly Dictionary<string, Mesh> _piles = new();
-        static Mesh _ring, _marker, _bundleBasket;
+        static Mesh _ring, _marker;
 
         /// <summary>Body (lit), glow (flames, may be null) and the body's height in units.</summary>
         public static (Mesh body, Mesh glow, float height) For(BuildingDef d)

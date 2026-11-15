@@ -55,7 +55,6 @@ namespace Firstlight.Game
 
         void AgriculturalWants(Action<bool, string> Want, int pop, int housing, string home)
         {
-            bool known(string id) => S.IsResearched(id);
             Want(Count("field") < FieldsWanted(pop), "field");
             Want(Count("granary") < 1 + pop / 50 || GranaryFull() && Count("granary") < 2 + pop / 30, "granary");
             Want(housing < pop + 8 && pop >= 30 && GrowthOk(), home);
