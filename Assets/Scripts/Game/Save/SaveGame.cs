@@ -16,7 +16,39 @@ namespace Firstlight.Game
     /// </summary>
     public static class SaveGame
     {
-        public const int Version = 1;
+        /// <summary>
+        /// Save format. 1: the first format (goods by position, milestones by position, no map check). 2: the body starts
+        /// with a hash of the map-generation settings and the goods list by id; goods and milestones are matched by id.
+        /// Readers take a field added in version N as <c>r.Version &gt;= N ? r.X() : default</c>.
+        /// </summary>
+        public const int Version = 2;
+
+        /// <summary>The goods of format 1, in the order its per-good arrays and indices use (resources.json at the time).</summary>
+        static readonly string[] V1Goods =
+        {
+            "wild_food", "meat", "fish", "preserved", "wood", "firewood", "stone", "hides", "clothing", "herbs", "tools",
+            "copper_tools", "bronze_tools", "grain", "fibre", "pottery", "clay", "copper_ore", "tin_ore", "copper", "bronze",
+        };
+
+        /// <summary>
+        /// A hash of everything <see cref="GameMap.Generate"/> reads from the balance (and a version for the generator
+        /// itself: bump it when the generation code changes what a seed makes). A load regenerates the map from the seed,
+        /// so a save is only valid with the same inputs.
+        /// </summary>
+        public const int MapGenVersion = 1;
+        public static int MapGenHash(Balance b)
+        {
+            unchecked
+            {
+                uint h = 2166136261;
+                void Mix(int v) { for (int i = 0; i < 4; i++) { h ^= (byte)(v >> (8 * i)); h *= 16777619; } }
+                Mix(MapGenVersion); Mix(b.mapSize); Mix(BitConverter.SingleToInt32Bits(b.rockStone)); Mix(b.copperDeposits); Mix(b.tinDeposits);
+                return (int)h;
+            }
+        }
+
+        /// <summary>Test hook (-savecheck): rewrites the goods list a save says it has, to load it as a build with other goods would.</summary>
+        internal static Func<List<string>, List<string>> TestSavedGoods;
         const string Magic = "FLSV";
         public const string Extension = ".flsave";
 
@@ -63,6 +95,9 @@ namespace Firstlight.Game
                 using var gz = new GZipStream(fs, System.IO.Compression.CompressionLevel.Fastest, true);
                 var b = new SaveWriter(gz);
                 b.Int(s.Map.W);
+                b.Int(MapGenHash(s.Data.Balance));
+                var goods = new List<string>(s.ResCount); foreach (var g in s.Data.Resources) goods.Add(g.id);
+                b.Strs(goods);
                 s.Map.Write(b);
                 s.Write(b);
                 b.Bool(auto != null);
@@ -118,9 +153,26 @@ namespace Firstlight.Game
                 var h = ReadHeader(r0, path, out error);
                 if (h == null) return null;
                 using var gz = new GZipStream(fs, CompressionMode.Decompress, true);
-                var r = new SaveReader(gz);
+                var r = new SaveReader(gz) { Version = h.Version };
                 int size = r.Int();
                 if (size != data.Balance.mapSize) { error = $"The save's map size ({size}) does not match this build's ({data.Balance.mapSize})."; return null; }
+                var current = new List<string>(data.Resources.Count); foreach (var g in data.Resources) current.Add(g.id);
+                List<string> saved;
+                if (r.Version >= 2)
+                {
+                    int hash = r.Int();
+                    if (hash != MapGenHash(data.Balance))
+                    {
+                        error = "This save's land was made with other map settings than this build uses (rivers, rock and ore would move under the buildings), so it cannot be loaded.";
+                        return null;
+                    }
+                    saved = r.Strs() ?? throw new InvalidDataException("missing goods list");
+                    if (TestSavedGoods != null) saved = TestSavedGoods(saved);
+                }
+                else saved = new List<string>(V1Goods);
+                r.SetGoods(saved, current);
+                if (r.DroppedGoods.Count > 0)
+                    Debug.LogWarning($"[Save] {Path.GetFileName(path)}: goods this build does not have were dropped: {string.Join(", ", r.DroppedGoods)}");
                 map = new GameMap(size);
                 map.Generate(h.Seed, data.Balance);
                 map.Read(r);

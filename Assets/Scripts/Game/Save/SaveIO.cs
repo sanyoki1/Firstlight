@@ -23,6 +23,7 @@ namespace Firstlight.Game
         public void F2(float2 v) { W.Write(v.x); W.Write(v.y); }
         public void I2(int2 v) { W.Write(v.x); W.Write(v.y); }
         public void Floats(float[] a) { W.Write(a == null ? -1 : a.Length); if (a != null) foreach (var v in a) W.Write(v); }
+        public void Doubles(double[] a) { W.Write(a == null ? -1 : a.Length); if (a != null) foreach (var v in a) W.Write(v); }
         public void Bytes(byte[] a) { W.Write(a == null ? -1 : a.Length); if (a != null) W.Write(a); }
         public void Bools(bool[] a) { W.Write(a == null ? -1 : a.Length); if (a != null) foreach (var v in a) W.Write(v); }
         public void Ints(int[] a) { W.Write(a == null ? -1 : a.Length); if (a != null) foreach (var v in a) W.Write(v); }
@@ -58,6 +59,63 @@ namespace Firstlight.Game
         public readonly BinaryReader R;
         public SaveReader(Stream s) { R = new BinaryReader(s, System.Text.Encoding.UTF8, true); }
 
+        /// <summary>
+        /// The save format version from the header. Fields added in a later version are read as
+        /// <c>r.Version &gt;= N ? r.X() : default</c>, so older saves keep loading.
+        /// </summary>
+        public int Version = SaveGame.Version;
+
+        // Goods: the save's own goods list (by id), mapped onto this build's. Null = the same list in the same order.
+        int[] _resMap;
+        int _resCount = -1;
+        /// <summary>Goods the save had that this build's data does not (their amounts are dropped).</summary>
+        public readonly List<string> DroppedGoods = new();
+        /// <summary>True when goods were dropped or moved: per-good totals must then be recounted from the remapped arrays.</summary>
+        public bool GoodsRemapped => _resMap != null;
+
+        /// <summary>
+        /// Sets up the goods table: <paramref name="savedIds"/> is the save's goods list in its order, <paramref name="currentIds"/>
+        /// this build's. Goods are matched by id; unknown old goods are dropped, new goods start at 0.
+        /// </summary>
+        public void SetGoods(IList<string> savedIds, IList<string> currentIds)
+        {
+            _resCount = currentIds.Count;
+            DroppedGoods.Clear();
+            var map = new int[savedIds.Count];
+            bool identity = savedIds.Count == currentIds.Count;
+            for (int i = 0; i < savedIds.Count; i++)
+            {
+                map[i] = -1;
+                for (int j = 0; j < currentIds.Count; j++) if (currentIds[j] == savedIds[i]) { map[i] = j; break; }
+                if (map[i] < 0) DroppedGoods.Add(savedIds[i]);
+                if (map[i] != i) identity = false;
+            }
+            _resMap = identity ? null : map;
+        }
+
+        /// <summary>A resource index written by the save, as this build's index (-1 stays -1; a dropped good becomes -1).</summary>
+        public int ResIdx() => MapRes(R.ReadInt32());
+
+        public int MapRes(int old)
+        {
+            if (old < 0 || _resMap == null) return old;
+            return old < _resMap.Length ? _resMap[old] : -1;
+        }
+
+        /// <summary>A per-good float array (null stays null), laid out for this build's goods.</summary>
+        public float[] ResFloats() => RemapRes(Floats());
+
+        /// <summary>A per-good double array (null stays null), laid out for this build's goods.</summary>
+        public double[] ResDoubles() => RemapRes(Doubles());
+
+        T[] RemapRes<T>(T[] a)
+        {
+            if (a == null || _resMap == null) return a;
+            var to = new T[_resCount];
+            for (int i = 0; i < a.Length && i < _resMap.Length; i++) if (_resMap[i] >= 0) to[_resMap[i]] = a[i];
+            return to;
+        }
+
         public int Int() => R.ReadInt32();
         public long Long() => R.ReadInt64();
         public ulong ULong() => R.ReadUInt64();
@@ -77,6 +135,7 @@ namespace Firstlight.Game
         }
 
         public float[] Floats() { int n = Len(); if (n < 0) return null; var a = new float[n]; for (int i = 0; i < n; i++) a[i] = R.ReadSingle(); return a; }
+        public double[] Doubles() { int n = Len(); if (n < 0) return null; var a = new double[n]; for (int i = 0; i < n; i++) a[i] = R.ReadDouble(); return a; }
         public byte[] Bytes() { int n = Len(); if (n < 0) return null; var a = R.ReadBytes(n); if (a.Length != n) throw new EndOfStreamException(); return a; }
         public bool[] Bools() { int n = Len(); if (n < 0) return null; var a = new bool[n]; for (int i = 0; i < n; i++) a[i] = R.ReadBoolean(); return a; }
         public int[] Ints() { int n = Len(); if (n < 0) return null; var a = new int[n]; for (int i = 0; i < n; i++) a[i] = R.ReadInt32(); return a; }

@@ -33,7 +33,7 @@ namespace Firstlight.Game
             w.Int(_progress.Count); foreach (var r in Data.Research) if (_progress.TryGetValue(r.id, out float p)) { w.Str(r.id); w.Float(p); }
             w.Strs(ResearchQueue);
             w.Str(Age?.id);
-            w.Int(Milestones.Count); foreach (var m in Milestones) { w.Bool(m.Done); w.Int(m.DoneDay); w.Int(m.Current); }
+            w.Int(Milestones.Count); foreach (var m in Milestones) { w.Str(MilestoneKey(m.Def)); w.Bool(m.Done); w.Int(m.DoneDay); w.Int(m.Current); }   // v2: by key
             w.Int(ResearchLog.Count); foreach (var (id, day) in ResearchLog) { w.Str(id); w.Int(day); }
             w.Int(AgeLog.Count); foreach (var (id, day) in AgeLog) { w.Str(id); w.Int(day); }
             var laws = new List<string>(); foreach (var l in Data.Laws) if (_laws.Contains(l.id)) laws.Add(l.id);
@@ -84,7 +84,7 @@ namespace Firstlight.Game
             var d = Data.Building(defId) ?? throw new InvalidDataException($"unknown building '{defId}' (made with other game data?)");
             var b = new Building { Id = id, Def = d, Origin = r.I2(), Rot = r.Int() & 3, State = (BuildState)r.Byte() };
             b.Work = r.Float(); b.Delivered = r.Floats(); b.InTransit = r.Floats();
-            b.Store = r.Floats(); b.Stored = r.Float(); b.Out = r.Floats(); b.In = r.Floats(); b.OutTotal = r.Float(); b.HaulReserved = r.Float();
+            b.Store = r.ResFloats(); b.Stored = r.Float(); b.Out = r.ResFloats(); b.In = r.ResFloats(); b.OutTotal = r.Float(); b.HaulReserved = r.Float();
             b.Priority = (Priority)r.Byte(); b.Paused = r.Bool(); b.Focus = r.Int();
             b.Workers = r.Int(); b.Residents = r.Int(); b.Builders = r.Int();
             b.Heated = r.Bool(); b.Fueled = r.Bool(); b.Fullness = r.Float(); b.FeatureLeft = r.Float(); b.FeatureAcc = r.Float();
@@ -100,6 +100,12 @@ namespace Firstlight.Game
             b.OutRes = Array.ConvertAll(d.outputs, a => ResIndex(a.id));
             b.InRes = Array.ConvertAll(d.inputs, i => Array.ConvertAll(i.ids, ResIndex));
             b.YieldKey = "yield." + d.yieldTag;
+            if (r.GoodsRemapped)
+            {
+                // Goods moved or dropped: the totals are recounted from what is left (otherwise kept bit for bit).
+                if (b.Store != null) { float st = 0; foreach (var v in b.Store) st += v; b.Stored = st; }
+                if (b.Out != null) { float ot = 0; foreach (var v in b.Out) ot += v; b.OutTotal = ot; }
+            }
             if (b.Out == null || b.Out.Length != ResCount || b.In == null || b.In.Length != ResCount) throw new InvalidDataException("goods list does not match the game data");
             return b;
         }
@@ -124,12 +130,28 @@ namespace Firstlight.Game
             c.Home = Ref(r.Int()); c.Job = Ref(r.Int()); c.IsBuilder = r.Bool();
             c.Pos = r.F2(); c.Facing = r.Float(); c.Activity = (Activity)r.Byte();
             c.Health = r.Float(); c.Happiness = r.Float(); c.Warmth = r.Float(); c.Hungry = r.Bool(); c.Cold = r.Bool(); c.Ate = r.Float(); c.HungryDays = r.Int();
-            c.SickDays = r.Int(); c.Treated = r.Bool(); c.Tool = r.Int(); c.ToolLife = r.Float(); c.ClothingLife = r.Float();
-            c.CarryRes = r.Int(); c.CarryAmt = r.Float(); c.LoadTotal = r.Float(); c.LoadRes = r.Int(); c.Load = r.Floats();
+            c.SickDays = r.Int(); c.Treated = r.Bool(); c.Tool = r.ResIdx(); c.ToolLife = r.Float(); c.ClothingLife = r.Float();
+            c.CarryRes = r.ResIdx(); c.CarryAmt = r.Float(); c.LoadTotal = r.Float(); c.LoadRes = r.ResIdx(); c.Load = r.ResFloats();
             c.FieldFeature = r.Int(); c.AtField = r.Bool(); c.UnhappyDays = r.Int(); c.NoWater = r.Bool(); c.NoGoods = r.Bool(); c.NoFaith = r.Bool();
             c.DisputeDays = r.Int(); c.BirthCooldown = r.Float(); c.Gone = r.Bool(); c.LastHarm = r.Str() ?? "";
             c.Task = (Task)r.Byte(); c.TaskB = Ref(r.Int()); c.TaskB2 = Ref(r.Int()); c.TaskIdx = r.Int(); c.TaskAmt = r.Float();
             c.Target = r.Int(); c.Stuck = r.Float(); c.ShiftDay = r.Int();
+            if (r.GoodsRemapped)
+            {
+                // Errands whose index is a good (the others index a building's cost list).
+                if (c.Task == Task.MoveStock || c.Task == Task.FetchInput || c.Task == Task.DeliverInput)
+                {
+                    c.TaskIdx = r.MapRes(c.TaskIdx);
+                    if (c.TaskIdx < 0)
+                    {
+                        if (c.Task == Task.MoveStock && c.TaskB2 != null) c.TaskB2.HaulReserved = math.max(0, c.TaskB2.HaulReserved - c.TaskAmt);
+                        c.Task = Task.None; c.TaskB = c.TaskB2 = null; c.TaskAmt = 0; c.Target = -1;
+                    }
+                }
+                if (c.Tool < 0) c.ToolLife = 0;
+                if (c.CarryRes < 0) c.CarryAmt = 0;
+                if (c.Load != null) { float lt = 0; foreach (var v in c.Load) lt += v; c.LoadTotal = lt; if (lt <= 0) c.LoadRes = -1; }
+            }
             return c;
         }
 
@@ -142,7 +164,7 @@ namespace Firstlight.Game
             BuildersWanted = r.Int(); Births = r.Int(); Migrants = r.Int(); Leavers = r.Int();
             Deaths.Clear(); for (int i = 0, n = r.Int(); i < n; i++) Deaths[r.Str()] = r.Int();
             KnowledgeTotal = r.Float(); KnowledgeBank = r.Float();
-            CopyInto(r.Floats(), StockTotals); CopyInto(r.Floats(), Produced); CopyInto(r.Floats(), Consumed);
+            CopyInto(r.ResFloats(), StockTotals); CopyInto(r.ResFloats(), Produced); CopyInto(r.ResFloats(), Consumed);
             WorkerSeconds = r.Float(); ProductiveSeconds = r.Float();
             ToolSwaps = r.Int(); PathCount = r.Int(); Upgrades = r.Int(); Trades = r.Int();
             Disputes = r.Int(); Thefts = r.Int(); Outbreaks = r.Int();
@@ -154,13 +176,23 @@ namespace Firstlight.Game
             ResearchQueue.Clear(); ResearchQueue.AddRange(r.Strs());
             string ageId = r.Str();
             Age = Data.Age(ageId) ?? throw new InvalidDataException($"unknown age '{ageId}'");
+            // Milestones: matched to this build's list for the age (v2 by key, v1 by position); a saved one the data no
+            // longer has is dropped, a new one starts not done.
             Milestones.Clear();
-            int ms = r.Int();
-            for (int i = 0; i < ms; i++)
+            var savedMs = new List<(string key, bool done, int day, int cur)>();
+            for (int i = 0, ms = r.Int(); i < ms; i++)
             {
-                var m = new MilestoneState { Def = i < Age.milestones.Length ? Age.milestones[i] : new MilestoneDef { label = "?" }, Done = r.Bool(), DoneDay = r.Int(), Current = r.Int() };
+                string key = r.Version >= 2 ? r.Str() : (i < Age.milestones.Length ? MilestoneKey(Age.milestones[i]) : null);
+                savedMs.Add((key, r.Bool(), r.Int(), r.Int()));
+            }
+            foreach (var def in Age.milestones)
+            {
+                var m = new MilestoneState { Def = def };
+                int k = savedMs.FindIndex(x => x.key == MilestoneKey(def));
+                if (k >= 0) { m.Done = savedMs[k].done; m.DoneDay = savedMs[k].day; m.Current = savedMs[k].cur; savedMs.RemoveAt(k); }
                 Milestones.Add(m);
             }
+            if (savedMs.Count > 0) UnityEngine.Debug.LogWarning($"[Save] milestones this build does not have were dropped: {string.Join(", ", savedMs.ConvertAll(x => x.key ?? "?"))}");
             ResearchLog.Clear(); for (int i = 0, n = r.Int(); i < n; i++) ResearchLog.Add((r.Str(), r.Int()));
             AgeLog.Clear(); for (int i = 0, n = r.Int(); i < n; i++) AgeLog.Add((r.Str(), r.Int()));
             _laws.Clear(); foreach (var id in r.Strs()) _laws.Add(id);
@@ -168,7 +200,8 @@ namespace Firstlight.Game
 
             FloodDay = r.Int(); FloodStrength = r.Float(); FloodEndDay = r.Int(); Floods = r.Int();
             AutoTrade = r.Bool(); TradesDeclined = r.Int(); Difficulty = r.Int();
-            PendingTrade = r.Bool() ? new TradeOffer { Give = r.Int(), GiveAmount = r.Float(), Want = r.Int(), GetAmount = r.Float(), Day = r.Int() } : null;
+            PendingTrade = r.Bool() ? new TradeOffer { Give = r.ResIdx(), GiveAmount = r.Float(), Want = r.ResIdx(), GetAmount = r.Float(), Day = r.Int() } : null;
+            if (PendingTrade != null && (PendingTrade.Give < 0 || PendingTrade.Want < 0)) PendingTrade = null;   // a good gone from the data
 
             Events.Clear();
             for (int i = 0, n = r.Int(); i < n; i++) Events.Add(new SimEvent { Day = r.Int(), Severity = (Severity)r.Byte(), Text = r.Str(), HasPlace = r.Bool(), Place = r.F2() });
@@ -186,9 +219,13 @@ namespace Firstlight.Game
             Departing.Clear();
             for (int i = 0, n = r.Int(); i < n; i++) Departing.Add(ReadCitizen(r));
 
+            if (r.GoodsRemapped) RefreshStock();
             RebuildEffects();
             FloodCells = Flooding || FloodDay >= 0 && Day >= FloodDay - 1 ? ComputeFloodCells(FloodStrength) : null;
         }
+
+        /// <summary>What a milestone is saved by: its label (shown to the player, unique within an age).</summary>
+        static string MilestoneKey(MilestoneDef d) => d.label ?? $"{d.type}:{d.target}:{d.value}";
 
         static void CopyInto(float[] from, float[] to)
         {

@@ -506,7 +506,7 @@ namespace Firstlight.Game
             var s = new Settlement(data, map, seed);
             var ap = new AutoPlayer(s);
             float hour = data.Balance.dayLengthSeconds / 24f;
-            while (s.Day < 40) { s.Tick(hour); ap.Think(); }
+            while (s.Day < 160) { s.Tick(hour); ap.Think(); }   // into the Agricultural Age: tools held, grain, loads
             string good = Path.Combine(outDir, "good" + SaveGame.Extension);
             SaveGame.Write(good, SaveGame.HeaderFor(s, "good", "test"), s, ap, null, null, null);
             var bytes = File.ReadAllBytes(good);
@@ -549,8 +549,138 @@ namespace Firstlight.Game
                 Debug.Log("[SaveCheck] " + line);
             }
             var list = SaveGame.List();     // the load screen's list over the real save folder must not throw either
+
+            // Other map settings: the land would be generated differently, so the save must be refused with a message.
+            int copper = data.Balance.copperDeposits;
+            try
+            {
+                data.Balance.copperDeposits = copper + 1;
+                var other = SaveGame.Read(good, data, out string merr);
+                bool right = other == null && !string.IsNullOrEmpty(merr);
+                other?.Map.Dispose();
+                ok &= right;
+                Debug.Log($"[SaveCheck] other map settings: load {(other != null ? "OK" : "refused (" + merr + ")")}{(right ? "" : "  <-- WRONG")}");
+            }
+            catch (Exception e) { ok = false; Debug.Log($"[SaveCheck] other map settings: EXCEPTION {e}"); }
+            finally { data.Balance.copperDeposits = copper; }
+
+            ok &= GoodsByIdCheck(data, good, s);
+            foreach (var file in ArgsAfter("-compatsave")) ok &= CompatCheck(data, file, int.TryParse(ArgsAfter("-compatdays").FirstOrDefault(), out int cd) ? cd : 30, outDir);
             Debug.Log($"[SaveCheck] {(ok ? "PASS" : "FAIL")}");
             return ok;
+        }
+
+        static IEnumerable<string> ArgsAfter(string name)
+        {
+            var args = Environment.GetCommandLineArgs();
+            for (int i = 0; i < args.Length - 1; i++) if (args[i] == name) yield return args[i + 1];
+        }
+
+        /// <summary>
+        /// Goods are matched by id: loads <paramref name="file"/> (written from <paramref name="orig"/>) as if the save's goods
+        /// list were in reverse order, held a good this build does not have ("obsolete_good", in the place of the good with the
+        /// most stock) and lacked that good. Every per-good amount and every saved good index must land on the right good by
+        /// id; the missing good must come back as 0 and the unknown good be dropped.
+        /// </summary>
+        static bool GoodsByIdCheck(GameData data, string file, Settlement orig)
+        {
+            var cur = data.Resources.Select(x => x.id).ToList();
+            var claimed = Enumerable.Reverse(cur).ToList();
+            int most = 0; for (int i = 1; i < cur.Count; i++) if (orig.StockTotals[i] > orig.StockTotals[most]) most = i;
+            string gone = cur[most];
+            claimed[claimed.IndexOf(gone)] = "obsolete_good";
+            // What the save calls good i is the build's good at index Map(i) (-1 = dropped).
+            int To(int i) => i < 0 ? -1 : claimed[i] == "obsolete_good" ? -1 : cur.IndexOf(claimed[i]);
+            // Position i of the file holds the original good cur[i]; the loader puts it on claimed[i].
+            SaveGame.Loaded l = null;
+            var bad = new List<string>();
+            try
+            {
+                SaveGame.TestSavedGoods = _ => claimed;
+                l = SaveGame.Read(file, data, out string err);
+                if (l == null) { Debug.Log($"[SaveCheck] goods by id: load refused ({err})  <-- WRONG"); return false; }
+                var s = l.Sim;
+                bool Near(float a, float b) => Math.Abs(a - b) <= 1e-3f + Math.Abs(b) * 1e-5f;
+                for (int i = 0; i < cur.Count; i++)
+                {
+                    int j = To(i);
+                    if (j < 0) continue;
+                    if (!Near(s.StockTotals[j], orig.StockTotals[i])) bad.Add($"stock {cur[j]} {s.StockTotals[j]} (want {orig.StockTotals[i]})");
+                    if (!Near(s.Produced[j], orig.Produced[i])) bad.Add($"produced {cur[j]} {s.Produced[j]} (want {orig.Produced[i]})");
+                    for (int b = 0; b < s.Buildings.Count; b++)
+                    {
+                        var nb = s.Buildings[b]; var ob = orig.Buildings[b];
+                        if (ob.Store != null && !Near(nb.Store[j], ob.Store[i])) bad.Add($"{ob.Def.id}#{b} store {cur[j]}");
+                        if (!Near(nb.Out[j], ob.Out[i]) || !Near(nb.In[j], ob.In[i])) bad.Add($"{ob.Def.id}#{b} out/in {cur[j]}");
+                    }
+                }
+                if (s.StockTotals[most] != 0 || s.Buildings.Any(b => b.Store != null && b.Store[most] != 0)) bad.Add($"{gone} (not in the save) is {s.StockTotals[most]}, not 0");
+                for (int k = 0; k < s.Buildings.Count; k++)
+                    if (s.Buildings[k].Store != null && Math.Abs(s.Buildings[k].Stored - s.Buildings[k].Store.Sum()) > 1e-2f) bad.Add($"#{k} Stored not recounted");
+                int tools = 0;
+                for (int c = 0; c < s.Citizens.Count; c++)
+                {
+                    var nc = s.Citizens[c]; var oc = orig.Citizens[c];
+                    if (nc.Tool != To(oc.Tool) || nc.CarryRes != To(oc.CarryRes)) bad.Add($"{oc.Name}: tool {nc.Tool}/{To(oc.Tool)} carry {nc.CarryRes}/{To(oc.CarryRes)}");
+                    if (oc.Load != null) for (int i = 0; i < cur.Count; i++) if (To(i) >= 0 && !Near(nc.Load[To(i)], oc.Load[i])) bad.Add($"{oc.Name}: load {cur[To(i)]}");
+                    if (oc.Tool >= 0) tools++;
+                }
+                Debug.Log($"[SaveCheck] goods by id (reversed order, an unknown good dropped, {gone} missing): {cur.Count} goods, {s.Buildings.Count} buildings, {s.Citizens.Count} people ({tools} with tools, "
+                          + $"{orig.Citizens.Count(c => c.Load != null && c.LoadTotal > 0)} with a field load, {orig.Citizens.Count(c => c.Carrying)} carrying), {gone} in the original {orig.StockTotals[most]:F1}: {(bad.Count == 0 ? "right" : "WRONG: " + string.Join("; ", bad.Take(8)))}");
+                return bad.Count == 0;
+            }
+            catch (Exception e) { Debug.Log($"[SaveCheck] goods by id: EXCEPTION {e}"); return false; }
+            finally { SaveGame.TestSavedGoods = null; l?.Map.Dispose(); }
+        }
+
+        /// <summary>
+        /// -savecheck -compatsave FILE [-compatdays N]: a save from an older build (format 1) loads, plays on for N days
+        /// with the auto-player without an error, and the game saved again in today's format loads back the same.
+        /// </summary>
+        static bool CompatCheck(GameData data, string file, int days, string outDir)
+        {
+            var errors = new List<string>();
+            void OnLog(string msg, string stack, LogType type)
+            {
+                if (type == LogType.Error || type == LogType.Exception || type == LogType.Assert) errors.Add($"{type}: {msg}");
+            }
+            SaveGame.Loaded l = null, again = null;
+            string line;
+            Application.logMessageReceived += OnLog;
+            try
+            {
+                var h = SaveGame.ReadHeader(file, out string herr);
+                l = SaveGame.Read(file, data, out string err);
+                if (l == null) line = $"load refused ({err ?? herr})";
+                else
+                {
+                    var s = l.Sim; var ap = l.Auto ?? new AutoPlayer(s);
+                    int day0 = s.Day, pop0 = s.Population;
+                    float hour = data.Balance.dayLengthSeconds / 24f;
+                    while (s.Day < day0 + days && s.Population > 0) { s.Tick(hour); ap.Think(); }
+                    string resaved = Path.Combine(outDir, "compat-" + Path.GetFileNameWithoutExtension(file) + SaveGame.Extension);
+                    SaveGame.Write(resaved, SaveGame.HeaderFor(s, "compat", "test"), s, ap, null, null, null);
+                    again = SaveGame.Read(resaved, data, out string err2);
+                    bool same = again != null && Digest(again.Map, again.Sim, again.Auto).SequenceEqual(Digest(l.Map, s, ap));
+                    line = $"format {h?.Version}, day {day0} pop {pop0} -> day {s.Day} pop {s.Population}, {s.Buildings.Count(b => b.Active)} buildings, {s.ResearchLog.Count} topics, age {s.Age.name}; "
+                         + $"saved again as format {SaveGame.Version}: {(again == null ? "load refused (" + err2 + ")" : same ? "loads the same" : "DIFFERENT after load")}";
+                    if (!same) errors.Add("re-saved game did not load back the same");
+                }
+            }
+            catch (Exception e) { line = "EXCEPTION " + e; errors.Add(e.Message); }
+            finally { Application.logMessageReceived -= OnLog; l?.Map.Dispose(); again?.Map.Dispose(); }
+            bool ok = l != null && errors.Count == 0;
+            Debug.Log($"[SaveCheck] compat {Path.GetFileName(file)}: {(ok ? "PASS" : "FAIL")}: {line}{(errors.Count > 0 ? " | " + string.Join(" | ", errors.Take(5)) : "")}");
+            return ok;
+        }
+
+        static byte[] Digest(GameMap m, Settlement s, AutoPlayer a)
+        {
+            var ms = new MemoryStream();
+            var w = new SaveWriter(ms);
+            m.Write(w); s.Write(w); w.Bool(a != null); a?.Write(w);
+            w.W.Flush();
+            return ms.ToArray();
         }
 
         /// <summary>
