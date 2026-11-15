@@ -243,9 +243,14 @@ namespace Firstlight.Game
             _water.Velocity.CopyTo(_wVel);
             var depth = _wDepth; var bed = _wBed; var vel = _wVel;
             // Anything wet outside the mask grows it (a bigger flood than expected, water pooling somewhere new).
+            int grew = 0;
             for (int c = 0; c < n; c++)
-                if (depth[c] > WetDepth && !_canBeWet[c]) { _canBeWet[c] = true; _maskDirty = true; }
-            if (_maskDirty) RebuildWaterMask();
+                if (depth[c] > WetDepth && !_canBeWet[c]) { _canBeWet[c] = true; _maskDirty = true; grew++; }
+            if (_maskDirty)
+            {
+                RebuildWaterMask();
+                Debug.Log($"[Water] surface mask: {_quadCells.Count} of {n} cells{(grew > 0 ? $" (grew by {grew} cells found wet outside it)" : "")}");
+            }
             // Corner surface heights (only corners of cells that can get a quad are ever read).
             foreach (int ci in _maskCorners)
             {

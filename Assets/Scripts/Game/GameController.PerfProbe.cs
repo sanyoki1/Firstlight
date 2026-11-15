@@ -304,7 +304,9 @@ namespace Firstlight.Game
         {
             SetSpeed(4);
             Sim.DebugFloodTomorrow(Data.Balance.floodStrengthMax);
-            for (int i = 0; i < 2000 && !Sim.Flooding; i++) { ProbeRender(); yield return null; }
+            // Wait for the flood by real time, not frames (a fast build runs 2000 frames in 3 s, before tomorrow comes).
+            double w0 = Time.realtimeSinceStartupAsDouble;
+            while (!Sim.Flooding && Time.realtimeSinceStartupAsDouble - w0 < 60) { ProbeRender(); yield return null; }
             BeginPhase("sim flood at strength max (4x)");
             double t0 = Time.realtimeSinceStartupAsDouble;
             while (Sim.Flooding && Time.realtimeSinceStartupAsDouble - t0 < 120) { ProbeRender(); yield return null; }
