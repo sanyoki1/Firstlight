@@ -116,20 +116,21 @@ namespace Firstlight.Game.UI
 
         /// <summary>
         /// Keeps the small text (14 px in the layout) at about 13 real pixels or more: when the scale is below 1 the small
-        /// styles get a larger size (15 at 0.85). Only looked at again when the scale changes.
+        /// styles get a larger size (15 at 0.85, at most 16 when the player picks a small interface size). Only looked at again
+        /// when the scale changes.
         /// </summary>
         static void FontFloor()
         {
             float s = Scale;
             if (s == _floorFor) return;
             _floorFor = s;
-            int small = Mathf.Max(14, Mathf.RoundToInt(MinTextPx / s));
+            int small = Mathf.Clamp(Mathf.RoundToInt(MinTextPx / s), 14, 16);   // at most the 16 of normal text, so rows still hold it
             Small.fontSize = SmallWrap.fontSize = small;
             Tip.fontSize = Chip.fontSize = ChipGood.fontSize = Mathf.Max(15, small);
         }
 
         /// <summary>A layout size of at least <see cref="MinTextPx"/> real pixels (for styles made with a smaller size).</summary>
-        public static int Px(int size) => Mathf.Max(size, Mathf.RoundToInt(MinTextPx / Scale));
+        public static int Px(int size) => Mathf.Max(size, Mathf.Min(16, Mathf.RoundToInt(MinTextPx / Scale)));
 
         public static string Hex(Color c) => ColorUtility.ToHtmlStringRGB(c);
         public static string Col(string text, Color c) => $"<color=#{Hex(c)}>{text}</color>";
