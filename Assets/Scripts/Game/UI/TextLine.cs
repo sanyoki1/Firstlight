@@ -42,6 +42,17 @@ namespace Firstlight.Game.UI
             return this;
         }
 
+        /// <summary>Where the text ends now (for <see cref="Is"/>).</summary>
+        public int Mark => _n;
+
+        /// <summary>Whether the text from <paramref name="from"/> to the end is exactly s ("1 day" against "2 days").</summary>
+        public bool Is(int from, string s)
+        {
+            if (_n - from != s.Length) return false;
+            for (int i = 0; i < s.Length; i++) if (_buf[from + i] != s[i]) return false;
+            return true;
+        }
+
         public TextLine Ch(char c) { Need(1); _buf[_n++] = c; return this; }
 
         public TextLine F(float v, string format = null)

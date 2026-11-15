@@ -100,8 +100,8 @@ namespace Firstlight.Game.UI
             }
             int free = adults - jobs - builders - sick;
             var (onlyAdults, elders, kids) = PeopleSplit();
-            _tl.Begin().I(onlyAdults).S(" adults and ").I(elders).S(" elders: ").I(jobs).S(" in jobs, ").I(builders).S(" building, ")
-               .C(free > 0 ? Good : Dim).I(free).S(" free").E().S(" (they haul goods), ").I(sick).S(" sick. ").I(kids).S(" children.");
+            _tl.Begin().I(onlyAdults).S(onlyAdults == 1 ? " adult and " : " adults and ").I(elders).S(elders == 1 ? " elder: " : " elders: ").I(jobs).S(" in jobs, ").I(builders).S(" building, ")
+               .C(free > 0 ? Good : Dim).I(free).S(" free").E().S(" (they haul goods), ").I(sick).S(" sick. ").I(kids).S(kids == 1 ? " child." : " children.");
             Para(_tl.To(ref _jobsHead), Wrap);
             // Places that want workers now (not paused, flooded or out of season), how many are filled, and who carries.
             int places = 0, filled = 0, hiWorkers = 0, normalWorkers = 0;
@@ -327,17 +327,19 @@ namespace Firstlight.Game.UI
                 { "V", "Events: what happened, newest first; Topics: hints seen" },
                 { "L", "Laws (once there is a Tribal Council)" },
                 { "T", "Goods in store" },
+                { "P", "Problem badges over buildings on / off (click one to select it)" },
                 { "F1", "This help" },
                 { "F9", "Let the auto-player run the settlement" },
                 { "F11", "Hide the interface" },
             };
             float y = r.y + 50;
             // Key names and their texts fit their columns (290 and 480 wide; the long ones used to clip at 210 and 400).
+            // 26 apart (was 27) so the 25 rows still end where the 24 did.
             for (int i = 0; i < keys.GetLength(0); i++)
             {
                 GUI.Label(new Rect(r.x + 24, y, 290, 26), $"<b>{keys[i, 0]}</b>", Label);
                 GUI.Label(new Rect(r.x + 320, y, 480, 26), keys[i, 1], Label);
-                y += 27;
+                y += 26;
             }
             GUI.Label(new Rect(r.x + 24, y + 2, 772, 22), Col("Hover any number for what moves it; click an event (›) to go there.", Dim), Small);
             if (GUI.Button(new Rect(r.x + 24, r.yMax - 46, 160, 30), "Game menu (Esc)", Button)) { HelpOpen = false; OpenMenu(); }

@@ -17,12 +17,15 @@ namespace Firstlight.Game.UI
         public IEnumerable<BuildingDef> InCategory(string cat) =>
             D.Buildings.Where(b => b.category == cat && !b.townCenter && D.AgeOrder(b.age) <= S.Age.order);
 
+        /// <summary>The bottom bar's width: categories, Demolish, the builders control and the Problems toggle.</summary>
+        float BuildBarW => 12 + Categories.Length * (Categories.Length > 7 ? 100 : 118) + 130 + 220 + 136;
+
         void DrawBuildBar()
         {
             float y = VH - 60;
             var cats = Categories;
             float bw = cats.Length > 7 ? 100 : 118;
-            float w = 12 + cats.Length * bw + 130 + 220;
+            float w = BuildBarW;
             var bar = Box(new Rect(10, y, w, 50), UiTheme.Header);
             float x = bar.x + 8;
             _catFaint ??= new string[cats.Length];
@@ -51,6 +54,7 @@ namespace Firstlight.Game.UI
             if (GUI.Button(new Rect(x + 108, y + 11, 30, 28), "-", Button)) S.SetBuilders(S.BuildersWanted - 1);
             GUI.Label(new Rect(x + 140, y + 11, 36, 28), _tl.Begin().S("<b>").I(S.BuildersWanted).S("</b>").To(ref _buildersTxt), Center);
             if (GUI.Button(new Rect(x + 178, y + 11, 30, 28), "+", Button)) S.SetBuilders(S.BuildersWanted + 1);
+            BadgeButton(new Rect(x + 220, y + 8, 124, 34));
             Tip(new Rect(x, y, 210, 50), "How many people build and carry materials to sites, taken before normal-priority jobs. They go back to other work when there is nothing to build.");
 
             if (BuildCategory != null) DrawCategory(BuildCategory, y);
@@ -123,7 +127,7 @@ namespace Firstlight.Game.UI
             if (d.waterRadius > 0) return $"water within {d.waterRadius}";
             if (d.housing > 0) return $"houses {d.housing}";
             if (d.storageCapacity > 0) return $"stores {d.storageCapacity}";
-            if (d.knowledgePerWorker > 0) return $"{d.maxWorkers} workers · knowledge";
+            if (d.knowledgePerWorker > 0) return $"{d.maxWorkers} worker{(d.maxWorkers == 1 ? "" : "s")} · knowledge";
             if (d.outputs.Length > 0) return $"{d.maxWorkers} worker{(d.maxWorkers == 1 ? "" : "s")} · " + string.Join(", ", d.outputs.Select(o => ResName(o.id).ToLower()));
             return "";
         }

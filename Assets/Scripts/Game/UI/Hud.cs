@@ -153,7 +153,7 @@ namespace Firstlight.Game.UI
             var parts = new List<string>(3);
             if (b.Def.housing > 0 && b.Residents > 0) parts.Add($"{b.Residents} live{(b.Residents == 1 ? "s" : "")} here");
             if (b.Def.IsWorkplace && b.Workers > 0) parts.Add($"{b.Workers} work{(b.Workers == 1 ? "s" : "")} here");
-            if (b.Store != null && b.Stored >= 1f) parts.Add($"{b.Stored:0} goods move to other stores if there is room");
+            if (b.Store != null && b.Stored >= 1f) parts.Add(b.Stored.ToString("0") == "1" ? "1 good moves to another store if there is room" : $"{b.Stored:0} goods move to other stores if there is room");
             float refund = D.Balance.demolishRefund;
             parts.Add(math.abs(refund - 0.5f) < 0.01f ? "half the materials come back" : $"{refund:P0} of the materials come back");
             return string.Join("; ", parts);
@@ -299,6 +299,7 @@ namespace Firstlight.Game.UI
             if (kb.jKey.wasPressedThisFrame) ToggleJobs();
             if (kb.vKey.wasPressedThisFrame) ToggleEvents();
             if (kb.tKey.wasPressedThisFrame) ToggleStocks();
+            if (kb.pKey.wasPressedThisFrame) ToggleBadges();
             if (kb.bKey.wasPressedThisFrame) OpenCategory(BuildCategory == null ? Categories[0] : BuildCategory);
             if ((kb.homeKey.wasPressedThisFrame || kb.hKey.wasPressedThisFrame) && S.TownCenter != null) JumpTo(S.TownCenter.Center, 34f);
             if (Mode == ToolMode.Place && PlaceDef != null && !PlaceDef.path)
@@ -476,6 +477,7 @@ namespace Firstlight.Game.UI
             }
             else
             {
+                DrawBadges();                      // first: every panel draws over them
                 // PERF PROBE: Begin/End marks (no-ops unless -perfprobe)
                 PerfProbe.Begin(PerfProbe.S.GuiFeed); DrawFeed(); PerfProbe.End(PerfProbe.S.GuiFeed);
                 PerfProbe.Begin(PerfProbe.S.GuiBuildBar); DrawBuildBar(); PerfProbe.End(PerfProbe.S.GuiBuildBar);
@@ -522,7 +524,12 @@ namespace Firstlight.Game.UI
         }
         string _pausedText;
 
-        void SwapRects() { _prevRects.Clear(); _prevRects.AddRange(_rects); }
+        // The panels (for the badges, which keep off them) and the panels with the badges (for the world's click-through).
+        void SwapRects()
+        {
+            _prevPanels.Clear(); _prevPanels.AddRange(_rects);
+            _prevRects.Clear(); _prevRects.AddRange(_rects); _prevRects.AddRange(_badgeRects);
+        }
 
         /// <summary>A soft click when a press lands on a panel (any button: they all sit on registered panels).</summary>
         void ClickSound()
@@ -675,7 +682,7 @@ namespace Firstlight.Game.UI
                               Judged(cr[3].label, M.CountFeature(cr[3].feature, c, cr[3].radius), cr[3].full));
                     lines.Add(Col($"Warms homes within {d.warmthRadius}", Dim));
                 }
-                if (!string.IsNullOrEmpty(d.onDeposit)) lines.Add(Col($"On the {d.onDeposit} deposit: {S.DepositCells(d, PlaceOrigin(d, HoverCell, PlaceRot), PlaceRot)} cells (marked)", Good));
+                if (!string.IsNullOrEmpty(d.onDeposit)) lines.Add(Col($"On the {d.onDeposit} deposit: {Many(S.DepositCells(d, PlaceOrigin(d, HoverCell, PlaceRot), PlaceRot), "cell", "cells")} (marked)", Good));
                 if (d.waterRadius > 0) { var c2 = Settlement.FootprintCenter(d, PlaceOrigin(d, HoverCell, PlaceRot), PlaceRot); float wr = d.waterRadius * S.Effect("water.radius"); int dry = S.Buildings.Count(h => h.Active && h.Def.housing > 0 && h.Residents > 0 && !h.HasWater && math.distance(h.Center, c2) <= wr); lines.Add(dry > 0 ? Col($"Brings water to {dry} home{(dry == 1 ? "" : "s")} without it", Good) : Col("No homes without water in reach", Dim)); }
                 if (d.crop && d.irrigationRadius > 0) { var c2 = Settlement.FootprintCenter(d, PlaceOrigin(d, HoverCell, PlaceRot), PlaceRot); lines.Add(M.CountFeature("water", c2, d.irrigationRadius) > 0 ? Col("Water in reach: can be irrigated", Good) : Col("No water in reach to irrigate", Dim)); }
                 if (!d.townCenter && S.FloodRiskCells(d, PlaceOrigin(d, HoverCell, PlaceRot), PlaceRot) > 0)

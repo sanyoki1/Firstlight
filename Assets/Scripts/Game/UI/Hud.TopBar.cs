@@ -116,10 +116,10 @@ namespace Firstlight.Game.UI
             var pr = new Rect(x, 5, 236, 42);
             _tl.Begin().S("<b>").I(_tPop).S("</b> people  ");
             if (_tHomeless > 0) _tl.C(Warn).I(_tHomeless).S(" homeless").E();
-            else if (free > 0) _tl.C(Dim).I(free).S(" beds free").E();
+            else if (free > 0) _tl.C(Dim).I(free).S(free == 1 ? " bed free" : " beds free").E();
             else _tl.C(Dim).S("no free beds").E();
             GUI.Label(new Rect(x, 5, 236, 22), _tl.To(ref _popTxt), Label);
-            GUI.Label(new Rect(x, 27, 236, 20), _tl.Begin().I(adults).S(" adults · ").I(kids).S(" children · ").I(elders).S(" elders").To(ref _popTxt2), Small);
+            GUI.Label(new Rect(x, 27, 236, 20), _tl.Begin().I(adults).S(adults == 1 ? " adult · " : " adults · ").I(kids).S(kids == 1 ? " child · " : " children · ").I(elders).S(elders == 1 ? " elder" : " elders").To(ref _popTxt2), Small);
             if (Over(pr)) Tip(pr, $"People: {S.Population}, housing for {S.HousingCapacity}. Babies are born to families with a home, free beds and food in store; migrants come when there are free beds, food and good spirits. Unhappy or starving people leave.\n\n" +
                     $"Happiness {S.AverageHappiness:P0}: the average and the worst of food, warmth, shelter, health (and later water, pots at home and faith). It sets how fast people work.\n\nBorn {S.Births}, arrived {S.Migrants}, left {S.Leavers}, died {S.TotalDeaths}." +
                     (S.TotalDeaths > 0 ? $"\nDeaths: {DeathsByCause()}. Events (V) says who." : ""));
@@ -130,7 +130,8 @@ namespace Firstlight.Game.UI
             var fcol = fd < S.Data.Balance.foodWarnDays ? Bad : fd < 8 ? Warn : Good;
             var fr = new Rect(x, 5, 150, 42);
             _tl.Begin().S("Food ").C(fcol);
-            if (fd >= 99) _tl.S("-"); else _tl.F(fd, "0.#").S(" days");      // FoodDaysText
+            if (fd >= 99) _tl.S("-");
+            else { int at = _tl.Mark; _tl.F(fd, "0.#"); _tl.S(_tl.Is(at, "1") ? " day" : " days"); }      // FoodDaysText
             GUI.Label(new Rect(x, 5, 150, 22), _tl.E().To(ref _foodTxt), Label);
             GUI.Label(new Rect(x, 27, 150, 20), _tl.Begin().F(_tFoodStock, "0").S(" in store").S(Arrow(_foodDelta, 0.5f)).To(ref _foodTxt2), Small);
             if (Over(fr)) Tip(fr, FoodTip());
@@ -162,7 +163,11 @@ namespace Firstlight.Game.UI
                 float lw = eta ? 128 : 80;
                 Bar(new Rect(rx + 8, 30, rw - lw - 18, 9), def != null ? S.ResearchProgress(cur) : 0, Accent);
                 _tl.Begin().S("+").F(_knowPerDay, "0.#").S("/day");
-                if (eta) _tl.S(" · ~").F(math.max(1, math.ceil(def.cost * (1f - S.ResearchProgress(cur)) / _knowPerDay)), "0").S(" days");
+                if (eta)
+                {
+                    float days = math.max(1, math.ceil(def.cost * (1f - S.ResearchProgress(cur)) / _knowPerDay));
+                    _tl.S(" · ~").F(days, "0").S(days == 1 ? " day" : " days");
+                }
                 GUI.Label(new Rect(rx + rw - lw - 4, 25, lw + 2, 18), _tl.To(ref _resTxt3), SmallRight);
             }
             if (Over(rr)) Tip(rr, (def != null ? $"{def.name}: {S.ResearchProgress(cur):P0}. {S.ResearchQueue.Count} in the queue." : $"Nothing queued: knowledge is banked ({S.KnowledgeBank:0}) until you choose.") +
@@ -213,7 +218,7 @@ namespace Firstlight.Game.UI
             DrawNeedsStrip(math.max(x + 10, right - NeedsWidth()), y2, right);
             if (G.Auto != null)
             {
-                var ar2 = Box(new Rect(VW - 330, VH - (VW - 330 < 1290 ? 98 : 40), 320, 30), UiTheme.Header);   // above the build bar when the screen is narrow
+                var ar2 = Box(new Rect(VW - 330, VH - (VW - 330 < 10 + BuildBarW + 10 ? 98 : 40), 320, 30), UiTheme.Header);   // above the build bar when the screen is narrow
                 GUI.Label(new Rect(ar2.x + 12, ar2.y, 300, 30), _autoTxt ??= Col("Auto-player is running the settlement (F9)", Info), Label14);
             }
         }
@@ -297,7 +302,7 @@ namespace Firstlight.Game.UI
         string PeopleLine()
         {
             var (a, e, c) = PeopleSplit();
-            return $"{_tPop}  ({a} adults, {e} elders, {c} children)";
+            return $"{_tPop}  ({a} {(a == 1 ? "adult" : "adults")}, {e} {(e == 1 ? "elder" : "elders")}, {c} {(c == 1 ? "child" : "children")})";
         }
 
         /// <summary>Tools of every kind in store (unrounded; shown with {:0} like every other good).</summary>
@@ -308,11 +313,17 @@ namespace Firstlight.Game.UI
             return t;
         }
 
-        static string FoodDaysText(float fd) => fd >= 99 ? "-" : $"{fd:0.#} days";
+        static string FoodDaysText(float fd) => fd >= 99 ? "-" : Days(fd, "0.#");
+
+        /// <summary>"1 day", "2.5 days": a figure with "day" or "days" as it reads once formatted.</summary>
+        static string Days(float v, string format) { string n = v.ToString(format); return n == "1" ? n + " day" : n + " days"; }
+
+        /// <summary>"1 cell" / "3 cells": the word in the singular for a count of one.</summary>
+        static string Many(int n, string one, string many) => n == 1 ? $"1 {one}" : $"{n} {many}";
 
         /// <summary>The food figure's tooltip (also shown by -guideshots).</summary>
         public string FoodTip() =>
-            $"Food in store lasts {S.FoodDays:0.#} days at {S.DailyFoodNeed:0.#} a day (adults eat 1, children less). Change over the last day: {_foodDelta:+0.#;-0.#;0}.\n\n" +
+            $"Food in store lasts {Days(S.FoodDays, "0.#")} at {S.DailyFoodNeed:0.#} a day (adults eat 1, children less). Change over the last day: {_foodDelta:+0.#;-0.#;0}.\n\n" +
             "Gatherers, hunters, fishers and, later, fields make it; it spoils in open piles (a granary keeps it). Winter makes little: stock up before it. Click for every good (T)." +
             HarvestOutlookLine();
 

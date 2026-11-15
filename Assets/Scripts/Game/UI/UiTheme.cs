@@ -112,6 +112,7 @@ namespace Firstlight.Game.UI
             SmallRight = new GUIStyle(Small) { alignment = TextAnchor.MiddleRight };
             SmallCenter = new GUIStyle(Small) { alignment = TextAnchor.MiddleCenter };
             SmallFoot = new GUIStyle(Small);
+            SmallText = new GUIStyle(Small); SmallText.normal.textColor = SmallText.hover.textColor = Text;
             Label14 = new GUIStyle(Label) { fontSize = 14 };
             LabelCenter = new GUIStyle(Label) { alignment = TextAnchor.MiddleCenter };
             FeedRow = new GUIStyle(Label) { fontSize = 14, wordWrap = true };
@@ -128,7 +129,7 @@ namespace Firstlight.Game.UI
         }
 
         /// <summary>Made once in <see cref="Ensure"/> (see there).</summary>
-        public static GUIStyle SmallRight, SmallCenter, SmallFoot, Label14, LabelCenter, FeedRow, PlaceTip, Title24, Title28Center, Title30Center, Title34,
+        public static GUIStyle SmallRight, SmallCenter, SmallFoot, SmallText, Label14, LabelCenter, FeedRow, PlaceTip, Title24, Title28Center, Title30Center, Title34,
             Note15Center, Button12, NodeSub, NodeUnlocks;
 
         /// <summary>Smallest text on screen, in real pixels: the small styles grow when the layout is scaled down.</summary>
@@ -147,7 +148,7 @@ namespace Firstlight.Game.UI
             _floorFor = s;
             int small = Mathf.Clamp(Mathf.RoundToInt(MinTextPx / s), 14, 16);   // at most the 16 of normal text, so rows still hold it
             Small.fontSize = SmallWrap.fontSize = small;
-            SmallRight.fontSize = SmallCenter.fontSize = small;
+            SmallRight.fontSize = SmallCenter.fontSize = SmallText.fontSize = small;
             SmallFoot.fontSize = Px(12);
             Tip.fontSize = Chip.fontSize = ChipGood.fontSize = Mathf.Max(15, small);
         }

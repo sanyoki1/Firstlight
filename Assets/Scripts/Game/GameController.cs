@@ -135,7 +135,7 @@ namespace Firstlight.Game
             if (HasArg("-uishots")) StartCoroutine(UiShots());
             if (HasArg("-p4shots")) StartCoroutine(P4Shots());
             if (HasArg("-guideshots")) StartCoroutine(GuideShots());
-            if (HasArg("-panelshots")) StartCoroutine(PanelShots());
+            if (HasArg("-panelshots")) StartCoroutine(HasArg("-badgeshots") ? BadgeShots() : PanelShots());
             if (_smoke > 0 || HasArg("-smoketest")) StartCoroutine(SmokeTest());
             if (HasArg("-soak")) StartCoroutine(Soak(ArgInt("-soak", 10)));
             if (HasArg("-reloadtest")) StartCoroutine(ReloadTest());
