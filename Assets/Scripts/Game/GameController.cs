@@ -814,11 +814,16 @@ namespace Firstlight.Game
             Application.Quit();
         }
 
-        static bool HasArg(string name) => Array.IndexOf(Environment.GetCommandLineArgs(), name) >= 0;
+        // The command line is read once: Environment.GetCommandLineArgs() makes a new array (and strings) on every call
+        // on this Mono, and Autosave() used to call it three times a frame.
+        static string[] _args;
+        static string[] Args => _args ??= Environment.GetCommandLineArgs();
+
+        static bool HasArg(string name) => Array.IndexOf(Args, name) >= 0;
 
         static string Arg(string name)
         {
-            var args = Environment.GetCommandLineArgs();
+            var args = Args;
             for (int i = 0; i < args.Length - 1; i++) if (args[i] == name) return args[i + 1];
             return null;
         }

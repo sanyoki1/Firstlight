@@ -109,6 +109,9 @@ namespace Firstlight.Game
             LoadGame(p);
         }
 
+        static bool? _noAutosaveMode;
+        /// <summary>Started for screenshots or by the auto-player: no autosaves (the flags are looked up once).</summary>
+        static bool NoAutosaveMode => _noAutosaveMode ??= HasArg("-uishots") || HasArg("-p4shots") || HasArg("-autoplay");
         float _autosaveDue = -1f;           // real time this season's autosave is due (-1 = none waiting)
 
         /// <summary>
@@ -118,7 +121,7 @@ namespace Firstlight.Game
         /// </summary>
         void Autosave(bool dayTicked)
         {
-            if (Sim.NeedsCampfire || Sim.Population == 0 || HasArg("-uishots") || HasArg("-p4shots") || HasArg("-autoplay")) return;
+            if (Sim.NeedsCampfire || Sim.Population == 0 || NoAutosaveMode) return;
             int season = Sim.Day / Data.Balance.daysPerSeason;
             if (_autosaveSeason < 0) { _autosaveSeason = season; return; }
             if (season != _autosaveSeason)
