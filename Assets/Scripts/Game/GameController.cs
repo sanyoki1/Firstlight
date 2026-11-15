@@ -41,9 +41,15 @@ namespace Firstlight.Game
         {
             PerfProbe.On = HasArg("-perfprobe");          // PERF PROBE
             PerfProbe.Mark("GameController.Start");
-            Data = GameData.Load();
+            if (!LoadData()) return;                       // a data file that does not parse, or problems in the data
             PerfProbe.Mark("data loaded");
             if (HasArg("-autotest") || HasArg("-fuzztest")) { RunAutoTest(); return; }
+            Begin();
+        }
+
+        /// <summary>Everything after the data has loaded: the menu, a new game or a save, and the command-line modes.</summary>
+        void Begin()
+        {
             GameSettings.Load();
             bool cli = CommandLineMode;
             GameSettings.Apply(display: !cli);
@@ -235,6 +241,7 @@ namespace Firstlight.Game
 
         void OnGUI()
         {
+            if (_dataError != null) { DataErrorGUI(); return; }
             if (_hideGui || View == null || _demo) return;
             // -uishots: on the frame of a shot the camera renders into _shotRT and the HUD is drawn into it too.
             bool shot = _pendingShot != null && Event.current.type == EventType.Repaint && Cam.Cam.targetTexture == _shotRT;

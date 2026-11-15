@@ -268,29 +268,70 @@ namespace Firstlight.Game
         public ResearchDef ResearchById(string id) => _rsc.TryGetValue(id, out var r) ? r : null;
         public AgeDef Age(string id) => _age.TryGetValue(id, out var a) ? a : null;
 
+        /// <summary>
+        /// Problems found in the data after loading (unknown or duplicate ids, unknown ages, season arrays of the wrong
+        /// length...). The data still loads; the game shows them on an error screen and the tests treat them as fatal.
+        /// </summary>
+        public readonly List<string> Problems = new();
+
+        /// <summary>A data file that could not be read or parsed (the game cannot start without it).</summary>
+        public sealed class LoadException : Exception
+        {
+            public readonly string File;
+            public LoadException(string file, string message) : base($"{file}: {message}") { File = file; }
+        }
+
+        /// <summary>Reads every data file. Throws <see cref="LoadException"/> (naming the file) if one is missing or not valid JSON.</summary>
         public static GameData Load()
         {
             string dir = Path.Combine(Application.streamingAssetsPath, "Data");
             var d = new GameData();
-            d.Resources.AddRange(Read<ResourceFile>(dir, "resources.json").resources);
-            d.Buildings.AddRange(Read<BuildingFile>(dir, "buildings.json").buildings);
-            d.Research.AddRange(Read<ResearchFile>(dir, "research.json").research);
-            d.Ages.AddRange(Read<AgeFile>(dir, "ages.json").ages);
+            d.Resources.AddRange(Need(Read<ResourceFile>(dir, "resources.json").resources, "resources.json", "resources"));
+            d.Buildings.AddRange(Need(Read<BuildingFile>(dir, "buildings.json").buildings, "buildings.json", "buildings"));
+            d.Research.AddRange(Need(Read<ResearchFile>(dir, "research.json").research, "research.json", "research"));
+            d.Ages.AddRange(Need(Read<AgeFile>(dir, "ages.json").ages, "ages.json", "ages"));
             d.Balance = Read<Balance>(dir, "balance.json");
             if (File.Exists(Path.Combine(dir, "laws.json"))) d.Laws.AddRange(Read<LawFile>(dir, "laws.json").laws ?? Array.Empty<LawDef>());
-            foreach (var r in d.Resources) d._res[r.id] = r;
-            foreach (var b in d.Buildings) d._bld[b.id] = b;
-            foreach (var r in d.Research) d._rsc[r.id] = r;
-            foreach (var a in d.Ages) d._age[a.id] = a;
+            d.Resources.RemoveAll(x => x == null); d.Buildings.RemoveAll(x => x == null); d.Research.RemoveAll(x => x == null);
+            d.Ages.RemoveAll(x => x == null); d.Laws.RemoveAll(x => x == null);
+            d.Index(d.Resources, d._res, r => r.id, "resource");
+            d.Index(d.Buildings, d._bld, b => b.id, "building");
+            d.Index(d.Research, d._rsc, r => r.id, "research topic");
+            d.Index(d.Ages, d._age, a => a.id, "age");
+            d.Index(d.Laws, new Dictionary<string, LawDef>(), l => l.id, "law");
             d.Ages.Sort((a, b) => a.order.CompareTo(b.order));
             d.Validate();
             return d;
         }
 
+        static T[] Need<T>(T[] items, string file, string field) => items ?? throw new LoadException(file, $"no \"{field}\" list");
+
+        /// <summary>Fills a lookup; a missing or repeated id is a problem (the later entry would silently replace the earlier).</summary>
+        void Index<T>(List<T> items, Dictionary<string, T> lookup, Func<T, string> id, string what)
+        {
+            for (int i = 0; i < items.Count; i++)
+            {
+                string key = id(items[i]);
+                if (string.IsNullOrEmpty(key)) { Problem($"{what} #{i + 1} has no id"); continue; }
+                if (lookup.ContainsKey(key)) Problem($"duplicate {what} id \"{key}\"");
+                lookup[key] = items[i];
+            }
+        }
+
         static T Read<T>(string dir, string file)
         {
             string path = Path.Combine(dir, file);
-            return JsonUtility.FromJson<T>(File.ReadAllText(path));
+            T data;
+            try { data = JsonUtility.FromJson<T>(File.ReadAllText(path)); }
+            catch (Exception e) { throw new LoadException(file, e.Message); }
+            if (data == null) throw new LoadException(file, "the file is empty");
+            return data;
+        }
+
+        void Problem(string text)
+        {
+            Problems.Add(text);
+            Debug.LogError($"[Data] {text}");
         }
 
         void Validate()
@@ -312,27 +353,66 @@ namespace Firstlight.Game
             Balance.needs ??= Array.Empty<NeedDef>();
             foreach (var r in Research) { r.prereqs ??= Array.Empty<string>(); r.effects ??= Array.Empty<Effect>(); }
             foreach (var a in Ages) { a.keyResearch ??= Array.Empty<string>(); a.milestones ??= Array.Empty<MilestoneDef>(); }
+
+            // Every problem is collected (and logged); none stops the loading here.
+            void Res(string owner, string what, string id) { if (string.IsNullOrEmpty(id) || Resource(id) == null) Problem($"{owner}: unknown {what} \"{id}\""); }
+            void AgeId(string owner, string id) { if (string.IsNullOrEmpty(id) || Age(id) == null) Problem($"{owner}: unknown age \"{id}\""); }
+            void Seasons(string owner, string what, float[] arr, bool optional)
+            {
+                if ((arr == null && optional) || arr?.Length == 4) return;
+                Problem($"{owner}: {what} needs 4 entries (spring, summer, autumn, winter), has {arr?.Length ?? 0}");
+            }
+
             foreach (var b in Buildings)
             {
-                foreach (var c in b.cost) if (Resource(c.id) == null) Debug.LogError($"[Data] {b.id}: unknown cost resource {c.id}");
-                foreach (var o in b.outputs) if (Resource(o.id) == null) Debug.LogError($"[Data] {b.id}: unknown output {o.id}");
-                foreach (var i in b.inputs) foreach (var id in i.ids) if (Resource(id) == null) Debug.LogError($"[Data] {b.id}: unknown input {id}");
-                if (!string.IsNullOrEmpty(b.unlockedBy) && ResearchById(b.unlockedBy) == null) Debug.LogError($"[Data] {b.id}: unknown research {b.unlockedBy}");
+                string o = $"building {b.id}";
+                AgeId(o, b.age);
+                foreach (var c in b.cost) Res(o, "cost resource", c?.id);
+                foreach (var x in b.outputs) Res(o, "output", x?.id);
+                foreach (var i in b.inputs) foreach (var id in i?.ids ?? Array.Empty<string>()) Res(o, "input", id);
+                if (!string.IsNullOrEmpty(b.unlockedBy) && ResearchById(b.unlockedBy) == null) Problem($"{o}: unknown research \"{b.unlockedBy}\"");
                 if (!string.IsNullOrEmpty(b.upgradesTo))
                 {
                     var t = Building(b.upgradesTo);
-                    if (t == null) Debug.LogError($"[Data] {b.id}: unknown upgrade {b.upgradesTo}");
-                    else if (t.sizeX != b.sizeX || t.sizeY != b.sizeY) Debug.LogError($"[Data] {b.id}: upgrade {b.upgradesTo} must have the same footprint");
+                    if (t == null) Problem($"{o}: unknown upgrade \"{b.upgradesTo}\"");
+                    else if (t.sizeX != b.sizeX || t.sizeY != b.sizeY) Problem($"{o}: upgrade {b.upgradesTo} must have the same footprint");
                 }
+                Seasons(o, "seasonYield", b.seasonYield, true);
+                Seasons(o, "fuelPerDay", b.fuelPerDay, true);
             }
-            foreach (var l in Laws) if (!string.IsNullOrEmpty(l.research) && ResearchById(l.research) == null) Debug.LogError($"[Data] law {l.id}: unknown research {l.research}");
+            foreach (var r in Resources)
+                if (!string.IsNullOrEmpty(r.unlockedBy) && ResearchById(r.unlockedBy) == null) Problem($"resource {r.id}: unknown research \"{r.unlockedBy}\"");
+            foreach (var l in Laws) if (!string.IsNullOrEmpty(l.research) && ResearchById(l.research) == null) Problem($"law {l.id}: unknown research \"{l.research}\"");
             foreach (var r in Research)
-                foreach (var p in r.prereqs) if (ResearchById(p) == null) Debug.LogError($"[Data] research {r.id}: unknown prereq {p}");
+            {
+                AgeId($"research {r.id}", r.age);
+                foreach (var p in r.prereqs) if (ResearchById(p) == null) Problem($"research {r.id}: unknown prereq \"{p}\"");
+            }
             foreach (var a in Ages)
             {
-                foreach (var k in a.keyResearch) if (ResearchById(k) == null) Debug.LogError($"[Data] age {a.id}: unknown key research {k}");
+                if (!string.IsNullOrEmpty(a.next) && Age(a.next) == null) Problem($"age {a.id}: unknown next age \"{a.next}\"");
+                foreach (var k in a.keyResearch) if (ResearchById(k) == null) Problem($"age {a.id}: unknown key research \"{k}\"");
                 foreach (var m in a.milestones)
-                    if (m.type == "building" && Building(m.target) == null) Debug.LogError($"[Data] age {a.id}: unknown milestone building {m.target}");
+                    if (m.type == "building" && Building(m.target) == null) Problem($"age {a.id}: unknown milestone building \"{m.target}\"");
+            }
+
+            // Balance: the goods the settlement looks up by id, the season arrays it indexes by season, the ages it names.
+            var B = Balance;
+            Res("balance", "fuelResource", B.fuelResource);
+            Res("balance", "clothingResource", B.clothingResource);
+            Res("balance", "herbsResource", B.herbsResource);
+            Res("balance", "goodsResource", B.goodsResource);
+            foreach (var a in B.startResources ?? Array.Empty<Amount>()) Res("balance startResources", "resource", a?.id);
+            if (B.seasonNames?.Length != 4) Problem($"balance: seasonNames needs 4 entries (spring, summer, autumn, winter), has {B.seasonNames?.Length ?? 0}");
+            Seasons("balance", "seasonTemperature", B.seasonTemperature, false);
+            Seasons("balance", "firewoodPerHome", B.firewoodPerHome, false);
+            if (!string.IsNullOrEmpty(B.planFoodAge)) AgeId("balance planFoodAge", B.planFoodAge);
+            if (!string.IsNullOrEmpty(B.unrestAge)) AgeId("balance unrestAge", B.unrestAge);
+            foreach (var n in B.needs)
+            {
+                if (n == null) continue;
+                if (!string.IsNullOrEmpty(n.age)) AgeId($"need {n.id}", n.age);
+                if (!string.IsNullOrEmpty(n.research) && ResearchById(n.research) == null) Problem($"need {n.id}: unknown research \"{n.research}\"");
             }
         }
 
