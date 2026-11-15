@@ -615,6 +615,7 @@ namespace Firstlight.Game
                     b.OutTotal += amt;
                 }
                 Produced[b.OutRes[i]] += amt;
+                if (b.OutRes[i] == _grain) GrainProducedF += amt;
             }
             if (field) RecountLoad(c);
             if (d.consumesFeaturePer > 0)

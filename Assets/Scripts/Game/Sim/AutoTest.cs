@@ -100,7 +100,7 @@ namespace Firstlight.Game
                 {
                     s = resume.Sim; ap = resume.Auto ?? new AutoPlayer(s);
                     ap.Profile = true; s.Profile = true;
-                    var r = new SaveReader(new MemoryStream(resume.Test));
+                    var r = new SaveReader(new MemoryStream(resume.Test)) { Version = resume.Header.Version };
                     r.Fields(rep);
                     lastSeasonIdx = r.Int(); _noon = r.Str();
                     prev = ReadSnap(r);
@@ -214,14 +214,14 @@ namespace Firstlight.Game
         static string When(Settlement s, int day) =>
             $"day {day} (year {day / s.DaysPerYear + 1}, {s.Data.Balance.seasonNames[(day / s.Data.Balance.daysPerSeason) % 4]})";
 
-        struct Snap { public int births, migrants, leavers, deaths, research, outbreaks, thefts, disputes, trades; public Dictionary<string, int> causes; public float[] produced, consumed; public float workerSec, prodSec; }
+        struct Snap { public int births, migrants, leavers, deaths, research, outbreaks, thefts, disputes, trades; public Dictionary<string, int> causes; public double[] produced, consumed; public double workerSec, prodSec; }
 
         static void WriteSnap(SaveWriter w, Snap p)
         {
             w.Int(p.births); w.Int(p.migrants); w.Int(p.leavers); w.Int(p.deaths); w.Int(p.research);
             w.Int(p.outbreaks); w.Int(p.thefts); w.Int(p.disputes); w.Int(p.trades);
             w.Int(p.causes.Count); foreach (var kv in p.causes) { w.Str(kv.Key); w.Int(kv.Value); }
-            w.Floats(p.produced); w.Floats(p.consumed); w.Float(p.workerSec); w.Float(p.prodSec);
+            w.Doubles(p.produced); w.Doubles(p.consumed); w.Double(p.workerSec); w.Double(p.prodSec);   // doubles from save format 2
         }
 
         static Snap ReadSnap(SaveReader r)
@@ -229,7 +229,8 @@ namespace Firstlight.Game
             var p = new Snap { births = r.Int(), migrants = r.Int(), leavers = r.Int(), deaths = r.Int(), research = r.Int(),
                                outbreaks = r.Int(), thefts = r.Int(), disputes = r.Int(), trades = r.Int(), causes = new Dictionary<string, int>() };
             for (int i = 0, n = r.Int(); i < n; i++) p.causes[r.Str()] = r.Int();
-            p.produced = r.Floats(); p.consumed = r.Floats(); p.workerSec = r.Float(); p.prodSec = r.Float();
+            if (r.Version >= 2) { p.produced = r.Doubles(); p.consumed = r.Doubles(); p.workerSec = r.Double(); p.prodSec = r.Double(); }
+            else { p.produced = Array.ConvertAll(r.Floats(), v => (double)v); p.consumed = Array.ConvertAll(r.Floats(), v => (double)v); p.workerSec = r.Float(); p.prodSec = r.Float(); }
             return p;
         }
 
@@ -238,7 +239,7 @@ namespace Firstlight.Game
             births = s.Births, migrants = s.Migrants, leavers = s.Leavers, deaths = s.TotalDeaths,
             research = s.ResearchLog.Count, causes = new Dictionary<string, int>(s.Deaths),
             outbreaks = s.Outbreaks, thefts = s.Thefts, disputes = s.Disputes, trades = s.Trades,
-            produced = (float[])s.Produced.Clone(), consumed = (float[])s.Consumed.Clone(),
+            produced = (double[])s.Produced.Clone(), consumed = (double[])s.Consumed.Clone(),
             workerSec = s.WorkerSeconds, prodSec = s.ProductiveSeconds,
         };
 
@@ -270,11 +271,11 @@ namespace Firstlight.Game
                 fields = s.Buildings.Count(x => x.Active && x.Def.crop), paths = s.PathCount,
                 toolStock = $"{s.Stock("tools"):F0}/{s.Stock("copper_tools"):F0}/{s.Stock("bronze_tools"):F0}",
                 growth = s.Buildings.Where(x => x.Active && x.Def.crop).Select(x => x.Growth).DefaultIfEmpty(0).Average(),
-                harvest = s.ResIndex("grain") >= 0 ? s.Produced[s.ResIndex("grain")] - prev.produced[s.ResIndex("grain")] : 0, laws = string.Join(" ", s.ActiveLaws.OrderBy(x => x)),
+                harvest = s.ResIndex("grain") >= 0 ? (float)(s.Produced[s.ResIndex("grain")] - prev.produced[s.ResIndex("grain")]) : 0, laws = string.Join(" ", s.ActiveLaws.OrderBy(x => x)),
                 newResearch = string.Join(", ", s.ResearchLog.Skip(prev.research).Select(r => data.ResearchById(r.id)?.name)),
                 detail = _noon + " | made " + string.Join(", ", Enumerable.Range(0, s.ResCount).Where(i => s.Produced[i] - prev.produced[i] > 0.05f)
                     .Select(i => $"{s.Data.Resources[i].id} {s.Produced[i] - prev.produced[i]:F0}")) + " | used " + string.Join(", ", Enumerable.Range(0, s.ResCount).Where(i => s.Consumed[i] - prev.consumed[i] > 0.05f)
-                    .Select(i => $"{s.Data.Resources[i].id} {s.Consumed[i] - prev.consumed[i]:F0}")) + $" | at work {(s.ProductiveSeconds - prev.prodSec) / Math.Max(1f, s.WorkerSeconds - prev.workerSec):P0}",
+                    .Select(i => $"{s.Data.Resources[i].id} {s.Consumed[i] - prev.consumed[i]:F0}")) + $" | at work {(s.ProductiveSeconds - prev.prodSec) / Math.Max(1.0, s.WorkerSeconds - prev.workerSec):P0}",
             };
         }
 

@@ -47,6 +47,7 @@ namespace Firstlight.Game
                 }
                 else { b.Out[r] += amt; b.OutTotal += amt; }
                 Produced[r] += amt;
+                if (r == _grain) GrainProducedF += amt;
                 b.Status = "Harvesting";
                 return true;
             }

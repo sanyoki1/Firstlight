@@ -19,9 +19,10 @@ namespace Firstlight.Game
             w.ULong(_rng.State);
             w.Int(BuildersWanted); w.Int(Births); w.Int(Migrants); w.Int(Leavers);
             w.Int(Deaths.Count); foreach (var kv in Deaths) { w.Str(kv.Key); w.Int(kv.Value); }
-            w.Float(KnowledgeTotal); w.Float(KnowledgeBank);
-            w.Floats(StockTotals); w.Floats(Produced); w.Floats(Consumed);
-            w.Float(WorkerSeconds); w.Float(ProductiveSeconds);
+            w.Double(KnowledgeEarned); w.Float(KnowledgeBank);                  // v2: the cumulative counters are doubles
+            w.Floats(StockTotals); w.Doubles(Produced); w.Doubles(Consumed);
+            w.Double(WorkerSeconds); w.Double(ProductiveSeconds);
+            w.Float(GrainProducedF);                                            // v2
             w.Int(ToolSwaps); w.Int(PathCount); w.Int(Upgrades); w.Int(Trades);
             w.Int(Disputes); w.Int(Thefts); w.Int(Outbreaks);
             w.Float(Unrest); w.Float(UnrestTarget); w.Float(OutbreakRisk);
@@ -163,9 +164,12 @@ namespace Firstlight.Game
             _rng.State = r.ULong();
             BuildersWanted = r.Int(); Births = r.Int(); Migrants = r.Int(); Leavers = r.Int();
             Deaths.Clear(); for (int i = 0, n = r.Int(); i < n; i++) Deaths[r.Str()] = r.Int();
-            KnowledgeTotal = r.Float(); KnowledgeBank = r.Float();
-            CopyInto(r.ResFloats(), StockTotals); CopyInto(r.ResFloats(), Produced); CopyInto(r.ResFloats(), Consumed);
-            WorkerSeconds = r.Float(); ProductiveSeconds = r.Float();
+            bool v2 = r.Version >= 2;
+            KnowledgeEarned = v2 ? r.Double() : r.Float(); KnowledgeBank = r.Float();
+            CopyInto(r.ResFloats(), StockTotals);
+            CopyInto(v2 ? r.ResDoubles() : Widen(r.ResFloats()), Produced); CopyInto(v2 ? r.ResDoubles() : Widen(r.ResFloats()), Consumed);
+            WorkerSeconds = v2 ? r.Double() : r.Float(); ProductiveSeconds = v2 ? r.Double() : r.Float();
+            GrainProducedF = v2 ? r.Float() : _grain >= 0 ? (float)Produced[_grain] : 0;   // v1 kept it in Produced (a float then)
             ToolSwaps = r.Int(); PathCount = r.Int(); Upgrades = r.Int(); Trades = r.Int();
             Disputes = r.Int(); Thefts = r.Int(); Outbreaks = r.Int();
             Unrest = r.Float(); UnrestTarget = r.Float(); OutbreakRisk = r.Float();
@@ -232,10 +236,12 @@ namespace Firstlight.Game
         /// <summary>What a milestone is saved by: its label (shown to the player, unique within an age).</summary>
         static string MilestoneKey(MilestoneDef d) => d.label ?? $"{d.type}:{d.target}:{d.value}";
 
-        static void CopyInto(float[] from, float[] to)
+        static void CopyInto<T>(T[] from, T[] to)
         {
             if (from == null || from.Length != to.Length) throw new InvalidDataException("goods list does not match the game data");
             Array.Copy(from, to, to.Length);
         }
+
+        static double[] Widen(float[] a) => a == null ? null : Array.ConvertAll(a, v => (double)v);
     }
 }

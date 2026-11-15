@@ -29,11 +29,11 @@ namespace Firstlight.Game
         {
             int g = S.ResIndex("grain");
             if (g < 0) return;
-            if (S.Season == 2 && S.DayOfSeason == 0) _grainAtAutumn = S.Produced[g];
+            if (S.Season == 2 && S.DayOfSeason == 0) _grainAtAutumn = S.GrainProducedF;
             if (S.Season == 3 && S.DayOfSeason == 0 && _grainAtAutumn >= 0)
             {
                 int fields = S.Buildings.Count(b => b.Active && b.Def.crop && b.Focus <= 0);
-                if (fields > 0) _harvestPerField = math.max(40f, (S.Produced[g] - _grainAtAutumn) / fields);
+                if (fields > 0) _harvestPerField = math.max(40f, (S.GrainProducedF - _grainAtAutumn) / fields);
                 _grainAtAutumn = -1;
             }
         }

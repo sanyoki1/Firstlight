@@ -59,18 +59,29 @@ namespace Firstlight.Game
         public int Births, Migrants, Leavers;
         public readonly SortedDictionary<string, int> Deaths = new();
         public int TotalDeaths => Deaths.Values.Sum();
-        public float KnowledgeTotal { get; private set; }
+        /// <summary>Knowledge earned since the start (a double: it is added to in small amounts for decades).</summary>
+        public double KnowledgeEarned { get; private set; }
+        /// <summary><see cref="KnowledgeEarned"/> as a float, for the HUD.</summary>
+        public float KnowledgeTotal => (float)KnowledgeEarned;
 
         // ------------------------------------------------------------------ resources
         public readonly int ResCount;
         readonly Dictionary<string, int> _resIndex = new();
         readonly int[] _foodByPerish;        // food resources, most perishable first (eaten first)
         readonly int[] _toolsBest;           // tool resources, best first
-        readonly int _fuel, _clothing, _herbs, _goods;
+        readonly int _fuel, _clothing, _herbs, _goods, _grain;
+        /// <summary>
+        /// Grain made since the start, added up in a float exactly as <see cref="Produced"/> was before it became a double.
+        /// The auto-player sizes its fields from this harvest measure; keeping its float arithmetic keeps every auto-test
+        /// game the same. Not for reports (use Produced).
+        /// </summary>
+        public float GrainProducedF { get; private set; }
         public readonly float[] StockTotals; // sum over all storage buildings, refreshed each step
-        public readonly float[] Produced;    // made by workplaces since the start (per resource)
-        public readonly float[] Consumed;    // eaten, burned or worn out since the start (per resource)
-        public float WorkerSeconds, ProductiveSeconds;   // workers' time on shift vs time actually producing
+        // Cumulative counters are doubles: they are fed tiny per-step amounts for decades (floats stopped adding them up
+        // exactly past ~2^15). Reports only: no decision of the sim reads them.
+        public readonly double[] Produced;   // made by workplaces since the start (per resource)
+        public readonly double[] Consumed;   // eaten, burned or worn out since the start (per resource)
+        public double WorkerSeconds, ProductiveSeconds;  // workers' time on shift vs time actually producing
 
         // ------------------------------------------------------------------ research and ages
         readonly HashSet<string> _researched = new();
@@ -94,13 +105,14 @@ namespace Firstlight.Game
             ResCount = data.Resources.Count;
             for (int i = 0; i < ResCount; i++) _resIndex[data.Resources[i].id] = i;
             StockTotals = new float[ResCount];
-            Produced = new float[ResCount];
-            Consumed = new float[ResCount];
+            Produced = new double[ResCount];
+            Consumed = new double[ResCount];
             _foodByPerish = Enumerable.Range(0, ResCount).Where(i => data.Resources[i].isFood)
                 .OrderByDescending(i => data.Resources[i].spoilPerDay).ThenBy(i => i).ToArray();
             _toolsBest = Enumerable.Range(0, ResCount).Where(i => data.Resources[i].toolSpeed > 0)
                 .OrderByDescending(i => data.Resources[i].toolSpeed).ThenBy(i => i).ToArray();
             _fuel = ResIndex(B.fuelResource); _clothing = ResIndex(B.clothingResource); _herbs = ResIndex(B.herbsResource); _goods = ResIndex(B.goodsResource);
+            _grain = ResIndex("grain");
             BuildersWanted = B.defaultBuilders;
 
             foreach (var r in data.Research) if (r.known) _researched.Add(r.id);
@@ -351,7 +363,7 @@ namespace Firstlight.Game
 
         void AddKnowledge(float k)
         {
-            KnowledgeTotal += k;
+            KnowledgeEarned += k;
             KnowledgeBank += k;
             SpendBank();
         }

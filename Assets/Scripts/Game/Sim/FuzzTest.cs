@@ -708,7 +708,7 @@ namespace Firstlight.Game
                 l = SaveGame.Read(file, data, out string err);
                 if (l == null) { Debug.Log($"[SaveCheck] goods by id: load refused ({err})  <-- WRONG"); return false; }
                 var s = l.Sim;
-                bool Near(float a, float b) => Math.Abs(a - b) <= 1e-3f + Math.Abs(b) * 1e-5f;
+                bool Near(double a, double b) => Math.Abs(a - b) <= 1e-3 + Math.Abs(b) * 1e-5;
                 for (int i = 0; i < cur.Count; i++)
                 {
                     int j = To(i);
