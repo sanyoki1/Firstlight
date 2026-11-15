@@ -72,8 +72,11 @@ namespace Firstlight.Game
         /// The year's food outlook from the fields (the food tooltip and the spring warning use it): the harvest expected
         /// from the food fields this year (<see cref="ExpectedHarvest"/>), how many fields there are and how many grow a
         /// crop that isn't food (flax), and the food the people now need from today until autumn next year (the lean days
-        /// to this harvest, then a year of eating it; 0.7 as in the other food warnings, since gatherers, hunters and
-        /// fishers still bring some). False when there are no fields.
+        /// to this harvest, then a year of eating it). Counted in full, not with the 0.7 of the lean-season warnings: in
+        /// spring ExpectedHarvest assumes full growth, and fields bring about three quarters of it, which is about what
+        /// gatherers, hunters and fishers add over a year. Calibrated on the 15 gate seeds (pass 2 batch 4a checkpoint):
+        /// it fires in the springs before seed 13's and seed 11's food crises, in the first farming springs, and every
+        /// spring on the seeds whose towns live at 1-2 days of food each summer. False when there are no fields.
         /// </summary>
         public bool HarvestOutlook(out float expected, out int fields, out int nonFood, out float need)
         {
@@ -87,7 +90,7 @@ namespace Firstlight.Game
                 if (r < 0 || !Data.Resources[r].isFood) { nonFood++; continue; }
                 expected += ExpectedHarvest(b);
             }
-            need = DailyFoodNeed * (LeanDays() + DaysPerYear) * 0.7f;
+            need = DailyFoodNeed * (LeanDays() + DaysPerYear);
             return fields > 0;
         }
 
