@@ -31,6 +31,9 @@ namespace Firstlight.Game
         /// <summary>Extra height added to the upstream water level (raise for a flood surge).</summary>
         public float SourceBoost;
         public double LastStepMs { get; private set; }
+        /// <summary>Goes up with each <see cref="Step"/> call, so the view rebuilds the surface only after the water moved
+        /// (the flood fill's direct depth edits show with the next step, at most 0.05 s later).</summary>
+        public int Version { get; private set; }
         public float TotalVolume { get; private set; }
 
         public WaterSim(GameMap map)
@@ -91,6 +94,7 @@ namespace Firstlight.Game
                     .Schedule(W * H, 256, h);
             }
             h.Complete();
+            Version++;
             LastStepMs = sw.Elapsed.TotalMilliseconds;
         }
 

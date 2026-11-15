@@ -159,8 +159,18 @@ namespace Firstlight.Game
         Vector3[] _wv; Color[] _wc; Vector2[] _wuv, _wmat; int[] _wt;
         float[] _cs, _cd; Vector2[] _cvel;
         public float WaterFlowScale = 1f;
+        // The surface is rebuilt only when the water changed (a water step, or the flood fill), and only over the cells
+        // that can be wet: the river, every cell low enough for the biggest flood, and any cell ever seen wet, plus a
+        // margin. A cell found wet outside that mask grows it at once, so nothing wet is ever left undrawn.
+        int _waterVersion = -1; float _builtFlowScale;
+        int _waterLayer;
+        float[] _wDepth, _wBed; float2[] _wVel;  // managed copies, read many times per rebuild
+        bool[] _canBeWet;                        // the mask
+        readonly List<int> _quadCells = new();   // cells within 1 of the mask, ascending: the only ones that can get a quad
+        readonly List<int> _maskCorners = new(); // the corners of those cells, ascending
+        bool _maskDirty = true;
 
-        /// <summary>The water surface is rebuilt from the simulation every frame (only wet cells get quads).</summary>
+        /// <summary>The water surface is rebuilt from the simulation whenever it changes (only wet cells get quads).</summary>
         public void AttachWater(WaterSim water)
         {
             _water = water;
@@ -168,6 +178,15 @@ namespace Firstlight.Game
             _wv = new Vector3[n * 4]; _wc = new Color[n * 4]; _wuv = new Vector2[n * 4]; _wmat = new Vector2[n * 4];
             _wt = new int[n * 6];
             _cs = new float[nc]; _cd = new float[nc]; _cvel = new Vector2[nc];
+            _wDepth = new float[n]; _wBed = new float[n]; _wVel = new float2[n];
+            _water.Bed.CopyTo(_wBed);
+            _waterLayer = MaterialLibrary.Layer("water");
+            // The mask starts as the river and every cell whose bed lies below the river's level plus more than the
+            // biggest rise (a full-strength spring flood, or the F6 surge); the depth scan adds anything else.
+            const float maxRise = 0.8f;   // > GameController.FloodPeak (0.6) and > floodStrengthMax (0.55) * 0.85
+            _canBeWet = new bool[n];
+            for (int c = 0; c < n; c++)
+                _canBeWet[c] = _map.Ground[c] != Ground.Grass || _wBed[c] < _map.RiverLevelAt(c / _map.W) + maxRise;
             _waterMesh = new Mesh { name = "Water", indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
             _waterMesh.MarkDynamic();
             _waterGo = new GameObject("Water");
@@ -180,76 +199,105 @@ namespace Firstlight.Game
 
         const float WetDepth = 0.015f;
 
-        static bool WetNeighbour(Unity.Collections.NativeArray<float> depth, int x, int y, int w, int h)
+        /// <summary>Recomputes the cells that can get a quad (the mask grown by one cell) and their corners.</summary>
+        void RebuildWaterMask()
+        {
+            _maskDirty = false;
+            int w = _map.W, h = _map.H, w1 = w + 1;
+            _quadCells.Clear(); _maskCorners.Clear();
+            var corner = new bool[w1 * (h + 1)];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    bool near = false;
+                    for (int dy = -1; dy <= 1 && !near; dy++)
+                        for (int dx = -1; dx <= 1 && !near; dx++)
+                        {
+                            int nx = x + dx, ny = y + dy;
+                            if (nx >= 0 && ny >= 0 && nx < w && ny < h && _canBeWet[ny * w + nx]) near = true;
+                        }
+                    if (!near) continue;
+                    _quadCells.Add(y * w + x);
+                    corner[y * w1 + x] = corner[y * w1 + x + 1] = corner[(y + 1) * w1 + x] = corner[(y + 1) * w1 + x + 1] = true;
+                }
+            for (int ci = 0; ci < corner.Length; ci++) if (corner[ci]) _maskCorners.Add(ci);
+        }
+
+        bool WetNeighbour(int x, int y, int w, int h)
         {
             for (int dy = -1; dy <= 1; dy++)
                 for (int dx = -1; dx <= 1; dx++)
                 {
                     int nx = x + dx, ny = y + dy;
                     if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-                    if (depth[ny * w + nx] > WetDepth) return true;
+                    if (_wDepth[ny * w + nx] > WetDepth) return true;
                 }
             return false;
         }
 
         void UpdateWaterMesh()
         {
-            int w = _map.W, h = _map.H, w1 = w + 1;
-            var depth = _water.Depth; var bed = _water.Bed; var vel = _water.Velocity;
-            for (int cy = 0; cy <= h; cy++)
-                for (int cx = 0; cx <= w; cx++)
+            _waterVersion = _water.Version; _builtFlowScale = WaterFlowScale;
+            int w = _map.W, h = _map.H, w1 = w + 1, n = w * h;
+            _water.Depth.CopyTo(_wDepth);
+            _water.Velocity.CopyTo(_wVel);
+            var depth = _wDepth; var bed = _wBed; var vel = _wVel;
+            // Anything wet outside the mask grows it (a bigger flood than expected, water pooling somewhere new).
+            for (int c = 0; c < n; c++)
+                if (depth[c] > WetDepth && !_canBeWet[c]) { _canBeWet[c] = true; _maskDirty = true; }
+            if (_maskDirty) RebuildWaterMask();
+            // Corner surface heights (only corners of cells that can get a quad are ever read).
+            foreach (int ci in _maskCorners)
+            {
+                int cx = ci % w1, cy = ci / w1;
+                float s = 0, d = 0; float2 v = 0; int k = 0;
+                for (int dy = -1; dy <= 0; dy++)
+                    for (int dx = -1; dx <= 0; dx++)
+                    {
+                        int x = cx + dx, y = cy + dy;
+                        if (x < 0 || y < 0 || x >= w || y >= h) continue;
+                        int c = y * w + x;
+                        float dc = depth[c];
+                        if (dc <= WetDepth) continue;
+                        s += bed[c] + dc; d += dc; v += vel[c]; k++;
+                    }
+                if (k == 0)
                 {
-                    float s = 0, d = 0; float2 v = 0; int k = 0;
-                    for (int dy = -1; dy <= 0; dy++)
-                        for (int dx = -1; dx <= 0; dx++)
+                    // Skirt corner: take the surface of wet cells a little further out, so the water plane
+                    // continues under the bank and the shoreline is where terrain and water meet.
+                    for (int dy = -2; dy <= 1; dy++)
+                        for (int dx = -2; dx <= 1; dx++)
                         {
                             int x = cx + dx, y = cy + dy;
                             if (x < 0 || y < 0 || x >= w || y >= h) continue;
                             int c = y * w + x;
-                            float dc = depth[c];
-                            if (dc <= WetDepth) continue;
-                            s += bed[c] + dc; d += dc; v += vel[c]; k++;
+                            if (depth[c] <= WetDepth) continue;
+                            s += bed[c] + depth[c]; v += vel[c]; k++;
                         }
-                    if (k == 0)
-                    {
-                        // Skirt corner: take the surface of wet cells a little further out, so the water plane
-                        // continues under the bank and the shoreline is where terrain and water meet.
-                        for (int dy = -2; dy <= 1; dy++)
-                            for (int dx = -2; dx <= 1; dx++)
-                            {
-                                int x = cx + dx, y = cy + dy;
-                                if (x < 0 || y < 0 || x >= w || y >= h) continue;
-                                int c = y * w + x;
-                                if (depth[c] <= WetDepth) continue;
-                                s += bed[c] + depth[c]; v += vel[c]; k++;
-                            }
-                    }
-                    int ci = cy * w1 + cx;
-                    if (k > 0) { _cs[ci] = s / k; _cd[ci] = d / k; _cvel[ci] = new Vector2(v.x, v.y) / k; }
-                    else { _cs[ci] = -99; _cd[ci] = 0; _cvel[ci] = Vector2.zero; }
                 }
-            int layer = MaterialLibrary.Layer("water");
-            var mat = new Vector2(layer, 2);
+                if (k > 0) { _cs[ci] = s / k; _cd[ci] = d / k; _cvel[ci] = new Vector2(v.x, v.y) / k; }
+                else { _cs[ci] = -99; _cd[ci] = 0; _cvel[ci] = Vector2.zero; }
+            }
+            var mat = new Vector2(_waterLayer, 2);
             int nv = 0, nt = 0;
-            for (int y = 0; y < h; y++)
-                for (int x = 0; x < w; x++)
+            foreach (int c in _quadCells)
+            {
+                int x = c % w, y = c / w;
+                if (depth[c] <= WetDepth && !WetNeighbour(x, y, w, h)) continue;
+                int v0 = nv;
+                for (int q = 0; q < 4; q++)
                 {
-                    int c = y * w + x;
-                    if (depth[c] <= WetDepth && !WetNeighbour(depth, x, y, w, h)) continue;
-                    int v0 = nv;
-                    for (int q = 0; q < 4; q++)
-                    {
-                        int cxx = x + (q >= 2 ? 1 : 0), cyy = y + (q == 1 || q == 2 ? 1 : 0);
-                        int ci = cyy * w1 + cxx;
-                        _wv[nv] = new Vector3(cxx, _cs[ci] - 0.01f, cyy);
-                        _wc[nv] = new Color(1, 1, 1, Mathf.Clamp01(_cd[ci] / 0.45f));
-                        _wuv[nv] = _cvel[ci] * WaterFlowScale;
-                        _wmat[nv] = mat;
-                        nv++;
-                    }
-                    _wt[nt++] = v0; _wt[nt++] = v0 + 1; _wt[nt++] = v0 + 2;
-                    _wt[nt++] = v0; _wt[nt++] = v0 + 2; _wt[nt++] = v0 + 3;
+                    int cxx = x + (q >= 2 ? 1 : 0), cyy = y + (q == 1 || q == 2 ? 1 : 0);
+                    int ci = cyy * w1 + cxx;
+                    _wv[nv] = new Vector3(cxx, _cs[ci] - 0.01f, cyy);
+                    _wc[nv] = new Color(1, 1, 1, Mathf.Clamp01(_cd[ci] / 0.45f));
+                    _wuv[nv] = _cvel[ci] * WaterFlowScale;
+                    _wmat[nv] = mat;
+                    nv++;
                 }
+                _wt[nt++] = v0; _wt[nt++] = v0 + 1; _wt[nt++] = v0 + 2;
+                _wt[nt++] = v0; _wt[nt++] = v0 + 2; _wt[nt++] = v0 + 3;
+            }
             _waterMesh.Clear(false);
             _waterMesh.SetVertices(_wv, 0, nv);
             _waterMesh.SetColors(_wc, 0, nv);
@@ -387,7 +435,7 @@ namespace Firstlight.Game
             UpdateDeer();
             UpdatePeople();
             PerfProbe.Begin(PerfProbe.S.WaterMesh);
-            if (_water != null) UpdateWaterMesh();
+            if (_water != null && (_water.Version != _waterVersion || WaterFlowScale != _builtFlowScale)) UpdateWaterMesh();
             PerfProbe.End(PerfProbe.S.WaterMesh);
             _conifers.Draw(); _broadleaves.Draw(); _rocks.Draw();
             foreach (var batch in _deer) batch.Draw();
