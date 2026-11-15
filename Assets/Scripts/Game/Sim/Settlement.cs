@@ -209,6 +209,7 @@ namespace Firstlight.Game
                 if (Profile) { ProfHourly += _prof.Elapsed.TotalMilliseconds; _prof.Restart(); }
             }
             if (_jobsDirty) { AssignJobs(); if (Profile) { ProfJobs += _prof.Elapsed.TotalMilliseconds; _prof.Restart(); } }
+            PrefetchWalkers();
             bool work = IsWorkTime;
             // People with a job set off a little before the shift, so the walk out isn't all taken from the workday.
             bool early = !work && DayFraction >= B.workdayStart - B.commuteLead && DayFraction < B.workdayStart;

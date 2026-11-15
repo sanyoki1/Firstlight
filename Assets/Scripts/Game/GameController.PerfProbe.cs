@@ -196,7 +196,8 @@ namespace Firstlight.Game
                 yield return PerfStartup();
                 yield break;
             }
-            UI.GameSettings.Current.autosave = false;                  // in memory only: keep the player's autosave slots
+            // In memory only: keep the player's autosave slots (-perfautosave keeps autosaves on, to time a season start with its save).
+            if (!HasArg("-perfautosave")) UI.GameSettings.Current.autosave = false;
             for (int i = 0; i < 20; i++) { ProbeRender(); yield return null; }
             Calibrate();
             if (HasArg("-perfauto")) Auto ??= new AutoPlayer(Sim); else Auto = null;
@@ -293,8 +294,9 @@ namespace Firstlight.Game
                     if (Time.realtimeSinceStartupAsDouble - last < 5) return;
                     last = Time.realtimeSinceStartupAsDouble; on = !on;
                     Map.SetPath(cell, on);
+                    Map.CommitCostChanges();            // as the path commands do (Settlement.PlacePath / RemovePath)
                 });
-                if (on) Map.SetPath(cell, false);
+                if (on) { Map.SetPath(cell, false); Map.CommitCostChanges(); }
             }
         }
 

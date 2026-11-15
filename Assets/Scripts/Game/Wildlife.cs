@@ -129,6 +129,7 @@ namespace Firstlight.Game
         {
             if (dt <= 0) return;
             UpdateCarcasses(dt);
+            PrefetchFields();
             for (int h = 0; h < Herds.Length; h++)
             {
                 var herd = _map.Herds[h];
@@ -152,6 +153,32 @@ namespace Firstlight.Game
                 }
                 Separate(deer, n, dt);
             }
+        }
+
+        readonly List<int> _fieldMisses = new();
+
+        /// <summary>
+        /// The fields the herds will walk this frame (to the watering place, back home, or to claim a spot) that are not
+        /// cached, built together in one parallel batch rather than one at a time on the main thread when a deer asks.
+        /// </summary>
+        void PrefetchFields()
+        {
+            var flow = _map.Flow;
+            _fieldMisses.Clear();
+            for (int h = 0; h < Herds.Length; h++)
+            {
+                var deer = Herds[h];
+                int n = ActiveCount(_map.Herds[h], deer), wc = _waterCell[h], home = -1;
+                for (int i = 0; i < n; i++)
+                {
+                    ref var d = ref deer[i];
+                    int t = -1;
+                    if (d.State == DeerState.ToWater || (d.State is DeerState.Graze or DeerState.Look && d.Thirst >= 1f)) t = wc;
+                    else if (d.State == DeerState.Return && !d.Near) t = home >= 0 ? home : home = _map.CellAt(_map.Herds[h].Pos);
+                    if (t >= 0 && !flow.Has(t) && !_fieldMisses.Contains(t)) _fieldMisses.Add(t);
+                }
+            }
+            if (_fieldMisses.Count > 1) flow.Prefetch(_fieldMisses);
         }
 
         void Step(int h, int i, float dt)

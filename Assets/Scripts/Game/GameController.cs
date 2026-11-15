@@ -33,7 +33,7 @@ namespace Firstlight.Game
         float _autoClock;
         Light _sun;
         int _seed;
-        float _waterAccum, _waterSyncTimer;
+        float _waterAccum, _waterSyncTimer, _idleCommitClock;
         float _floodTimer = -1f;      // seconds since a flood surge started (-1 = none)
         public const float FloodPeak = 0.6f;
 
@@ -108,6 +108,7 @@ namespace Firstlight.Game
                 _savedAt = Sim.Time;
                 _autosaveSeason = Sim.Day / Data.Balance.daysPerSeason;
                 Hud.Toast($"Loaded: {loaded.Header.Name}");
+                Sim.CommitWalkCosts(false);   // every door's path in one parallel batch now, not one by one in the first minute
                 SmokeAfterLoad();
                 Debug.Log($"[Save] loaded {launch.Path}: day {Sim.Day}, population {Sim.Population}");
             }
@@ -180,7 +181,15 @@ namespace Firstlight.Game
             UpdateWater(Time.deltaTime);
             PerfProbe.End(PerfProbe.S.Water);
             PerfProbe.Begin(PerfProbe.S.Commit);
-            Map.CommitCostChanges();
+            // Walking-cost changes: the commands commit their own, and while the settlement steps its hourly step commits
+            // the rest (the water's flips during a flood included), so a flood drops the cached paths at most once a game
+            // hour instead of every second. With nothing stepping (title menu, campfire prompt, paused) they are committed
+            // here every couple of seconds, for the deer. After any commit the doors' paths are rebuilt in one parallel batch.
+            bool stepping = !InMenu && !Paused && !Sim.NeedsCampfire && Sim.Speed > 0;
+            _idleCommitClock += Time.unscaledDeltaTime;
+            bool commitNow = !stepping && _idleCommitClock >= 2f;
+            if (commitNow) _idleCommitClock = 0;
+            Sim.CommitWalkCosts(commitNow);
             PerfProbe.End(PerfProbe.S.Commit);
             if (Sim != null && !InMenu)
             {

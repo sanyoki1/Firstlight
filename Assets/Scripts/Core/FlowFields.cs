@@ -167,8 +167,15 @@ namespace Firstlight.Core
             for (int i = 0; i < capacity; i++) _targetOfSlot[i] = -1;
         }
 
+        /// <summary>Counts <see cref="Invalidate"/> calls: a caller can tell whether the paths were dropped since it last looked.</summary>
+        public int Generation { get; private set; }
+
+        /// <summary>Whether the field to this target is cached (no build, and the LRU order is not touched).</summary>
+        public bool Has(int targetCell) => _slotOfTarget.ContainsKey(targetCell);
+
         public void Invalidate()
         {
+            Generation++;
             _slotOfTarget.Clear();
             for (int i = 0; i < Capacity; i++) { _targetOfSlot[i] = -1; _lastUse[i] = 0; }
         }
