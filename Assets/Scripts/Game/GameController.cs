@@ -39,7 +39,10 @@ namespace Firstlight.Game
 
         void Start()
         {
+            PerfProbe.On = HasArg("-perfprobe");          // PERF PROBE
+            PerfProbe.Mark("GameController.Start");
             Data = GameData.Load();
+            PerfProbe.Mark("data loaded");
             if (HasArg("-autotest") || HasArg("-fuzztest")) { RunAutoTest(); return; }
             GameSettings.Load();
             bool cli = CommandLineMode;
@@ -60,11 +63,15 @@ namespace Firstlight.Game
             }
             InMenu = launch.Mode == LaunchMode.Menu;
             _seed = loaded?.Header.Seed ?? (InMenu ? MenuSeed : launch.Seed);
+            PerfProbe.Mark(loaded != null ? "save read (map regenerated inside)" : "settings, camera, sun");
             if (loaded != null) Map = loaded.Map;
             else { Map = new GameMap(Data.Balance.mapSize); Map.Generate(_seed, Data.Balance); }
+            PerfProbe.Mark("map ready");
             View = new WorldView(Map);
             View.Build();
+            PerfProbe.Mark("world view built (terrain, material map, decor, trees)");
             Water = new WaterSim(Map);
+            PerfProbe.Mark("water sim settled");
             if (loaded?.WaterDepth != null && loaded.WaterDepth.Length == Water.Depth.Length) Water.Depth.CopyFrom(loaded.WaterDepth);
             if (loaded == null) { Water.SyncWaterClasses(); Map.CommitCostChanges(); }   // a save brings its own water classes
             View.AttachWater(Water);
@@ -122,6 +129,8 @@ namespace Firstlight.Game
             if (HasArg("-soak")) StartCoroutine(Soak(ArgInt("-soak", 10)));
             if (HasArg("-reloadtest")) StartCoroutine(ReloadTest());
             if (Arg("-shot") != null) StartCoroutine(OneShot(Arg("-shot")));
+            PerfProbe.Mark("Start done");
+            if (PerfProbe.On) StartCoroutine(PerfRun());   // PERF PROBE
         }
 
         public void ToggleAuto()
@@ -156,26 +165,42 @@ namespace Firstlight.Game
         void Update()
         {
             if (View == null) return;     // -autotest runs headless from Start
+            if (PerfProbe.On) PerfFrame();   // PERF PROBE: closes the previous frame's measurements
             var kb = Keyboard.current;
             if (kb != null)
             {
                 if (kb.f6Key.wasPressedThisFrame) StartFlood();
                 if (kb.f7Key.wasPressedThisFrame) Band?.StartHunt();
             }
+            PerfProbe.Begin(PerfProbe.S.HudUpdate);
             if (InMenu) MenuUpdate();
             else if (!_demo) Hud.Update(Time.deltaTime);   // HUD keys and mouse (speed, panels, placing, selecting)
+            PerfProbe.End(PerfProbe.S.HudUpdate);
+            PerfProbe.Begin(PerfProbe.S.Water);
             UpdateWater(Time.deltaTime);
+            PerfProbe.End(PerfProbe.S.Water);
+            PerfProbe.Begin(PerfProbe.S.Commit);
             Map.CommitCostChanges();
+            PerfProbe.End(PerfProbe.S.Commit);
             if (Sim != null && !InMenu)
             {
+                PerfProbe.Begin(PerfProbe.S.Autosave);
                 if (!_demo && !Paused) Autosave();
+                PerfProbe.End(PerfProbe.S.Autosave);
+                PerfProbe.Begin(PerfProbe.S.Sim);
                 Sim.Update(Paused ? 0 : Time.deltaTime);
+                PerfProbe.End(PerfProbe.S.Sim);
                 // The auto-player thinks once per game hour, like in the auto-test.
                 _autoClock += Time.deltaTime * Sim.Speed;
+                PerfProbe.Begin(PerfProbe.S.Auto);
                 if (Auto != null && (_autoClock >= Data.Balance.dayLengthSeconds / 24f || Sim.NeedsCampfire)) { _autoClock = 0; Auto.Think(); }
+                PerfProbe.End(PerfProbe.S.Auto);
             }
             Band?.Update(Time.deltaTime);     // first, so the deer see where people are this frame
+            PerfProbe.Begin(PerfProbe.S.Wild);
             Wild.Update(Time.deltaTime);
+            PerfProbe.End(PerfProbe.S.Wild);
+            PerfProbe.Begin(PerfProbe.S.Atmo);
             WorldLighting.UpdateForZoom(Cam.Distance);
             // Firelight at night, and trees cut away round the focus (or the selected person) when zoomed in.
             SView.Night = InMenu || _demo ? 0 : 1f - Atmo.Daylight;
@@ -186,9 +211,16 @@ namespace Firstlight.Game
             SView.CutStrength = InMenu || _demo || CanopyCutOff || Sim.NeedsCampfire ? 0 : math.saturate((27f - Cam.Distance) / 10f);
             if (InMenu) Atmo.Apply(0.7f, 1.35f, 0f);          // the title backdrop: a late summer afternoon
             else if (!_demo) { Atmo.Apply(Sim); View.HideGroundCover = Atmo.Snow > 0.4f; }
+            PerfProbe.End(PerfProbe.S.Atmo);
+            PerfProbe.Begin(PerfProbe.S.ViewDraw);
             View.Draw(Time.time);
+            PerfProbe.End(PerfProbe.S.ViewDraw);
+            PerfProbe.Begin(PerfProbe.S.SViewDraw);
             SView.Draw(Time.deltaTime);
+            PerfProbe.End(PerfProbe.S.SViewDraw);
+            PerfProbe.Begin(PerfProbe.S.Sound);
             if (!_demo) Sound?.Update(Time.deltaTime);
+            PerfProbe.End(PerfProbe.S.Sound);
         }
 
         void OnGUI()
@@ -198,7 +230,9 @@ namespace Firstlight.Game
             bool shot = _pendingShot != null && Event.current.type == EventType.Repaint && Cam.Cam.targetTexture == _shotRT;
             var prev = RenderTexture.active;
             if (shot) RenderTexture.active = _shotRT;
+            PerfProbe.Begin(PerfProbe.S.OnGUI);
             if (InMenu) Hud.OnMenuGUI(); else Hud.OnGUI();
+            PerfProbe.End(PerfProbe.S.OnGUI);
             if (shot) { _guiDrawn = true; RenderTexture.active = prev; }
         }
 
@@ -239,12 +273,16 @@ namespace Firstlight.Game
                 if (_waterAccum > 1f) _waterAccum = 0;
                 Water.Step(WaterSim.StepSeconds, steps);
             }
+            PerfProbe.Begin(PerfProbe.S.FillFlood);
             if (Sim != null && Sim.Flooding && Sim.FloodCells != null) FillFlood(dt);
+            PerfProbe.End(PerfProbe.S.FillFlood);
             _waterSyncTimer += dt;
             if (_waterSyncTimer > 1f)
             {
                 _waterSyncTimer = 0;
+                PerfProbe.Begin(PerfProbe.S.WaterSync);
                 Water.SyncWaterClasses();
+                PerfProbe.End(PerfProbe.S.WaterSync);
             }
         }
 

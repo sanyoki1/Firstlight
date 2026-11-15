@@ -400,20 +400,27 @@ namespace Firstlight.Game.UI
             }
             else
             {
-                DrawFeed();
-                DrawBuildBar();
-                DrawGuide();
-                DrawInfo();
+                // PERF PROBE: Begin/End marks (no-ops unless -perfprobe)
+                PerfProbe.Begin(PerfProbe.S.GuiFeed); DrawFeed(); PerfProbe.End(PerfProbe.S.GuiFeed);
+                PerfProbe.Begin(PerfProbe.S.GuiBuildBar); DrawBuildBar(); PerfProbe.End(PerfProbe.S.GuiBuildBar);
+                PerfProbe.Begin(PerfProbe.S.GuiGuide); DrawGuide(); PerfProbe.End(PerfProbe.S.GuiGuide);
+                PerfProbe.Begin(PerfProbe.S.GuiInfo); DrawInfo(); PerfProbe.End(PerfProbe.S.GuiInfo);
+                PerfProbe.Begin(PerfProbe.S.GuiOther);
                 DrawTrade();
                 DrawHint();
                 DrawHoverTag();
+                PerfProbe.End(PerfProbe.S.GuiOther);
+                PerfProbe.Begin(PerfProbe.S.GuiPanels);
                 if (GoalsOpen) DrawGoals();
                 if (JobsOpen) DrawJobs();
                 if (StocksOpen) DrawStocks();
                 if (LawsOpen) DrawLaws();
+                PerfProbe.End(PerfProbe.S.GuiPanels);
                 DrawPlacementTip();
-                DrawTopBar();
+                PerfProbe.Begin(PerfProbe.S.GuiTopBar); DrawTopBar(); PerfProbe.End(PerfProbe.S.GuiTopBar);
+                PerfProbe.Begin(PerfProbe.S.GuiResearch);
                 if (ResearchOpen) DrawResearch();
+                PerfProbe.End(PerfProbe.S.GuiResearch);
                 if (EndOpen) DrawEndScreen();
                 if (GoneOpen) DrawGoneScreen();
             }

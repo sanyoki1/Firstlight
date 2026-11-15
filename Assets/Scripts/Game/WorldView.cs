@@ -369,17 +369,26 @@ namespace Firstlight.Game
 
         public void Draw(float time)
         {
+            // PERF PROBE: Begin/End marks (no-ops unless -perfprobe)
+            PerfProbe.Begin(PerfProbe.S.Trees);
             if (_map.TreesDirty) RefreshTrees();
+            PerfProbe.End(PerfProbe.S.Trees);
+            PerfProbe.Begin(PerfProbe.S.Rocks);
             if (_map.RocksDirty) RefreshRocks();
+            PerfProbe.End(PerfProbe.S.Rocks);
+            PerfProbe.Begin(PerfProbe.S.MatMap);
             if (_matDirty)
             {
                 _matDirty = false;
                 _matMap.SetPixelData(_matBytes, 0);
                 _matMap.Apply(false, false);
             }
+            PerfProbe.End(PerfProbe.S.MatMap);
             UpdateDeer();
             UpdatePeople();
+            PerfProbe.Begin(PerfProbe.S.WaterMesh);
             if (_water != null) UpdateWaterMesh();
+            PerfProbe.End(PerfProbe.S.WaterMesh);
             _conifers.Draw(); _broadleaves.Draw(); _rocks.Draw();
             foreach (var batch in _deer) batch.Draw();
             if (_people != null)

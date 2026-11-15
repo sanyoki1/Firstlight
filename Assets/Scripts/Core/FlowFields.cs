@@ -220,7 +220,12 @@ namespace Firstlight.Core
             sArr.Dispose();
             FieldsBuilt += targets.Count;
             LastBuildMs = sw.Elapsed.TotalMilliseconds;
+            TotalBuildMs += LastBuildMs;   // PERF PROBE (audit pass 2): read by the -perfprobe driver
+            Builds++;
         }
+        /// <summary>PERF PROBE: time spent building fields, and how many build batches (each one a main-thread wait).</summary>
+        public double TotalBuildMs { get; private set; }
+        public int Builds { get; private set; }
 
         int PickSlot()
         {
