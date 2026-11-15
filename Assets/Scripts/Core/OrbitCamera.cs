@@ -31,6 +31,8 @@ namespace Firstlight.Core
         public static float SpeedScale = 1f;
         /// <summary>No input at all (the main menu's slow orbit, a modal screen).</summary>
         public static bool InputLocked;
+        /// <summary>Set when the player pans the camera (keys, screen edge, middle-drag); the HUD's "Follow" stops on it and clears it.</summary>
+        public static bool PlayerPanned;
 
         public Camera Cam { get; private set; }
 
@@ -84,6 +86,7 @@ namespace Firstlight.Core
             var right = new Vector3(Mathf.Cos(yawRad), 0, -Mathf.Sin(yawRad));
             float panSpeed = Mathf.Max(8f, Distance * 0.9f) * SpeedScale;
             Focus += (right * move.x + fwd * move.y) * (panSpeed * dt);
+            if (move != Vector2.zero) PlayerPanned = true;
             Yaw += rot * 90f * dt * SpeedScale;
 
             if (mouse != null)
@@ -107,6 +110,7 @@ namespace Firstlight.Core
                 if (mouse.middleButton.isPressed)
                 {
                     float k = Distance * 0.0022f;
+                    if (delta != Vector2.zero) PlayerPanned = true;
                     Focus -= (right * delta.x + fwd * delta.y) * k;
                 }
             }

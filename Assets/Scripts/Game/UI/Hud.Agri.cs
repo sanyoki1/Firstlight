@@ -241,7 +241,7 @@ namespace Firstlight.Game.UI
         void DrawEndScreen()
         {
             var last = D.Ages[D.Ages.Count - 1];
-            var w = 760f; var h = 470f;
+            var w = 760f; var h = 500f;
             var r = Box(new Rect(VW / 2 - w / 2, VH / 2 - h / 2 - 20, w, h));
             Fill(new Rect(r.x + 1, r.y + 1, r.width - 2, r.height - 2), new Color(0.1f, 0.105f, 0.1f, 0.97f));
             GUI.Label(new Rect(r.x, r.y + 22, w, 40), $"You have reached the {last.name}", new GUIStyle(Title) { fontSize = 30, alignment = TextAnchor.MiddleCenter });
@@ -255,7 +255,8 @@ namespace Firstlight.Game.UI
             {
                 ("People", PeopleLine()),
                 ("Born / arrived", $"{S.Births} born, {S.Migrants} came to stay"),
-                ("Left / died", $"{S.Leavers} left, {S.TotalDeaths} died" + (S.Deaths.Count > 0 ? $" ({string.Join(", ", S.Deaths.OrderByDescending(kv => kv.Value).Take(3).Select(kv => $"{kv.Key} {kv.Value}"))})" : "")),
+                ("Left / died", $"{S.Leavers} left, {S.TotalDeaths} died"),
+                ("Deaths by cause", S.TotalDeaths > 0 ? DeathsByCause() : "none"),
                 ("Buildings", $"{buildings}, {S.PathCount} path tiles"),
                 ("Research", $"{S.ResearchLog.Count} topics learned"),
                 ("Winters", $"{S.WintersSurvived} survived"),
@@ -270,8 +271,11 @@ namespace Firstlight.Game.UI
             y += 10;
             var note = new GUIStyle(SmallWrap) { alignment = TextAnchor.UpperCenter, fontSize = 15 };
             GUI.Label(new Rect(r.x + 50, y, w - 100, 50), $"This build ends here: the buildings and research of the {last.name} are not in it yet. You can keep playing the settlement as a sandbox for as long as you like.", note);
-            var br = new Rect(r.x + w / 2 - 110, r.yMax - 60, 220, 38);
-            if (GUI.Button(br, "<b>Keep playing</b>", ButtonOn)) EndOpen = false;
+            // Keep playing, or save it now, or leave (Main menu asks first when there is unsaved play).
+            float by = r.yMax - 60, bw = 200;
+            if (GUI.Button(new Rect(r.x + w / 2 - bw * 1.5f - 12, by, bw, 38), "<b>Keep playing</b>", ButtonOn)) EndOpen = false;
+            if (GUI.Button(new Rect(r.x + w / 2 - bw / 2, by, bw, 38), "Save", Button)) { EndOpen = false; OpenMenu(); ShowScreen(MenuScreen.Save); }
+            if (GUI.Button(new Rect(r.x + w / 2 + bw / 2 + 12, by, bw, 38), "Main menu", Button)) { EndOpen = false; OpenMenu(); MenuLeave(false); }
         }
 
         /// <summary>Opens the end screen once, when the last age is reached (and the age-up banner has had its moment).</summary>
@@ -301,7 +305,7 @@ namespace Firstlight.Game.UI
         /// <summary>The settlement has no people left: what happened, and the ways on (a save, a new game, the menu).</summary>
         void DrawGoneScreen()
         {
-            var w = 700f; var h = 380f;
+            var w = 700f; var h = 410f;
             Fill(new Rect(0, 0, VW, VH), new Color(0, 0, 0, 0.35f));
             var r = Box(new Rect(VW / 2 - w / 2, VH / 2 - h / 2 - 20, w, h));
             Fill(new Rect(r.x + 1, r.y + 1, r.width - 2, r.height - 2), new Color(0.1f, 0.105f, 0.1f, 0.97f));
@@ -312,7 +316,8 @@ namespace Firstlight.Game.UI
             var lines = new (string, string)[]
             {
                 ("Born / arrived", $"{S.Births} born, {S.Migrants} came to stay"),
-                ("Left / died", $"{S.Leavers} left, {S.TotalDeaths} died" + (S.Deaths.Count > 0 ? $" ({string.Join(", ", S.Deaths.OrderByDescending(kv => kv.Value).Take(3).Select(kv => $"{kv.Key} {kv.Value}"))})" : "")),
+                ("Left / died", $"{S.Leavers} left, {S.TotalDeaths} died"),
+                ("Deaths by cause", S.TotalDeaths > 0 ? DeathsByCause() : "none"),
                 ("Winters", $"{S.WintersSurvived} survived"),
                 ("Research", $"{S.ResearchLog.Count} topics learned"),
             };

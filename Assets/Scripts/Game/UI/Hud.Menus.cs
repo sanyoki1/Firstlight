@@ -232,7 +232,7 @@ namespace Firstlight.Game.UI
                 var d = diffs[_difficulty];
                 GUI.Label(new Rect(x, y, 470, 44), d.description, SmallWrap);
                 y += 46;
-                GUI.Label(new Rect(x, y, 470, 22), Col($"Starting goods x{d.startGoods:0.##}, yields x{d.yield:0.##}, firewood use x{d.firewood:0.##}, winter {(d.winterTemperature >= 0 ? "+" : "")}{d.winterTemperature:0.##} warmth", Dim), Small);
+                GUI.Label(new Rect(x, y, 470, 22), Col($"Starting goods x{d.startGoods:0.##}, yields x{d.yield:0.##}, firewood use x{d.firewood:0.##}. Winters: {(d.winterTemperature > 0.001f ? "milder" : d.winterTemperature < -0.001f ? "colder" : "normal")}", Dim), Small);
             }
             y += 50;
             if (MenuButton(new Rect(x, y, 420, 50), "Start")) MenuNewGame(int.TryParse(_seedText, out int seed) ? seed : 1, _difficulty);
@@ -284,7 +284,9 @@ namespace Firstlight.Game.UI
                 string name = hd != null ? hd.Name : Path.GetFileNameWithoutExtension(file);
                 string kind = hd == null ? "" : hd.Kind == "auto" ? "autosave" : hd.Kind == "quick" ? "quicksave" : "";
                 GUI.Label(new Rect(6, row.y + 2, 290, 22), $"<b>{name}</b>", Label);
-                GUI.Label(new Rect(6, row.y + 22, 290, 18), Col(kind.Length > 0 ? kind : Path.GetFileName(file), Faint), Small);
+                // Second line: autosave / quicksave; the file name only for a save whose header can't be read.
+                string sub = kind.Length > 0 ? kind : hd == null ? Path.GetFileName(file) : "";
+                if (sub.Length > 0) GUI.Label(new Rect(6, row.y + 22, 290, 18), Col(sub, Dim), Small);
                 if (hd != null)
                 {
                     GUI.Label(new Rect(306, row.y + 2, 250, 22), $"{hd.Age}, year {hd.Year} {hd.Season}", Label);

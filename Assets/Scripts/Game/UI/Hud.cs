@@ -170,9 +170,32 @@ namespace Firstlight.Game.UI
         /// <summary>Moves the camera to a point (keeps zoom unless given).</summary>
         public void JumpTo(float2 p, float distance = -1)
         {
+            Following = null;
             _camFrom = G.Cam.Focus; _camTo = new Vector3(p.x, M.HeightAt(p.x, p.y), p.y);
             _distFrom = G.Cam.Distance; _distTo = distance > 0 ? distance : G.Cam.Distance;
             _camT = 0;
+        }
+
+        /// <summary>The person "Follow" keeps the camera on, or null.</summary>
+        public Citizen Following { get; private set; }
+
+        public void Follow(Citizen c)
+        {
+            JumpTo(c.Pos);                         // clears Following
+            Following = c; OrbitCamera.PlayerPanned = false;
+        }
+
+        /// <summary>Keeps the camera on the followed person (where the view draws them) until the player pans the camera, the
+        /// person's panel closes or they are gone.</summary>
+        void UpdateFollow()
+        {
+            if (Following == null) return;
+            if (OrbitCamera.PlayerPanned || SelectedCitizen != Following || Following.Gone) { Following = null; return; }
+            if (_camT >= 0) return;               // the first jump runs its course
+            float2 p = Following.Pos;
+            foreach (var (dc, dp) in G.SView.Drawn) if (dc == Following) { p = dp; break; }
+            var to = new Vector3(p.x, M.HeightAt(p.x, p.y), p.y);
+            G.Cam.Focus = Vector3.Lerp(G.Cam.Focus, to, 1f - math.exp(-6f * math.min(Time.unscaledDeltaTime, 0.1f)));
         }
 
         Vector3 _camFrom, _camTo; float _distFrom, _distTo, _camT = -1;
@@ -224,6 +247,7 @@ namespace Firstlight.Game.UI
             Keys();
             UpdateHover();
             MouseInput(overUI);
+            UpdateFollow();
             if (_camT >= 0)
             {
                 _camT = math.min(1f, _camT + math.min(Time.unscaledDeltaTime, 0.05f) / 1.6f);

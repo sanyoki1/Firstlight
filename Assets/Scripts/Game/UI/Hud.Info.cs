@@ -332,13 +332,16 @@ namespace Firstlight.Game.UI
             }
             Gap(4);
             Row("Tool  " + (c.Tool >= 0 ? $"{D.Resources[c.Tool].name}, {c.ToolLife:0} work days left" : Col("none", Faint)), Small, 20);
-            Row("Clothing  " + (c.ClothingLife > 0 ? $"hide clothing, {c.ClothingLife:0} cold days left" : Col("none", Faint)), Small, 20);
+            Row("Clothing  " + (c.ClothingLife > 0 ? $"{c.ClothingLife:0} cold days left" : Col("none", Faint)), Small, 20);
             Gap(6);
             float bx = _lx;
             if (c.Job != null && GUI.Button(new Rect(bx, _ly, 130, 28), "Workplace", Button)) { var j = c.Job; Select(j); JumpTo(j.Center); }
             if (c.Job != null) bx += 136;
             if (c.Home != null && GUI.Button(new Rect(bx, _ly, 100, 28), "Home", Button)) { var h = c.Home; Select(h); JumpTo(h.Center); }
-            if (GUI.Button(new Rect(_lx + _lw - 100, _ly, 100, 28), "Follow", Button)) JumpTo(c.Pos);
+            var fr = new Rect(_lx + _lw - 110, _ly, 110, 28);
+            bool following = Following == c;
+            if (GUI.Button(fr, following ? "Following" : "Follow", following ? ButtonOn : Button)) { if (following) Following = null; else Follow(c); }
+            Tip(fr, following ? "The camera follows them until you move it or close this panel. Click to stop." : "Keep the camera on them until you move it or close this panel.");
             _ly += 32;
             EndInfo(r);
         }
