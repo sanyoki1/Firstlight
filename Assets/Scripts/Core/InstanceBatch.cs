@@ -43,7 +43,8 @@ namespace Firstlight.Core
         }
 
         static Material _doubleSided;
-        /// <summary>Same shader with back faces drawn, for crossed-quad plant sprites.</summary>
+        /// <summary>Same shader with back faces drawn, for crossed-quad plant sprites. They count as ground for the
+        /// highlight x-ray (stencil 1), so a tuft never hides a selection ring.</summary>
         public static Material DoubleSidedMaterial
         {
             get
@@ -52,9 +53,25 @@ namespace Firstlight.Core
                 {
                     _doubleSided = new Material(SharedMaterial) { name = "InstancedFlatDoubleSided" };
                     _doubleSided.SetFloat("_Cull", 0f);
+                    _doubleSided.SetFloat("_StencilRef", 1f);
                 }
                 return _doubleSided;
             }
+        }
+
+        /// <summary>A copy of <paramref name="source"/> that draws only the parts hidden under the ground (terrain,
+        /// water, ground cover): after everything else, where the depth test fails and the stencil says ground.</summary>
+        public static Material XRayOf(Material source, string name)
+        {
+            var m = new Material(source) { name = name };
+            m.SetFloat("_XRay", 1f);
+            m.SetFloat("_ZTest", (float)CompareFunction.Greater);
+            m.SetFloat("_ZWrite", 0f);
+            m.SetFloat("_StencilRef", 1f);
+            m.SetFloat("_StencilComp", (float)CompareFunction.Equal);
+            m.SetFloat("_StencilPass", (float)StencilOp.Keep);
+            m.renderQueue = 3100;   // after opaque and transparent geometry, outside the depth prepass and shadows
+            return m;
         }
 
         public Mesh Mesh;

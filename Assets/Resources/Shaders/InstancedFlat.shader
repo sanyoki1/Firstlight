@@ -7,6 +7,10 @@
 // rising); 0 = placement ghost (the whole mesh washed with the instance colour).
 // _Smoke = 1 (smoke puffs): the alpha is how solid the puff is, thinned out with a screen-door dither, and the puff is
 // lit softly from all round instead of facet by facet.
+// Stencil: the forward pass writes _StencilRef (0 = a thing; ground-cover sprites write 1 like the ground, see FlatLit).
+// _XRay = 1 (the x-ray material for highlights: selection rings, markers, the placement ghost): drawn after everything
+// with ZTest Greater and only where the stencil says ground, so the parts hidden under the ground still show, while a
+// building or tree in front still hides them. The ghost's hidden parts are drawn flat in its colour.
 Shader "Firstlight/InstancedFlat"
 {
     Properties
@@ -14,6 +18,12 @@ Shader "Firstlight/InstancedFlat"
         [Enum(UnityEngine.Rendering.CullMode)] _Cull ("Cull", Float) = 2
         _Snowable ("Takes snow", Float) = 1
         _Smoke ("Smoke puffs", Float) = 0
+        _XRay ("X-ray (hidden parts of highlights)", Float) = 0
+        [Enum(UnityEngine.Rendering.CompareFunction)] _ZTest ("ZTest", Float) = 4
+        _ZWrite ("ZWrite", Float) = 1
+        _StencilRef ("Stencil ref", Float) = 0
+        [Enum(UnityEngine.Rendering.CompareFunction)] _StencilComp ("Stencil comp", Float) = 8
+        [Enum(UnityEngine.Rendering.StencilOp)] _StencilPass ("Stencil pass", Float) = 2
     }
     SubShader
     {
@@ -23,6 +33,7 @@ Shader "Firstlight/InstancedFlat"
         #include "FlatCommon.hlsl"
         float _Snowable;
         float _Smoke;
+        float _XRay;
         #define BUILD_HEIGHT 4.0
         float BuildCut(uint color, float y)
         {
@@ -53,6 +64,8 @@ Shader "Firstlight/InstancedFlat"
             Name "ForwardLit"
             Tags { "LightMode"="UniversalForward" }
             Cull [_Cull]
+            ZTest [_ZTest] ZWrite [_ZWrite]
+            Stencil { Ref [_StencilRef] Comp [_StencilComp] Pass [_StencilPass] }
             HLSLPROGRAM
             #pragma target 4.5
             #pragma vertex vert
@@ -108,6 +121,11 @@ Shader "Firstlight/InstancedFlat"
                     return half4(FL_Fog(lit, i.positionWS), 1);
                 }
                 bool ghost = i.inst.a <= 0.002;
+                if (_XRay > 0.5)
+                {
+                    clip(i.local.y + 0.05);                      // not a site's dirt pad, which always lies below the ground
+                    if (ghost) return half4(FL_Fog(i.inst.rgb * 0.8, i.positionWS), 1);
+                }
                 if (i.mat.y > 2.5)
                 {
                     half3 g = albedo * _FL_Glow;

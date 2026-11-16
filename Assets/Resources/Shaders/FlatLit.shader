@@ -1,6 +1,8 @@
 // Pixel-art material shader for regular meshes (terrain, water, buildings).
 // Vertex data: COLOR = tint, TEXCOORD0 = explicit UV, TEXCOORD1 = (material layer, uv mode: 0 box projection, 1 explicit).
 // _UseMatMap = 1 takes the layer from the terrain material map instead.
+// Everything drawn with this shader is ground (terrain, water, outskirts): its visible pixels set stencil bit 1, so
+// highlights hidden under the ground can be drawn through it (InstancedFlat's x-ray material).
 Shader "Firstlight/FlatLit"
 {
     Properties
@@ -29,6 +31,7 @@ Shader "Firstlight/FlatLit"
             Name "ForwardLit"
             Tags { "LightMode"="UniversalForward" }
             Cull [_Cull]
+            Stencil { Ref 1 Comp Always Pass Replace }
             HLSLPROGRAM
             #pragma target 4.5
             #pragma vertex vert

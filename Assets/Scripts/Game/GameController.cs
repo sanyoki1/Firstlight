@@ -245,6 +245,7 @@ namespace Firstlight.Game
             try
             {
                 PerfProbe.Begin(PerfProbe.S.SViewDraw);
+                if (_highlightShot is { } hs) { SView.Selected = hs.sel; SView.GhostDef = hs.ghost; SView.GhostOrigin = hs.origin; SView.GhostRot = 0; SView.GhostValid = true; }
                 SView.Draw(Time.deltaTime);
                 PerfProbe.End(PerfProbe.S.SViewDraw);
             }

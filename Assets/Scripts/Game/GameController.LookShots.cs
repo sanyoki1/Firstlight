@@ -13,6 +13,22 @@ namespace Firstlight.Game
     {
         /// <summary>Set by -lookshots: the time of day (0..1), season position (0..4) and snow shown, whatever the sim says.</summary>
         (float day, float season, float snow)? _lookAtmo;
+        /// <summary>Set by the -lookshots highlight shot: a selected building and a placement ghost, whatever the HUD says.</summary>
+        (Building sel, BuildingDef ghost, int2 origin)? _highlightShot;
+
+        /// <summary>How far a footprint's ground rises from its lowest to its highest corner.</summary>
+        float FootprintRise(int2 o, int2 size)
+        {
+            float lo = float.MaxValue, hi = float.MinValue;
+            for (int y = o.y; y <= o.y + size.y; y++)
+                for (int x = o.x; x <= o.x + size.x; x++)
+                {
+                    if (x < 0 || y < 0 || x > Map.W || y > Map.H) return 0;
+                    float h = Map.Corners[y * (Map.W + 1) + x];
+                    lo = math.min(lo, h); hi = math.max(hi, h);
+                }
+            return hi - lo;
+        }
 
         IEnumerator LookShots()
         {
@@ -53,6 +69,44 @@ namespace Firstlight.Game
                 LookAt(World(s.at), s.dist, s.pitch, s.yaw);
                 yield return Settle(25);
                 yield return Shot("look_" + s.name);
+            }
+            if (only == null || only.Contains("highlight"))
+            {
+                // A selected building and a placement ghost on the steepest ground near the town: the parts of their
+                // rings and outlines the ground covers must still show.
+                Building sel = null; float rise = -1;
+                foreach (var b in Sim.Buildings)
+                {
+                    if (!b.Alive || b.Def.sizeX > 3 || b.Def.sizeY > 3 || math.distance(b.Center, tc) > 40) continue;
+                    float r = FootprintRise(b.Origin, new int2(b.SX, b.SY));
+                    if (r > rise) { rise = r; sel = b; }
+                }
+                var def = sel?.Def ?? Sim.Data.Buildings.Find(d => !d.path && d.sizeX >= 2);
+                int2 ghostAt = default; float gRise = -1;
+                var at0 = sel != null ? sel.Center : tc;
+                for (int y = (int)at0.y - 25; y <= at0.y + 25; y++)
+                    for (int x = (int)at0.x - 25; x <= at0.x + 25; x++)
+                    {
+                        var o = new int2(x, y);
+                        if (!Sim.CanPlace(def, o, 0, out _)) continue;
+                        float r = FootprintRise(o, new int2(def.sizeX, def.sizeY));
+                        if (r > gRise) { gRise = r; ghostAt = o; }
+                    }
+                Debug.Log($"[LookShots] highlight: selected {sel?.Def.id} rise {rise:F2}, ghost {def.id} at {ghostAt} rise {gRise:F2}");
+                _highlightShot = (sel, def, ghostAt);
+                _lookAtmo = (0.5f, 1.4f, 0f);
+                var ghostC = Settlement.FootprintCenter(def, ghostAt, 0);
+                foreach (var (name, at, pitch, yaw) in new[]
+                {
+                    ("highlight_sel_top", sel?.Center ?? tc, 60f, 30f), ("highlight_sel_low", sel?.Center ?? tc, 30f, 200f),
+                    ("highlight_ghost_top", ghostC, 60f, 30f), ("highlight_ghost_low", ghostC, 30f, 200f),
+                })
+                {
+                    LookAt(World(at), 14f, pitch, yaw);
+                    yield return Settle(25);
+                    yield return Shot("look_" + name);
+                }
+                _highlightShot = null;
             }
             if (only == null || only.Contains("cinematic"))
             {

@@ -43,7 +43,12 @@ namespace Firstlight.Game
         readonly List<Batch> _all = new();
         Batch[] _people;                  // [pose * 2 + woman]
         Batch _spearUp, _spearLevel, _rings, _markers, _smoke;
-        static Material _noSnow, _smokeMat;
+        // Highlights again, drawn only where they are hidden under the ground (InstancedFlat _XRay): rings, markers, and
+        // the placement ghost's body and site marks per mesh.
+        Batch _ringsX, _markersX;
+        readonly Dictionary<BuildingDef, Batch> _ghostX = new();
+        readonly Dictionary<int, Batch> _siteMarksX = new();
+        static Material _noSnow, _smokeMat, _xray;
 
         // ------------------------------------------------------------------ per building / citizen view state
         float[] _base = new float[64];    // ground height per building id (NaN = not yet seen)
@@ -100,6 +105,9 @@ namespace Firstlight.Game
             _spearLevel = Track(new Batch(PersonModel.Spear(true), _noSnow));
             _rings = Track(new Batch(BuildingMeshes.Ring, _noSnow, false));
             _markers = Track(new Batch(BuildingMeshes.Marker, _noSnow, false));
+            if (_xray == null) _xray = InstanceBatch.XRayOf(_noSnow, "InstancedFlatXRay");
+            _ringsX = Track(new Batch(BuildingMeshes.Ring, _xray, false));
+            _markersX = Track(new Batch(BuildingMeshes.Marker, _xray, false));
             foreach (var k in BuildingMeshes.PileKinds) _piles[k] = Track(new Batch(BuildingMeshes.Pile(k)));
             if (_smokeMat == null)
             {
@@ -127,6 +135,23 @@ namespace Firstlight.Game
             if (!_siteMarks.TryGetValue(key, out var b)) { b = Track(new Batch(BuildingMeshes.SiteMarks(d.sizeX, d.sizeY))); _siteMarks[key] = b; }
             return b;
         }
+
+        Batch GhostX(BuildingDef d)
+        {
+            if (!_ghostX.TryGetValue(d, out var b)) { b = Track(new Batch(BuildingMeshes.For(d).body, _xray, false)); _ghostX[d] = b; }
+            return b;
+        }
+
+        Batch SiteMarksX(BuildingDef d)
+        {
+            int key = d.sizeX * 64 + d.sizeY;
+            if (!_siteMarksX.TryGetValue(key, out var b)) { b = Track(new Batch(BuildingMeshes.SiteMarks(d.sizeX, d.sizeY), _xray, false)); _siteMarksX[key] = b; }
+            return b;
+        }
+
+        /// <summary>A selection ring or marker, drawn whole even where the ground covers it.</summary>
+        void Ring(in InstanceData d) { _rings.Add(d); _ringsX.Add(d); }
+        void Marker(in InstanceData d) { _markers.Add(d); _markersX.Add(d); }
 
         Batch Scaffold(BuildingDef d)
         {
@@ -684,20 +709,20 @@ namespace Firstlight.Game
             {
                 float y = BaseOf(Selected) + 0.02f;
                 float r = math.max(Selected.Def.sizeX, Selected.Def.sizeY) * 0.75f;
-                _rings.Add(new InstanceData(new float3(Selected.Center.x, y, Selected.Center.y), 0, new float3(r, 1, r), Pal.Pack(sel)));
+                Ring(new InstanceData(new float3(Selected.Center.x, y, Selected.Center.y), 0, new float3(r, 1, r), Pal.Pack(sel)));
             }
             if (HoverBuilding != null && HoverBuilding.Alive && HoverBuilding != Selected)
             {
                 float y = BaseOf(HoverBuilding) + 0.02f;
                 float r = math.max(HoverBuilding.Def.sizeX, HoverBuilding.Def.sizeY) * 0.75f;
-                _rings.Add(new InstanceData(new float3(HoverBuilding.Center.x, y, HoverBuilding.Center.y), 0, new float3(r, 1, r), Pal.Pack(new Color(0.7f, 0.68f, 0.6f))));
+                Ring(new InstanceData(new float3(HoverBuilding.Center.x, y, HoverBuilding.Center.y), 0, new float3(r, 1, r), Pal.Pack(new Color(0.7f, 0.68f, 0.6f))));
             }
             if (SelectedCitizen != null || HoverCitizen != null)
             {
                 foreach (var (c, p) in Drawn)
                 {
-                    if (c == SelectedCitizen) _rings.Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), 0, new float3(0.45f, 1, 0.45f), Pal.Pack(PersonRing(c, sel))));
-                    else if (c == HoverCitizen) _rings.Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), 0, new float3(0.4f, 1, 0.4f), Pal.Pack(PersonRing(c, new Color(0.7f, 0.68f, 0.6f)))));
+                    if (c == SelectedCitizen) Ring(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), 0, new float3(0.45f, 1, 0.45f), Pal.Pack(PersonRing(c, sel))));
+                    else if (c == HoverCitizen) Ring(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), 0, new float3(0.4f, 1, 0.4f), Pal.Pack(PersonRing(c, new Color(0.7f, 0.68f, 0.6f)))));
                 }
             }
             if (GhostDef != null)
@@ -708,8 +733,10 @@ namespace Firstlight.Game
                 var at = new float3(center.x, BaseHeight(GhostDef, GhostOrigin, GhostRot), center.y);
                 Def(GhostDef).body.Add(new InstanceData(at, Yaw(GhostRot), new float3(1f), ghost));
                 SiteMarks(GhostDef).Add(new InstanceData(at, Yaw(GhostRot), new float3(1f), ghost));
+                GhostX(GhostDef).Add(new InstanceData(at, Yaw(GhostRot), new float3(1f), ghost));
+                SiteMarksX(GhostDef).Add(new InstanceData(at, Yaw(GhostRot), new float3(1f), ghost));
                 var door = Settlement.DoorCell(GhostDef, GhostOrigin, GhostRot);
-                _markers.Add(new InstanceData(new float3(door.x + 0.5f, M.HeightAt(door.x + 0.5f, door.y + 0.5f), door.y + 0.5f), 0, new float3(2f, 1f, 2f), Pal.Pack(col)));
+                Marker(new InstanceData(new float3(door.x + 0.5f, M.HeightAt(door.x + 0.5f, door.y + 0.5f), door.y + 0.5f), 0, new float3(2f, 1f, 2f), Pal.Pack(col)));
             }
             if (DemolishHover != null && DemolishHover.Alive)
             {
@@ -724,7 +751,7 @@ namespace Firstlight.Game
                 {
                     if (M.Deposits[c] != DepositHint || M.BuildingAt[c] >= 0) continue;
                     float x = c % M.W + 0.5f, y = c / M.W + 0.5f;
-                    _markers.Add(new InstanceData(new float3(x, M.HeightAt(x, y), y), 0, new float3(1.6f, 1f, 1.6f), hint));
+                    Marker(new InstanceData(new float3(x, M.HeightAt(x, y), y), 0, new float3(1.6f, 1f, 1.6f), hint));
                 }
             }
             // A path being dragged out.
@@ -732,7 +759,7 @@ namespace Firstlight.Game
             {
                 uint pc = Pal.Pack(PathPreviewValid ? new Color(0.95f, 0.85f, 0.6f) : new Color(0.9f, 0.35f, 0.3f));
                 foreach (var p in PathPreview)
-                    _markers.Add(new InstanceData(new float3(p.x + 0.5f, M.HeightAt(p.x + 0.5f, p.y + 0.5f), p.y + 0.5f), 0, new float3(3f, 1f, 3f), pc));
+                    Marker(new InstanceData(new float3(p.x + 0.5f, M.HeightAt(p.x + 0.5f, p.y + 0.5f), p.y + 0.5f), 0, new float3(3f, 1f, 3f), pc));
             }
             // Radius previews: studs on the ground every cell or so round the circle.
             foreach (var (center, radius, color) in Radii)
@@ -744,7 +771,7 @@ namespace Firstlight.Game
                     float a = i * 2f * math.PI / n;
                     var p = center + new float2(math.sin(a), math.cos(a)) * radius;
                     if (p.x < 0 || p.y < 0 || p.x >= M.W || p.y >= M.H) continue;
-                    _markers.Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), 0, new float3(1.6f, 1f, 1.6f), col));
+                    Marker(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), 0, new float3(1.6f, 1f, 1.6f), col));
                 }
             }
         }
