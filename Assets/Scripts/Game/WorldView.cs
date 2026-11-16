@@ -14,6 +14,7 @@ namespace Firstlight.Game
     {
         readonly GameMap _map;
         GameObject _terrainGo, _waterGo;
+        Mesh _terrainMesh; Vector3[] _terrainVerts;    // the map's cells come first, 4 vertices each, row by row
         Texture2D _matMap;
         byte[] _matBytes, _matOrig;
         bool _matDirty;
@@ -34,11 +35,11 @@ namespace Firstlight.Game
         Cover _bushes, _tufts, _flowers, _reeds, _ferns, _pebbles, _logs, _stumps;
         Cover[] _covers;
         bool _coverDirty; float _coverClock;
-        readonly List<InstanceData> _tmp = new();
         /// <summary>Player settings: the share of the ground cover drawn (0..1), and whether birds fly.</summary>
         public static float GroundDetail = 1f;
         public static bool BirdsOn = true;
         float _coverShare = -1f;
+        readonly List<InstanceData> _tmp = new();
         Wildlife _wild;
         InstanceBatch[] _deer;                 // [pose * 2 + (stag ? 1 : 0)]
         InstanceData[][] _deerBuf;
@@ -133,6 +134,47 @@ namespace Firstlight.Game
         public void RestoreCellMaterial(int c)
         {
             if (_matBytes[c] != _matOrig[c]) { _matBytes[c] = _matOrig[c]; _matDirty = true; }
+        }
+
+        /// <summary>
+        /// The drawn heights (<see cref="GameMap.Shown"/>) changed at corners x0..x1, y0..y1 (the ground levelled under a
+        /// building, or given back): moves the terrain there, and the trees, rocks and ground cover standing on it.
+        /// <paramref name="before"/> holds the heights as they were.
+        /// </summary>
+        public void ShownHeightsChanged(int x0, int y0, int x1, int y1, float[] before)
+        {
+            int w = _map.W, h = _map.H, w1 = w + 1;
+            int cx0 = math.max(0, x0 - 1), cy0 = math.max(0, y0 - 1), cx1 = math.min(w - 1, x1), cy1 = math.min(h - 1, y1);
+            for (int y = cy0; y <= cy1; y++)
+                for (int x = cx0; x <= cx1; x++)
+                {
+                    int v = (y * w + x) * 4;
+                    _terrainVerts[v].y = _map.Shown[y * w1 + x];
+                    _terrainVerts[v + 1].y = _map.Shown[(y + 1) * w1 + x];
+                    _terrainVerts[v + 2].y = _map.Shown[(y + 1) * w1 + x + 1];
+                    _terrainVerts[v + 3].y = _map.Shown[y * w1 + x + 1];
+                }
+            _terrainMesh.SetVertices(_terrainVerts, 0, _terrainVerts.Length, UnityEngine.Rendering.MeshUpdateFlags.DontRecalculateBounds);
+            if (_covers != null)
+                foreach (var cv in _covers)
+                    for (int i = 0; i < cv.All.Count; i++)
+                    {
+                        int c = cv.Cell[i], x = c % w, y = c / w;
+                        if (x < cx0 || x > cx1 || y < cy0 || y > cy1) continue;
+                        var d = cv.All[i];
+                        d.pos.y += _map.HeightAt(d.pos.x, d.pos.z) - Before(d.pos.x, d.pos.z);
+                        cv.All[i] = d;
+                    }
+            _coverDirty = true;
+            _map.TreesDirty = _map.RocksDirty = true;
+
+            float Before(float px, float pz)
+            {
+                float fx0 = math.clamp(px, 0, w - 0.001f), fy0 = math.clamp(pz, 0, h - 0.001f);
+                int ix = (int)fx0, iy = (int)fy0;
+                float fx = fx0 - ix, fy = fy0 - iy;
+                return math.lerp(math.lerp(before[iy * w1 + ix], before[iy * w1 + ix + 1], fx), math.lerp(before[(iy + 1) * w1 + ix], before[(iy + 1) * w1 + ix + 1], fx), fy);
+            }
         }
 
         // Distances from the border of the strips the outskirts are drawn in (finer near the map).
@@ -258,10 +300,10 @@ namespace Firstlight.Game
                 for (int x = 0; x < w; x++)
                 {
                     int q = y * w + x, v = q * 4;
-                    verts[v] = new Vector3(x, _map.Corners[y * w1 + x], y);
-                    verts[v + 1] = new Vector3(x, _map.Corners[(y + 1) * w1 + x], y + 1);
-                    verts[v + 2] = new Vector3(x + 1, _map.Corners[(y + 1) * w1 + x + 1], y + 1);
-                    verts[v + 3] = new Vector3(x + 1, _map.Corners[y * w1 + x + 1], y);
+                    verts[v] = new Vector3(x, _map.Shown[y * w1 + x], y);
+                    verts[v + 1] = new Vector3(x, _map.Shown[(y + 1) * w1 + x], y + 1);
+                    verts[v + 2] = new Vector3(x + 1, _map.Shown[(y + 1) * w1 + x + 1], y + 1);
+                    verts[v + 3] = new Vector3(x + 1, _map.Shown[y * w1 + x + 1], y);
                     for (int k = 0; k < 4; k++) { cols[v + k] = Color.white; normals[v + k] = Vector3.up; }
                     int t = q * 6;
                     // Alternate the diagonal for a less regular facet pattern.
@@ -298,6 +340,7 @@ namespace Firstlight.Game
             mesh.triangles = tris;
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
+            _terrainMesh = mesh; _terrainVerts = verts;
             _terrainGo = new GameObject("Terrain");
             _terrainGo.AddComponent<MeshFilter>().sharedMesh = mesh;
             var mat = WorldLighting.FlatMaterial(Color.white);
@@ -617,6 +660,7 @@ namespace Firstlight.Game
         void RefreshCover()
         {
             _coverDirty = false;
+            _coverShare = GroundDetail;
             foreach (var cv in _covers)
             {
                 if (cv.Buf.Length < cv.All.Count) cv.Buf = new InstanceData[cv.All.Count];
@@ -661,7 +705,6 @@ namespace Firstlight.Game
 
         static float Hash01(int c) { uint h = (uint)c * 2654435761u; h ^= h >> 15; h *= 2246822519u; h ^= h >> 13; return (h & 0xffffff) / 16777216f; }
 
-            _coverShare = GroundDetail;
         static uint Tint(int seed, float lo, float hi)
         {
             // Hash, not System.Random: trees are re-uploaded whenever one is felled or grows (no garbage).
@@ -705,6 +748,7 @@ namespace Firstlight.Game
             }
             // Ground cover follows the ground: gone where it has been trodden, built on or tilled (checked a few times a second).
             _coverClock += Time.unscaledDeltaTime;
+            if (_coverShare != GroundDetail) _coverDirty = true;
             if (_coverDirty && _coverClock > 0.3f) { _coverClock = 0; RefreshCover(); }
             foreach (var cv in _covers) if (!(HideGroundCover && cv.UnderSnow)) cv.Batch.Draw();
             DrawBirds();
@@ -748,7 +792,6 @@ namespace Firstlight.Game
                     int count = (int)math.round(fl.Count * BirdsOut);
                     for (int i = 0; i < count; i++)
                     {
-            if (_coverShare != GroundDetail) _coverDirty = true;
                         // Each bird trails the flock's lead round the circle, weaving a little, and flaps out of step.
                         float h1 = Hash01(f * 97 + i * 13), h2 = Hash01(f * 53 + i * 7 + 1);
                         float a = fl.Phase + _birdTime * fl.Speed - math.sign(fl.Speed) * i * 0.035f + (h1 - 0.5f) * 0.12f;

@@ -117,6 +117,26 @@ namespace Firstlight.Game
                 }
                 _highlightShot = null;
             }
+            if (only == null || only.Contains("level"))
+            {
+                // The field on the steepest ground near the town: it must sit on levelled earth, every row showing.
+                Building field = null; float rise = -1;
+                foreach (var b in Sim.Buildings)
+                {
+                    if (!b.Alive || !b.Def.crop || math.distance(b.Center, tc) > 45) continue;
+                    float r = FootprintRise(b.Origin, new int2(b.SX, b.SY));
+                    if (r > rise) { rise = r; field = b; }
+                }
+                Debug.Log($"[LookShots] level: field {field?.Def.id} at {field?.Origin} rise {rise:F2}");
+                var at = field?.Center ?? tc;
+                foreach (var (name, season, snow, yaw) in new[] { ("level_summer", 1.4f, 0f, 30f), ("level_summer_side", 1.4f, 0f, 120f), ("level_winter", 3.5f, 0.9f, 30f) })
+                {
+                    _lookAtmo = (0.5f, season, snow);
+                    LookAt(World(at), 16f, 34f, yaw);
+                    yield return Settle(25);
+                    yield return Shot("look_" + name);
+                }
+            }
             if (only == null || only.Contains("cinematic"))
             {
                 // The cinematic view (F10): soft focus round the town fire in the evening light.

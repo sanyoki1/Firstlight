@@ -53,6 +53,8 @@ namespace Firstlight.Game
         // ------------------------------------------------------------------ per building / citizen view state
         float[] _base = new float[64];    // ground height per building id (NaN = not yet seen)
         byte[] _ground = new byte[64];    // 0 not yet, 1 footprint cleared to dirt, 2 restored after removal
+        bool _levelDirty;                 // a building was placed or removed: level the drawn ground again
+        float[] _levelOld, _levelNew; int[] _levelStamp; int _levelGen;
 
         struct Vis { public float2 Pos; public float Yaw, Stride; public int Seen; }
         readonly Dictionary<int, Vis> _vis = new();
@@ -208,6 +210,7 @@ namespace Firstlight.Game
             byte want = b.Alive ? (byte)1 : (byte)2;
             if (_ground[b.Id] == want || (!b.Alive && _ground[b.Id] == 0)) return;
             _ground[b.Id] = want;
+            _levelDirty = true;
             for (int y = b.Origin.y - 1; y <= b.Origin.y + b.SY; y++)
                 for (int x = b.Origin.x - 1; x <= b.Origin.x + b.SX; x++)
                 {
@@ -220,6 +223,45 @@ namespace Firstlight.Game
                 }
         }
 
+        /// <summary>
+        /// Levels the drawn ground under every building to its base height (GameMap.Shown), so a field or house on a
+        /// slope sits on flat earth with a bank up or down to the land round it instead of sinking into the hillside.
+        /// A corner shared by two buildings takes the lower base (the higher one's earth pad covers the step). The
+        /// simulation never reads these heights.
+        /// </summary>
+        void Relevel()
+        {
+            _levelDirty = false;
+            int w1 = M.W + 1, n = w1 * (M.H + 1);
+            if (_levelOld == null) { _levelOld = new float[n]; _levelNew = new float[n]; _levelStamp = new int[n]; }
+            M.Shown.CopyTo(_levelOld);
+            M.Corners.CopyTo(_levelNew);
+            _levelGen++;
+            foreach (var b in S.Buildings)
+            {
+                if (!b.Alive) continue;
+                float h = BaseOf(b);
+                for (int y = b.Origin.y; y <= b.Origin.y + b.SY; y++)
+                    for (int x = b.Origin.x; x <= b.Origin.x + b.SX; x++)
+                    {
+                        if (x < 0 || y < 0 || x > M.W || y > M.H) continue;
+                        int i = y * w1 + x;
+                        if (_levelStamp[i] != _levelGen) { _levelStamp[i] = _levelGen; _levelNew[i] = h; }
+                        else _levelNew[i] = math.min(_levelNew[i], h);
+                    }
+            }
+            int x0 = int.MaxValue, y0 = int.MaxValue, x1 = -1, y1 = -1;
+            for (int i = 0; i < n; i++)
+            {
+                if (_levelNew[i] == _levelOld[i]) continue;
+                int x = i % w1, y = i / w1;
+                x0 = math.min(x0, x); y0 = math.min(y0, y); x1 = math.max(x1, x); y1 = math.max(y1, y);
+            }
+            if (x1 < 0) return;
+            M.Shown.CopyFrom(_levelNew);
+            W.ShownHeightsChanged(x0, y0, x1, y1, _levelOld);
+        }
+
         // ------------------------------------------------------------------ per frame
 
         public void Draw(float dt)
@@ -230,6 +272,7 @@ namespace Firstlight.Game
             _fires.Clear();
             _chimneys.Clear();
             DrawBuildings();
+            if (_levelDirty) Relevel();
             PushLights();
             DrawSmoke(dt);
             DrawOres();
@@ -328,10 +371,13 @@ namespace Firstlight.Game
         readonly List<Vector4> _chimneys = new();     // xyz = where the smoke starts, w = how much (1 = a work fire)
         float _smokeClock;
         const int MaxPuffs = 1500;
+        /// <summary>Player setting: 0 = no smoke, 1 = as designed, more = thicker plumes.</summary>
+        public static float SmokeAmount = 1f;
 
         void DrawSmoke(float dt)
         {
             // Smoke keeps the game's pace up to double speed and stands still while the game is paused.
+            if (SmokeAmount <= 0.01f) { _puffs.Clear(); return; }
             float step = dt * math.min(S.Speed, 2f);
             if (_puffs.Count == 0 && _chimneys.Count > 0)
                 for (int i = 0; i < 40; i++) StepSmoke(0.2f);      // a view that opens on a burning fire shows its plume at once
@@ -371,13 +417,10 @@ namespace Firstlight.Game
                 {
                     var c = _chimneys[k];
                     int seed = _puffs.Count * 7 + k * 131 + (int)(_anim * 10f);
-        /// <summary>Player setting: 0 = no smoke, 1 = as designed, more = thicker plumes.</summary>
-        public static float SmokeAmount = 1f;
                     if (Hash(seed, 31) > c.w * 0.75f * SmokeAmount) continue;
                     _puffs.Add(new Puff
                     {
                         Pos = new float3(c.x + (Hash(seed, 32) - 0.5f) * 0.12f, c.y, c.z + (Hash(seed, 33) - 0.5f) * 0.12f),
-            if (SmokeAmount <= 0.01f) { _puffs.Clear(); return; }
                         Life = 4.5f + Hash(seed, 34) * 3f, Size = (0.2f + Hash(seed, 35) * 0.2f) * math.lerp(0.75f, 1.2f, math.saturate(c.w)),
                         Yaw = Hash(seed, 36) * 6.28f, Drift = new float2(Hash(seed, 37) - 0.5f, Hash(seed, 38) - 0.5f) * 0.14f,
                     });

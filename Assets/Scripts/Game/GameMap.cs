@@ -35,6 +35,9 @@ namespace Firstlight.Game
         /// <summary>Live water state from the simulation: 0 dry, 1 shallow (wade, slow), 2 deep (blocks walking).</summary>
         public readonly byte[] WaterClass;
         public NativeArray<float> Corners;        // (W+1)*(H+1) heights
+        /// <summary>Heights as drawn: <see cref="Corners"/> with the ground under buildings levelled. Only the view changes
+        /// these (the simulation reads Corners, so levelling never changes a game); HeightAt samples them.</summary>
+        public NativeArray<float> Shown;
         public readonly Ground[] Ground;
         public readonly bool[] Tree;
         public readonly byte[] TreeKind;          // 0 conifer, 1 broadleaf
@@ -63,6 +66,7 @@ namespace Firstlight.Game
             W = H = size;
             int n = W * H;
             Corners = new NativeArray<float>((W + 1) * (H + 1), Allocator.Persistent);
+            Shown = new NativeArray<float>((W + 1) * (H + 1), Allocator.Persistent);
             Ground = new Ground[n];
             Tree = new bool[n]; TreeKind = new byte[n]; TreeScale = new float[n]; TreeYaw = new float[n];
             TreeOffset = new float2[n];
@@ -81,6 +85,7 @@ namespace Firstlight.Game
         public void Dispose()
         {
             if (Corners.IsCreated) Corners.Dispose();
+            if (Shown.IsCreated) Shown.Dispose();
             Flow.Dispose();
         }
 
@@ -91,7 +96,8 @@ namespace Firstlight.Game
         public int2 XY(int c) => new int2(c % W, c / W);
         public int CellAt(float2 p) => Cell(math.clamp((int)p.x, 0, W - 1), math.clamp((int)p.y, 0, H - 1));
 
-        public float HeightAt(float x, float z) => CullAgentsJob.SampleHeight(Corners, W, H, new float2(x, z));
+        /// <summary>The drawn ground's height (levelled under buildings); see <see cref="Shown"/>.</summary>
+        public float HeightAt(float x, float z) => CullAgentsJob.SampleHeight(Shown, W, H, new float2(x, z));
 
         public float CellHeight(int x, int y)
         {
@@ -322,6 +328,7 @@ namespace Firstlight.Game
                 int x = c % W, y = c / W;
                 Corners[y * w1 + x] = Corners[y * w1 + x + 1] = Corners[(y + 1) * w1 + x] = Corners[(y + 1) * w1 + x + 1] = RiverLevelAt(y) - 0.2f;
             }
+            Shown.CopyFrom(Corners);
 
             // Forests: clustered by noise, denser in the middle of each patch.
             for (int y = 0; y < H; y++)
