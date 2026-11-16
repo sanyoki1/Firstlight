@@ -398,6 +398,7 @@ namespace Firstlight.Game.UI
                 Strength("Wind in plants", ref st.fxWind, "Trees, grass and reeds swaying.");
                 Strength("Sparkle", ref st.fxSparkle, "Glints of sun on the water and glitter on snow.");
                 Strength("Smoke", ref st.fxSmoke, "Smoke from fires and from the roofs of warmed homes.");
+                Strength("Fire", ref st.fxFire, "Flames that lick and sway, glowing embers, rising sparks and the flicker of firelight at night. Off leaves fires burning still.");
                 {
                     GUI.Label(new Rect(lx, y, 260, 30), "Ground detail", Label);
                     float[] steps = { 0f, 0.5f, 1f }; string[] names = { "Off", "Half", "Full" };

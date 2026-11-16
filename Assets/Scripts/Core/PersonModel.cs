@@ -268,8 +268,7 @@ namespace Firstlight.Core
                 var d = to - from;
                 b.Mat("bark_broad").Frustum(world * Matrix4x4.TRS(from, Quaternion.FromToRotation(Vector3.up, d), new Vector3(1, d.magnitude, 1)), 5, 0.05f, 0.04f, new Color(0.7f, 0.65f, 0.6f, 0));
             }
-            b.Mat("deer_pale").Frustum(world * Matrix4x4.TRS(new Vector3(0, 0.02f, 0), Quaternion.identity, new Vector3(0.4f, 0.42f, 0.4f)), 6, 0.5f, 0.05f, new Color(1.0f, 0.62f, 0.25f, 0));
-            b.Mat("deer_pale").Frustum(world * Matrix4x4.TRS(new Vector3(0.06f, 0.02f, -0.04f), Quaternion.Euler(0, 30, 0), new Vector3(0.22f, 0.3f, 0.22f)), 5, 0.5f, 0.05f, new Color(1.0f, 0.85f, 0.45f, 0));
+            FlameModel.Add(b, world * Matrix4x4.TRS(new Vector3(0, 0.04f, 0), Quaternion.identity, new Vector3(0.6f, 0.75f, 0.6f)), 3);
             return b.ToMesh("hearth");
         }
     }

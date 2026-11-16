@@ -49,6 +49,8 @@ namespace Firstlight.Core
         public int Layer;
         /// <summary>Triangles added next are drawn unlit at the global glow (flames, embers).</summary>
         public bool Glow;
+        /// <summary>What kind of glow: 0 = the material's texture, 1 = a flame tongue (moves, coloured by height), 2 = embers, 3 = a spark (plain instance colour).</summary>
+        public int GlowKind;
 
         public int VertexCount => _v.Count;
 
@@ -79,8 +81,20 @@ namespace Firstlight.Core
             _c.Add(lin); _c.Add(lin); _c.Add(lin);
             _t.Add(i); _t.Add(i + 1); _t.Add(i + 2);
             _uv.Add(Vector2.zero); _uv.Add(Vector2.zero); _uv.Add(Vector2.zero);
-            var m = new Vector2(Layer, Glow ? 3 : 0);
+            var m = new Vector2(Layer, Glow ? 3 + GlowKind : 0);
             _mat.Add(m); _mat.Add(m); _mat.Add(m);
+        }
+
+        /// <summary>
+        /// A triangle facing away from <paramref name="inside"/> that carries two numbers per corner for the shader
+        /// (flames: how far up the tongue, how far it sways).
+        /// </summary>
+        public void TriData(Vector3 a, Vector3 b, Vector3 c, Vector2 da, Vector2 db, Vector2 dc, Vector3 inside, Color col)
+        {
+            if (Vector3.Dot(Vector3.Cross(b - a, c - a), (a + b + c) / 3f - inside) < 0) { (b, c) = (c, b); (db, dc) = (dc, db); }
+            int i = _v.Count;
+            Tri(a, b, c, col);
+            _uv[i] = da; _uv[i + 1] = db; _uv[i + 2] = dc;
         }
 
         /// <summary>Quad with explicit UVs (sprites). a,b,c,d go round the quad; uv likewise.</summary>

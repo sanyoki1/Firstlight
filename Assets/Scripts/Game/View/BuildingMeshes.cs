@@ -36,12 +36,37 @@ namespace Firstlight.Game
                 bool flame = p.material == "flame";
                 var b = flame ? glow : body;
                 b.Mat(string.IsNullOrEmpty(p.material) ? "wood" : p.material);
-                Prim(b, p.prim, MeshBuilder.TRS(pos, p.yaw, size), col);
+                // An open fire is a bundle of flame tongues over a bed of embers; any other glowing part (a kiln or oven mouth) is embers.
+                if (flame && p.prim == "flames") FlameModel.Add(glow, MeshBuilder.TRS(pos, p.yaw, size), _defs.Count);
+                else
+                {
+                    if (flame) glow.GlowKind = 2;
+                    Prim(b, p.prim, MeshBuilder.TRS(pos, p.yaw, size), col);
+                }
                 if (!flame) top = Mathf.Max(top, pos.y + size.y);
             }
             m = (body.ToMesh(d.id), glow.VertexCount > 0 ? glow.ToMesh(d.id + "_glow") : null, top);
             _defs[d.id] = m;
             return m;
+        }
+
+        static readonly Dictionary<string, (bool has, Vector3 pos, Vector3 size)> _flameAt = new();
+
+        /// <summary>Where a building's open fire burns (its "flames" part) in the building's own space: sparks rise from there.</summary>
+        public static bool FlameAt(BuildingDef d, out Vector3 pos, out Vector3 size)
+        {
+            if (!_flameAt.TryGetValue(d.id, out var f))
+            {
+                foreach (var p in d.parts)
+                    if (p.prim == "flames" && p.pos != null && p.pos.Length == 3 && p.size != null && p.size.Length == 3)
+                    {
+                        f = (true, new Vector3(p.pos[0], p.pos[1], p.pos[2]), new Vector3(p.size[0], p.size[1], p.size[2]));
+                        break;
+                    }
+                _flameAt[d.id] = f;
+            }
+            pos = f.pos; size = f.size;
+            return f.has;
         }
 
         static readonly Dictionary<(string, int, int, int), Mesh> _crops = new();

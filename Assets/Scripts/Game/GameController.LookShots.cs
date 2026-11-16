@@ -69,6 +69,8 @@ namespace Firstlight.Game
                 ("winter_snowfall", 0.45f, 3.03f, 0.9f, tc + new float2(3, -2), 16f, 30f, 70f),
                 ("winter_first_snow", 0.55f, 3.2f, 0.4f, tc, 30f, 40f, -40f),
                 ("misty_dawn", 0.235f, 2.4f, 0f, tc, 75f, 28f, 20f),
+                ("fire_close", 0.90f, 1.4f, 0f, tc, 9f, 28f, 30f),
+                ("fire_day", 0.50f, 1.4f, 0f, tc, 9f, 28f, 30f),
             };
             string only = Arg("-lookonly");
             foreach (var s in shots)
@@ -137,8 +139,6 @@ namespace Firstlight.Game
                     yield return Shot("look_" + name);
                 }
             }
-            if (only == null || only.Contains("cinematic"))
-            {
             if (only == null || only.Contains("tracks"))
             {
                 // Footprints and mounds: the town at work on a winter's day, after half a minute of people walking about.
@@ -155,6 +155,8 @@ namespace Firstlight.Game
                 LookAt(World(tc + new float2(-14, 10)), 26f, 30f, 200f);
                 yield return Shot("look_winter_mounds");
             }
+            if (only == null || only.Contains("cinematic"))
+            {
                 // The cinematic view (F10): soft focus round the town fire in the evening light.
                 _lookAtmo = (0.76f, 1.4f, 0f);
                 _cine = true; _cineAmount = 1f;

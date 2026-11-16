@@ -118,6 +118,7 @@ namespace Firstlight.Game
                 _smokeMat.SetFloat("_Smoke", 1f);
             }
             _smoke = Track(new Batch(Shapes.Puff, _smokeMat, false));
+            _sparkBatch = Track(new Batch(FlameModel.Spark, _noSnow, false));
         }
 
         Batch Track(Batch b) { _all.Add(b); return b; }
@@ -271,10 +272,12 @@ namespace Firstlight.Game
             SyncPaths();
             _fires.Clear();
             _chimneys.Clear();
+            _hearths.Clear();
             DrawBuildings();
             if (_levelDirty) Relevel();
             PushLights();
             DrawSmoke(dt);
+            DrawSparks(dt);
             DrawFootprints();
             DrawOres();
             DrawPeople(dt);
@@ -285,7 +288,6 @@ namespace Firstlight.Game
 
         void DrawBuildings()
         {
-            float flicker = 0.88f + 0.12f * math.sin(_anim * 9f) * math.sin(_anim * 5.3f + 1f);
             foreach (var b in S.Buildings)
             {
                 if (b.Id >= _ground.Length) BaseOf(b);
@@ -318,11 +320,19 @@ namespace Firstlight.Game
                     bool lit = b.Def.warmthRadius > 0 ? b.Fueled : b.Def.knowledgePerWorker > 0 ? b.Workers > 0 : b.Workers > 0 || b.Def.maxWorkers == 0;
                     if (glow != null && lit)
                     {
-                        glow.Add(new InstanceData(at, yaw, new float3(1f, flicker, 1f), White));
+                        float flicker = Flicker(b.Id);       // each fire in its own time
+                        glow.Add(new InstanceData(at, yaw, new float3(1f, 1f + 0.05f * flicker, 1f), White));
                         // A pool of firelight round it at night: the town fire reaches farthest.
                         float reach = b.Def.townCenter ? 7f : b.Def.warmthRadius > 0 || b.Def.knowledgePerWorker > 0 ? 4.6f : 3.4f;
-                        _fires.Add(new Vector4(b.Center.x, y + 0.45f, b.Center.y, reach * (0.94f + 0.06f * flicker)));
-                        _chimneys.Add(new Vector4(b.Center.x, y + 0.55f, b.Center.y, b.Def.townCenter ? 1.5f : 1f));
+                        _fires.Add(new Vector4(b.Center.x, y + 0.45f, b.Center.y, reach * (1f + 0.04f * flicker)));
+                        if (BuildingMeshes.FlameAt(b.Def, out var fp, out var fs))
+                        {
+                            // An open fire: sparks from the flames, the smoke from their tips.
+                            var off = Turn(new float2(fp.x, fp.z), yaw);
+                            _hearths.Add(new Vector4(b.Center.x + off.x, y + fp.y, b.Center.y + off.y, fs.x));
+                            _chimneys.Add(new Vector4(b.Center.x + off.x, y + fp.y + fs.y * 0.8f, b.Center.y + off.y, b.Def.townCenter ? 1.5f : 1f));
+                        }
+                        else _chimneys.Add(new Vector4(b.Center.x, y + 0.55f, b.Center.y, b.Def.townCenter ? 1.5f : 1f));
                     }
                     // A hearth inside: homes with people in them smoke through the roof on winter days and at night.
                     else if (b.Def.housing > 0 && b.Residents > 0 && (S.Season == 3 || Night > 0.4f))
@@ -475,6 +485,86 @@ namespace Firstlight.Game
                         Pos = new float3(c.x + (Hash(seed, 32) - 0.5f) * 0.12f, c.y, c.z + (Hash(seed, 33) - 0.5f) * 0.12f),
                         Life = 4.5f + Hash(seed, 34) * 3f, Size = (0.2f + Hash(seed, 35) * 0.2f) * math.lerp(0.75f, 1.2f, math.saturate(c.w)),
                         Yaw = Hash(seed, 36) * 6.28f, Drift = new float2(Hash(seed, 37) - 0.5f, Hash(seed, 38) - 0.5f) * 0.14f,
+                    });
+                }
+            }
+        }
+
+        // ------------------------------------------------------------------ fire: flicker and sparks
+
+        // Every open fire throws up a few sparks: small glowing bits that rise, waver, drift with the wind, cool from
+        // pale yellow to red and go out. The flames themselves move in the shader, on the fire clock kept here.
+        struct Spark { public float3 Pos, Vel; public float Age, Life, Size, Seed; }
+        readonly List<Spark> _sparks = new();
+        readonly List<Vector4> _hearths = new();      // xyz = the foot of an open fire, w = how wide it is
+        Batch _sparkBatch;
+        float _fireClock, _sparkClock;
+        int _sparkSeed;
+        const int MaxSparks = 400;
+        static readonly int FlameId = Shader.PropertyToID("_FL_Flame");
+        /// <summary>Player setting: 0 = fires burn still (no movement, sparks or flicker), 1 = as designed, more = livelier.</summary>
+        public static float FireAmount = 1f;
+
+        /// <summary>How a fire is burning this moment, -1..1: a slow swell with quick jumps on top, different for each fire.</summary>
+        float Flicker(int id)
+        {
+            float ph = Hash(id, 71) * 40f, t = _fireClock;
+            float swell = math.sin(t * 9f + ph) * math.sin(t * 5.3f + ph * 1.7f);
+            float jump = Hash((int)(t * 12f) + id * 977, 72) - 0.5f;
+            return (swell * 0.6f + jump * 0.8f) * math.min(FireAmount, 1.5f);
+        }
+
+        void DrawSparks(float dt)
+        {
+            // Fire keeps the pace of the game up to double speed and stands still while the game is paused.
+            float amount = math.min(FireAmount, 1.5f);
+            float step = amount <= 0.01f ? 0f : math.min(dt * math.min(S.Speed, 2f), 0.1f);
+            _fireClock += step;
+            Shader.SetGlobalVector(FlameId, new Vector4(_fireClock, amount, 0, 0));
+            if (amount <= 0.01f) { _sparks.Clear(); return; }
+            if (_sparks.Count == 0 && _hearths.Count > 0)
+                for (int i = 0; i < 30; i++) StepSparks(0.05f, amount);     // a view that opens on a fire shows its sparks at once
+            if (step > 0) StepSparks(step, amount);
+            foreach (var sp in _sparks)
+            {
+                float a = sp.Age / sp.Life;
+                if (Hash((int)(sp.Age * 9f) + (int)(sp.Seed * 5000f), 44) < 0.12f) continue;      // they twinkle
+                var c = a < 0.3f ? new Color(1f, 0.86f, 0.45f) : a < 0.65f ? new Color(1f, 0.58f, 0.18f) : new Color(0.9f, 0.3f, 0.1f);
+                float size = sp.Size * (a > 0.8f ? 0.6f : 1f);
+                _sparkBatch.Add(new InstanceData(sp.Pos, sp.Seed * 6f, new float3(size), Pal.Pack(c)));
+            }
+        }
+
+        void StepSparks(float step, float amount)
+        {
+            for (int i = _sparks.Count - 1; i >= 0; i--)
+            {
+                var sp = _sparks[i];
+                sp.Age += step;
+                if (sp.Age >= sp.Life) { _sparks[i] = _sparks[_sparks.Count - 1]; _sparks.RemoveAt(_sparks.Count - 1); continue; }
+                float a = sp.Age / sp.Life;
+                sp.Vel *= 1f - 0.8f * step;
+                sp.Pos += sp.Vel * step;
+                sp.Pos.x += step * (math.sin(sp.Age * 9f + sp.Seed * 40f) * 0.14f + 0.86f * 0.35f * a);
+                sp.Pos.z += step * (math.cos(sp.Age * 7f + sp.Seed * 23f) * 0.14f + 0.5f * 0.35f * a);
+                _sparks[i] = sp;
+            }
+            _sparkClock += step;
+            const float every = 0.05f;
+            while (_sparkClock >= every)
+            {
+                _sparkClock -= every;
+                for (int k = 0; k < _hearths.Count && _sparks.Count < MaxSparks; k++)
+                {
+                    var h = _hearths[k];
+                    int seed = ++_sparkSeed;
+                    if (Hash(seed, 41) > 0.7f * h.w * amount) continue;       // a town fire throws about eight a second
+                    float ang = Hash(seed, 42) * 6.283f, rad = Hash(seed, 43) * 0.3f * h.w;
+                    _sparks.Add(new Spark
+                    {
+                        Pos = new float3(h.x + math.cos(ang) * rad, h.y + h.w * (0.3f + 0.6f * Hash(seed, 45)), h.z + math.sin(ang) * rad),
+                        Vel = new float3((Hash(seed, 46) - 0.5f) * 0.3f, 0.55f + 0.65f * Hash(seed, 47), (Hash(seed, 48) - 0.5f) * 0.3f),
+                        Life = 0.7f + 1.1f * Hash(seed, 49), Size = 0.022f + 0.018f * Hash(seed, 50), Seed = Hash(seed, 51),
                     });
                 }
             }

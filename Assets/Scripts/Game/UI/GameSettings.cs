@@ -21,7 +21,7 @@ namespace Firstlight.Game.UI
         // Strength of each part of the look: 0 = off, 1 = as designed, up to 1.5 (see Core/Look.cs Strength).
         public float fxOcclusion = 1f, fxBloom = 1f, fxGrade = 1f, fxVignette = 1f, fxFocus = 1f;
         public float fxHaze = 1f, fxMist = 1f, fxClouds = 1f, fxWind = 1f, fxSparkle = 1f;
-        public float fxSmoke = 1f, fxSnowfall = 1f;
+        public float fxSmoke = 1f, fxSnowfall = 1f, fxFire = 1f;
         public float groundDetail = 1f;       // share of the small ground cover drawn (reeds, ferns, pebbles, tufts, flowers, fallen wood)
         public bool birds = true;
         public bool snowMounds = true;        // mounds of drifted snow that build up in winter
@@ -42,14 +42,14 @@ namespace Firstlight.Game.UI
         public void ResetVisuals()
         {
             effects = true;
-            fxOcclusion = fxBloom = fxGrade = fxVignette = fxFocus = fxHaze = fxMist = fxClouds = fxWind = fxSparkle = fxSmoke = fxSnowfall = 1f;
+            fxOcclusion = fxBloom = fxGrade = fxVignette = fxFocus = fxHaze = fxMist = fxClouds = fxWind = fxSparkle = fxSmoke = fxSnowfall = fxFire = 1f;
             groundDetail = 1f; birds = true; cineBars = true; cameraGlide = true; snowMounds = true; footprints = 2;
         }
 
         /// <summary>Every strength to one value (test and screenshot modes: -fxscale X).</summary>
         public void ScaleVisuals(float v)
         {
-            fxOcclusion = fxBloom = fxGrade = fxVignette = fxFocus = fxHaze = fxMist = fxClouds = fxWind = fxSparkle = fxSmoke = fxSnowfall = v;
+            fxOcclusion = fxBloom = fxGrade = fxVignette = fxFocus = fxHaze = fxMist = fxClouds = fxWind = fxSparkle = fxSmoke = fxSnowfall = fxFire = v;
             groundDetail = Mathf.Clamp01(v); birds = v > 0; cineBars = v > 0; snowMounds = v > 0; footprints = v <= 0 ? 0 : v < 1 ? 1 : 2;
         }
 
@@ -69,7 +69,7 @@ namespace Firstlight.Game.UI
             static void Fx(ref float v) => v = Mathf.Clamp(v, 0f, MaxStrength);
             Fx(ref c.fxOcclusion); Fx(ref c.fxBloom); Fx(ref c.fxGrade); Fx(ref c.fxVignette); Fx(ref c.fxFocus);
             Fx(ref c.fxHaze); Fx(ref c.fxMist); Fx(ref c.fxClouds); Fx(ref c.fxWind); Fx(ref c.fxSparkle);
-            Fx(ref c.fxSmoke); Fx(ref c.fxSnowfall);
+            Fx(ref c.fxSmoke); Fx(ref c.fxSnowfall); Fx(ref c.fxFire);
             c.groundDetail = Mathf.Clamp01(c.groundDetail);
         }
 
@@ -90,7 +90,7 @@ namespace Firstlight.Game.UI
             Look.Strength.Occlusion = s.fxOcclusion; Look.Strength.Bloom = s.fxBloom; Look.Strength.Grade = s.fxGrade;
             Look.Strength.Vignette = s.fxVignette; Look.Strength.Focus = s.fxFocus; Look.Strength.Haze = s.fxHaze;
             Look.Strength.Mist = s.fxMist; Look.Strength.Clouds = s.fxClouds; Look.Strength.Wind = s.fxWind; Look.Strength.Sparkle = s.fxSparkle;
-            SettlementView.SmokeAmount = s.fxSmoke;
+            SettlementView.SmokeAmount = s.fxSmoke; SettlementView.FireAmount = s.fxFire;
             WorldView.GroundDetail = s.groundDetail; WorldView.BirdsOn = s.birds;
             WorldView.SnowMounds = s.snowMounds;
             SettlementView.FootprintCap = s.footprints <= 0 ? 0 : s.footprints == 1 ? 3000 : 9000;
