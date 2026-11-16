@@ -31,7 +31,7 @@ the people decide who walks where. Everything else (who works, who hauls, who bu
 | Right-click, Esc | Stop placing; close a panel; clear the selection |
 | Esc (nothing open) | Game menu: resume, save, load, settings, main menu, quit |
 | B | Build menu |
-| X, Delete | Dismantle tool: marks a building for builders to take apart (also removes path tiles) |
+| X, Delete | Demolish tool: marks a building for builders to take apart (also removes path tiles) |
 | Space | Pause / resume (you can still build while paused) |
 | 1, 2, 3 | Speed 1x, 2x, 4x |
 | R | Research tree |
@@ -106,18 +106,18 @@ Every store (the campfire's stash, Storage Piles, Granaries) has settings. Selec
 - Number fields: type, then Enter, Tab or click elsewhere to set it (blank = no limit); Esc drops what you typed.
   While a field has the keyboard, the game's keys wait.
 
-## Dismantling
+## Demolishing
 
-- **Dismantle** (the building's panel, or the tool on X: click a finished building twice) marks a building; it is not
+- **Demolish** (the building's panel, or the tool on X: click a finished building twice) marks a building; it is not
   gone at once. Builders come and take it apart, in the build order (Last / Normal / First on its panel), and it
-  takes half the work of building it (`dismantleWork` in balance.json). **Cancel dismantling** on the panel, or a
+  takes half the work of building it (`dismantleWork` in balance.json). **Cancel demolition** on the panel, or a
   click with the tool, takes the mark off until the work is done: the building is whole again.
 - When it is down, half of each building material (rounded down; `dismantleRefund` in balance.json) lies on the plot,
   with any goods the building still held. The haulers and anyone free carry the pile to a store, and builders may take
   from it for a site. The plot is free once the pile is gone; **Clear away** on the pile's panel gives the goods up.
 - While marked: a workplace has no workers; a home keeps its residents but nobody moves in (they need another home
   when it comes down); a store takes nothing and its goods are moved to other stores. A site gives back everything
-  delivered to it, at once if nobody had built on it yet. The campfire can't be dismantled.
+  delivered to it, at once if nobody had built on it yet. The campfire can't be demolished.
 - The scripted check: `-autotest -dismantlecheck -seed N` (writes dismantle-check.md).
 
 ## The auto-player and the tests

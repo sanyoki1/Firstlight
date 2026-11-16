@@ -79,7 +79,7 @@ namespace Firstlight.Game.UI
             if (b.Dismantling)
             {
                 var br = new Rect(_lx, _ly, 200, 28);
-                if (GUI.Button(br, "Cancel dismantling", Button)) S.CancelDismantle(b);
+                if (GUI.Button(br, "Cancel demolition", Button)) S.CancelDismantle(b);
                 if (Over(br)) Tip(br, b.IsSite ? "Take the mark off: the site is built on from where it stands." : "Take the mark off: the building stays, whole, and goes back to work.");
                 _ly += 32;
             }
@@ -87,8 +87,8 @@ namespace Firstlight.Game.UI
             {
                 bool confirm = _confirmDemolish == b.Id;
                 var br = new Rect(_lx, _ly, 200, 28);
-                if (GUI.Button(br, confirm ? Col("Click again to dismantle", Bad) : "Dismantle", Button)) Demolish(b);
-                if (Over(br)) Tip(br, b.IsSite ? $"Mark the site for dismantling. Comes back: {GoodsText(S.DismantleReturn(b, false))} (all that was delivered)." : $"Mark it for dismantling: {DemolishLoss(b)}. You can cancel until the work is done.");
+                if (GUI.Button(br, confirm ? Col("Click again to demolish", Bad) : "Demolish", Button)) Demolish(b);
+                if (Over(br)) Tip(br, b.IsSite ? $"Mark the site for demolition. Comes back: {GoodsText(S.DismantleReturn(b, false))} (all that was delivered)." : $"Mark it for demolition: {DemolishLoss(b)}. You can cancel until the work is done.");
                 _ly += 32;
             }
             EndInfo(r);
@@ -98,7 +98,7 @@ namespace Firstlight.Game.UI
         void DrawDismantling(Building b)
         {
             var d = b.Def;
-            Row(Col("Marked for dismantling", Warn), Bold);
+            Row(Col("Marked for demolition", Warn), Bold);
             BarRow("Still standing", b.Work, Warn, $"{b.Work:P0}");
             int builders = S.Citizens.Count(c => c.TaskB2 == b && (c.Activity == Activity.Building || c.Activity == Activity.Walking));
             Row(builders > 0 ? $"{Many(builders, "builder", "builders")} on it, about {S.DismantleWorkLeft(b):0.#} builder-days of work left" : Col(SiteWait(b), Warn), Small, 20);
@@ -112,7 +112,7 @@ namespace Firstlight.Game.UI
         /// <summary>What a dismantled building left on its plot: the goods waiting to be carried to a store.</summary>
         void DrawLeftGoods(Building b)
         {
-            Row(Col("Dismantled", Dim), Bold);
+            Row(Col("Demolished", Dim), Bold);
             Para("These goods lie here until they are carried to a store. The ground is free again once they are gone.");
             bool anyRoom = false;
             for (int g = 0; g < b.Out.Length; g++)

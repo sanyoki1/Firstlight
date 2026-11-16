@@ -627,13 +627,13 @@ namespace Firstlight.Game.UI
             {
                 var hb = HoverBuilding;
                 string what, sub;
-                if (hb == null) { what = "Click a building to have it dismantled, or a path to remove it"; sub = null; }
+                if (hb == null) { what = "Click a building to have it demolished, or a path to remove it"; sub = null; }
                 else if (hb == S.TownCenter) { what = Col("The campfire can't be removed", Bad); sub = null; }
                 else if (hb.IsPile) { what = $"Goods left by the {hb.Def.name}"; sub = "They are carried to a store; select the pile to clear it away instead."; }
-                else if (hb.Dismantling) { what = $"The {hb.Def.name} is marked for dismantling"; sub = "Click to cancel."; }
-                else if (hb.IsSite) { what = $"Dismantle the {hb.Def.name} site"; sub = $"Comes back: {GoodsText(S.DismantleReturn(hb, false))} (all that was delivered)."; }
-                else if (ToolConfirmPending(hb)) { what = Col($"Click again to dismantle the {hb.Def.name}", Bad); sub = Cap(DemolishLoss(hb)) + "."; }
-                else { what = $"Dismantle the {hb.Def.name}: click twice"; sub = Cap(DemolishLoss(hb)) + "."; }
+                else if (hb.Dismantling) { what = $"The {hb.Def.name} is marked for demolition"; sub = "Click to cancel."; }
+                else if (hb.IsSite) { what = $"Demolish the {hb.Def.name} site"; sub = $"Comes back: {GoodsText(S.DismantleReturn(hb, false))} (all that was delivered)."; }
+                else if (ToolConfirmPending(hb)) { what = Col($"Click again to demolish the {hb.Def.name}", Bad); sub = Cap(DemolishLoss(hb)) + "."; }
+                else { what = $"Demolish the {hb.Def.name}: click twice"; sub = Cap(DemolishLoss(hb)) + "."; }
                 float h0 = sub != null ? 56 : 34;
                 var r0 = Box(new Rect(VW / 2 - 320, VH - 128 - h0, 640, h0), UiTheme.Header);
                 GUI.Label(new Rect(r0.x + 12, r0.y + (sub != null ? 4 : 0), 616, 28), what + Col("   (right-click or Esc to stop)", Dim), Label);
@@ -759,7 +759,7 @@ namespace Firstlight.Game.UI
             var d = b.Def;
             string sep = Col("  ·  ", Dim);
             if (b.IsPile) return $"{Col("Goods left by the", Dim)} <b>{d.name}</b>{sep}{b.OutTotal:0.#} to carry off";
-            if (b.Dismantling) return $"<b>{d.name}</b>{sep}{Col($"being dismantled ({b.Work:P0} left)", Warn)}";
+            if (b.Dismantling) return $"<b>{d.name}</b>{sep}{Col($"being demolished ({b.Work:P0} left)", Warn)}";
             if (b.IsSite) return $"{Col("Site:", Dim)} <b>{d.name}</b>{sep}{b.Progress:P0}";
             string text = $"<b>{d.name}</b>";
             if (b.UpgradeTo != null) text += sep + Col($"being rebuilt ({b.Progress:P0})", Warn);

@@ -322,7 +322,7 @@ namespace Firstlight.Game.UI
                 { "Esc (nothing open)", "Game menu: save, load, settings, quit" },
                 { "F5 / F8", "Quicksave / quickload" },
                 { "B", "Build menu" },
-                { "X or Delete", "Dismantle tool" },
+                { "X or Delete", "Demolish tool" },
                 { "Space", "Pause / resume" },
                 { "1, 2, 3", "Speed 1x, 2x, 4x" },
                 { "R", "Research tree" },

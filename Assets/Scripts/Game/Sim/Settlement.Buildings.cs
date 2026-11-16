@@ -214,7 +214,7 @@ namespace Firstlight.Game
             reason = "";
             if (b == null || !b.Alive) { reason = "Nothing to remove"; return false; }
             if (b == TownCenter) { reason = "The campfire can't be removed"; return false; }
-            if (b.Dismantling) { reason = "Already marked for dismantling"; return false; }
+            if (b.Dismantling) { reason = "Already marked for demolition"; return false; }
             if (b.UpgradeTo != null) CancelUpgrade(b);        // the upgrade's materials go back to storage first
             // Materials on their way to the site are carried back to a store.
             foreach (var c in Citizens)
@@ -416,7 +416,7 @@ namespace Firstlight.Game
             var t = UpgradeOption(b);
             if (t == null) { reason = "Can't be upgraded"; return false; }
             if (b.UpgradeTo != null) { reason = "Already being upgraded"; return false; }
-            if (b.Dismantling) { reason = "Marked for dismantling"; return false; }
+            if (b.Dismantling) { reason = "Marked for demolition"; return false; }
             if (!IsUnlocked(t)) { reason = !string.IsNullOrEmpty(t.unlockedBy) && !IsResearched(t.unlockedBy) ? $"Needs research: {Data.ResearchById(t.unlockedBy)?.name}" : $"Needs the {Data.Age(t.age)?.name}"; return false; }
             return true;
         }
