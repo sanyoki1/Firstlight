@@ -321,11 +321,28 @@ def wood(d, t, seed=21):
 
 
 def snow(d, t, seed=15):
-    """Lying snow: bright, with long low drifts the wind has laid across it and a faint grain; no hard blotches."""
+    """Lying snow with relief: the wind has combed it into long ripples and low swells, lit from the upper left, so
+    each ripple has a bright crest, a soft face and a blue-grey lee. Fine crust grain on the faces, a few packed
+    hollows, and bright crystals on the crests. Four tones of the ramp, mostly the upper two."""
     p = Painter(d, (t, t), seed)
-    p.bands("snow", [3, 4], [0.42], 2.6, 0.9, octaves=2)
-    p.blobs("snow3", 2.2, 0.035)
-    p.blobs("snow2", 0.5, 0.03)
+    # A height field: broad swells, the ripples across them (long across the wind, short along it), and a little chop.
+    swell = p.noise(3.2, 2.2, octaves=2)
+    ripple = p.noise(1.3, 0.42, octaves=2)
+    chop = p.noise(0.22, 0.12, octaves=2)
+    h = swell * 1.0 + ripple * 0.6 + chop * 0.12
+    # Light from the upper left: how much higher this pixel stands than the one down and to the right of it.
+    k = max(1, p.px(0.03))
+    slope = h - np.roll(np.roll(h, -k, axis=0), -k, axis=1)
+    slope += (p.rng.random(h.shape) - 0.5) * (slope.std() * 0.22)          # crust grain breaks the tone edges up
+    q = np.quantile(slope, [0.04, 0.21, 0.72])
+    idx = np.digitize(slope, q)
+    for i, tone in enumerate([1, 2, 3, 4]):
+        p.cv.fill_mask(idx == i, f"snow{tone}")
+    # Packed hollows in the lee of the biggest swells, and crystals catching the light on the crests.
+    hollow = (swell < np.quantile(swell, 0.12)) & (idx <= 1)
+    p.cv.fill_mask(hollow & (p.rng.random(h.shape) < 0.35), "snow1")
+    crest = (idx == 3) & (p.rng.random(h.shape) < 0.02)
+    p.cv.fill_mask(crest, "snow4")
     return p.cv
 
 
@@ -687,7 +704,24 @@ def sprite_fern(d, seed=24):
     return cv
 
 
-SPRITES = [("bush", sprite_bush), ("tuft", sprite_tuft), ("flowers", sprite_flowers), ("reeds", sprite_reeds), ("fern", sprite_fern)]
+def sprite_footprint(d, seed=25):
+    """One footprint pressed into snow, toe at the top: the sole and the heel as two shadowed hollows with a darker
+    floor, drawn in the snow ramp's lower tones so it reads as a dent, not a stain."""
+    w, h = max(3, round(0.17 * d)), max(5, round(0.36 * d))
+    p = Painter(d, (w, h), seed, wrap=False)
+    cv = p.cv
+    sole_h = int(h * 0.6)
+    cv.ellipse(0, 0, w, sole_h, "snow1")
+    cv.ellipse(max(0, w // 6), sole_h + max(1, h // 14), w - 2 * max(0, w // 6), h - sole_h - max(1, h // 14), "snow1")
+    if w >= 6:
+        cv.ellipse(w // 4, sole_h // 5, w - 2 * (w // 4), sole_h - 2 * (sole_h // 5), "snow0")
+        hw = w - 2 * (w // 6)
+        cv.ellipse(w // 6 + hw // 4, sole_h + h // 14 + (h - sole_h) // 4, max(1, hw // 2), max(1, (h - sole_h) // 3), "snow0")
+    return cv
+
+
+SPRITES = [("bush", sprite_bush), ("tuft", sprite_tuft), ("flowers", sprite_flowers), ("reeds", sprite_reeds), ("fern", sprite_fern),
+           ("footprint", sprite_footprint)]
 
 
 def main():

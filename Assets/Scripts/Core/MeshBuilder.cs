@@ -272,13 +272,13 @@ namespace Firstlight.Core
     /// <summary>Shared meshes for nature and placeholders. Sprite meshes are rebuilt when the texture density changes.</summary>
     public static class Shapes
     {
-        static Mesh _citizen, _carry, _conifer, _broadleaf, _rock, _box, _bush, _tuft, _flowers, _reeds, _fern, _log, _stump, _puff, _bird0, _bird1;
+        static Mesh _citizen, _carry, _conifer, _broadleaf, _rock, _box, _bush, _tuft, _flowers, _reeds, _fern, _log, _stump, _puff, _bird0, _bird1, _mound, _foot;
 
         static Shapes() { MaterialLibrary.DensityChanged += Reset; }
 
         public static void Reset()
         {
-            _bush = _tuft = _flowers = _reeds = _fern = null; // sprite UVs and sizes depend on density
+            _bush = _tuft = _flowers = _reeds = _fern = _foot = null; // sprite UVs and sizes depend on density
         }
 
         static readonly Color Tinted = new(1, 1, 1, 1), Fixed = new(1, 1, 1, 0);
@@ -301,6 +301,20 @@ namespace Firstlight.Core
             b.Frustum(Matrix4x4.TRS(new Vector3(0.02f, 0.12f, 0.1f), Quaternion.Euler(50, 70, 0), new Vector3(0.08f, 0.35f, 0.08f)), 5, 0.5f, 0.3f, Tinted);
         }, "log");
         public static Mesh Stump => _stump ??= Build(b => b.Mat("bark_broad").Frustum(MeshBuilder.TRS(new Vector3(0, -0.03f, 0), 0, new Vector3(0.34f, 0.24f, 0.34f)), 7, 0.5f, 0.4f, Tinted), "stump");
+        /// <summary>A mound of drifted snow: a low faceted dome (top 0.25 above its origin) with a smaller one against it.</summary>
+        public static Mesh Mound => _mound ??= Build(b =>
+        {
+            b.Mat("snow").Sphere(MeshBuilder.TRS(new Vector3(0, -0.25f, 0), 0, new Vector3(1f, 0.5f, 1f)), Tinted, 1);
+            b.Sphere(MeshBuilder.TRS(new Vector3(0.34f, -0.2f, 0.16f), 35, new Vector3(0.62f, 0.36f, 0.56f)), Tinted, 1);
+        }, "mound");
+        /// <summary>One footprint lying flat on the ground at its true pixel size, toe toward +z.</summary>
+        public static Mesh Footprint => _foot ??= Build(b =>
+        {
+            var size = MaterialLibrary.SpriteUnits("footprint"); var uv = MaterialLibrary.SpriteUV("footprint");
+            float w = size.x * 0.5f, l = size.y * 0.5f;
+            b.Mat("footprint").QuadUV(new Vector3(-w, 0, -l), new Vector3(-w, 0, l), new Vector3(w, 0, l), new Vector3(w, 0, -l),
+                new Vector2(uv.xMin, uv.yMin), new Vector2(uv.xMin, uv.yMax), new Vector2(uv.xMax, uv.yMax), new Vector2(uv.xMax, uv.yMin), Tinted);
+        }, "footprint");
         /// <summary>A puff of smoke: a faceted ball centred on its origin, tinted by the instance.</summary>
         public static Mesh Puff => _puff ??= Build(b => b.Mat("snow").Sphere(MeshBuilder.TRS(new Vector3(0, -0.5f, 0), 0, Vector3.one), Tinted, 1), "puff");
         /// <summary>A bird seen from afar: two wings up (frame 0) or down (frame 1), flying along +z.</summary>

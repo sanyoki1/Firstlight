@@ -24,6 +24,8 @@ namespace Firstlight.Game.UI
         public float fxSmoke = 1f, fxSnowfall = 1f;
         public float groundDetail = 1f;       // share of the small ground cover drawn (reeds, ferns, pebbles, tufts, flowers, fallen wood)
         public bool birds = true;
+        public bool snowMounds = true;        // mounds of drifted snow that build up in winter
+        public int footprints = 2;            // footprints in the snow: 0 = none, 1 = some (3,000 kept), 2 = many (9,000)
         public bool cineBars = true;          // wide-screen bars in the cinematic view
         public bool cameraGlide = true;       // the view eases after zooms, turns and jumps
         public bool edgeScroll = true;
@@ -41,14 +43,14 @@ namespace Firstlight.Game.UI
         {
             effects = true;
             fxOcclusion = fxBloom = fxGrade = fxVignette = fxFocus = fxHaze = fxMist = fxClouds = fxWind = fxSparkle = fxSmoke = fxSnowfall = 1f;
-            groundDetail = 1f; birds = true; cineBars = true; cameraGlide = true;
+            groundDetail = 1f; birds = true; cineBars = true; cameraGlide = true; snowMounds = true; footprints = 2;
         }
 
         /// <summary>Every strength to one value (test and screenshot modes: -fxscale X).</summary>
         public void ScaleVisuals(float v)
         {
             fxOcclusion = fxBloom = fxGrade = fxVignette = fxFocus = fxHaze = fxMist = fxClouds = fxWind = fxSparkle = fxSmoke = fxSnowfall = v;
-            groundDetail = Mathf.Clamp01(v); birds = v > 0; cineBars = v > 0;
+            groundDetail = Mathf.Clamp01(v); birds = v > 0; cineBars = v > 0; snowMounds = v > 0; footprints = v <= 0 ? 0 : v < 1 ? 1 : 2;
         }
 
         public static GameSettings Current { get; private set; } = new();
@@ -90,6 +92,8 @@ namespace Firstlight.Game.UI
             Look.Strength.Mist = s.fxMist; Look.Strength.Clouds = s.fxClouds; Look.Strength.Wind = s.fxWind; Look.Strength.Sparkle = s.fxSparkle;
             SettlementView.SmokeAmount = s.fxSmoke;
             WorldView.GroundDetail = s.groundDetail; WorldView.BirdsOn = s.birds;
+            WorldView.SnowMounds = s.snowMounds;
+            SettlementView.FootprintCap = s.footprints <= 0 ? 0 : s.footprints == 1 ? 3000 : 9000;
             Look.SetEffects(s.effects);
             Look.ApplyStrengths();
             QualitySettings.vSyncCount = s.vsync ? 1 : 0;

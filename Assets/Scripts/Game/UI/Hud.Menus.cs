@@ -378,12 +378,22 @@ namespace Firstlight.Game.UI
                 Strength("Dark corners", ref st.fxVignette, "A slight darkening toward the corners of the screen (vignette).", true);
                 Strength("Cinematic soft focus", ref st.fxFocus, "In the cinematic view (F10): blur away from the point the camera looks at.", true);
                 y += 6;
-                Head("Air");
+                Head("Air and snow");
                 Strength("Haze", ref st.fxHaze, "Far land fading into the sky's colour. The fog bank beyond the map's border stays: it hides where the land ends.");
                 Strength("Mist", ref st.fxMist, "Low mist in the valley in the early morning.");
                 Strength("Cloud shadows", ref st.fxClouds, "Shadows of clouds drifting over the land.");
                 Strength("Falling snow", ref st.fxSnowfall, "Snowflakes in the air in winter. Snow on the ground is not affected.");
-                y += 6;
+                Toggle("Snow mounds", ref st.snowMounds, tip: "Mounds of drifted snow that build up on open ground, round trees and against rocks as winter sets in.");
+                {
+                    GUI.Label(new Rect(lx, y, 260, 30), "Footprints in snow", Label);
+                    string[] names = { "Off", "Some", "Many" };
+                    int idx = math.clamp(st.footprints, 0, 2);
+                    if (GUI.Button(new Rect(cx, y, 40, 30), "-", Button) && idx > 0) { st.footprints = idx - 1; changed = true; }
+                    GUI.Label(new Rect(cx + 46, y, 194, 30), names[idx], Center);
+                    if (GUI.Button(new Rect(cx + 246, y, 40, 30), "+", Button) && idx < 2) { st.footprints = idx + 1; changed = true; }
+                    Tip(new Rect(lx, y, 260, 30), "People walking over snow leave footprints that fill in after a while. Some keeps 3,000 at once, Many 9,000.");
+                    y += 36;
+                }
                 Head("Land and life");
                 Strength("Wind in plants", ref st.fxWind, "Trees, grass and reeds swaying.");
                 Strength("Sparkle", ref st.fxSparkle, "Glints of sun on the water and glitter on snow.");

@@ -661,6 +661,7 @@ namespace Firstlight.Game
         {
             _coverDirty = false;
             _coverShare = GroundDetail;
+            _moundDirty = true;
             foreach (var cv in _covers)
             {
                 if (cv.Buf.Length < cv.All.Count) cv.Buf = new InstanceData[cv.All.Count];
@@ -753,6 +754,7 @@ namespace Firstlight.Game
             foreach (var cv in _covers) if (!(HideGroundCover && cv.UnderSnow)) cv.Batch.Draw();
             DrawBirds();
             DrawSnowfall();
+            DrawMounds();
         }
 
         // ------------------------------------------------------------------ birds
@@ -807,6 +809,83 @@ namespace Firstlight.Game
                 }
             _birds0.Upload(_birdBuf0, n0); _birds1.Upload(_birdBuf1, n1);
             _birds0.Draw(); _birds1.Draw();
+        }
+
+        // ------------------------------------------------------------------ snow mounds
+
+        // Where snow gathers it piles up: in drifts on open ground, round the feet of trees and against rocks. The mounds
+        // are real shapes that grow as the snow settles in the first days of winter and sink away in the thaw. None on
+        // ground that has been built on, trodden or tilled.
+        /// <summary>Player setting.</summary>
+        public static bool SnowMounds = true;
+        /// <summary>How much snow lies (0..1), set each frame by the game.</summary>
+        public float SnowLevel;
+        readonly List<InstanceData> _moundAll = new();
+        readonly List<int> _moundCell = new();
+        InstanceData[] _moundBuf;
+        InstanceBatch _mounds;
+        float _moundGrown = -1f;
+        bool _moundDirty;
+
+        void BuildMounds()
+        {
+            var rng = new System.Random(9091);
+            float windYaw = math.atan2(0.86f, 0.5f);
+            for (int c = 0; c < _map.W * _map.H; c++)
+            {
+                if (_map.Rock[c] > 0 || _map.Ground[c] != Ground.Grass || RiverDist[c] <= 1.01f) continue;
+                int x = c % _map.W, y = c / _map.W;
+                bool rocks = false;
+                for (int dy = -1; dy <= 1 && !rocks; dy++)
+                    for (int dx = -1; dx <= 1 && !rocks; dx++)
+                        if (_map.InBounds(x + dx, y + dy) && _map.Rock[_map.Cell(x + dx, y + dy)] > 0) rocks = true;
+                float px, pz, chance, big;
+                if (_map.Tree[c])
+                {
+                    // Piled round the trunk, a little to the lee side.
+                    px = x + _map.TreeOffset[c].x + 0.2f + (float)rng.NextDouble() * 0.2f; pz = y + _map.TreeOffset[c].y + 0.1f + (float)rng.NextDouble() * 0.2f;
+                    chance = 0.16f; big = 0.75f;
+                }
+                else
+                {
+                    px = x + (float)rng.NextDouble(); pz = y + (float)rng.NextDouble();
+                    bool drifts = Mathf.PerlinNoise(x * 0.075f + 61f, y * 0.075f + 17f) > 0.56f;      // drifts gather in some stretches
+                    chance = rocks ? 0.3f : drifts ? 0.13f : 0.025f; big = drifts ? 1.25f : 1f;
+                }
+                if (rng.NextDouble() >= chance) continue;
+                float w = (0.7f + (float)rng.NextDouble() * 1.1f) * big;
+                float h = (0.16f + (float)rng.NextDouble() * 0.24f) * big;
+                float k = 0.95f + (float)rng.NextDouble() * 0.05f;
+                // Scale: x = width, y = height as a multiple of the mesh's 0.25, z = length (drawn out along the wind).
+                _moundAll.Add(new InstanceData(new float3(px, 0, pz), windYaw + ((float)rng.NextDouble() - 0.5f) * 0.9f,
+                    new float3(w, h / 0.25f, w * (1.1f + (float)rng.NextDouble() * 0.7f)), Pal.Pack(new Color(k, k, k))));
+                _moundCell.Add(c);
+            }
+            _moundBuf = new InstanceData[_moundAll.Count];
+            _mounds = new InstanceBatch(Shapes.Mound, math.max(1, _moundAll.Count)) { CastShadows = false };
+        }
+
+        void DrawMounds()
+        {
+            if (!SnowMounds || SnowLevel < 0.1f) return;
+            if (_mounds == null) BuildMounds();
+            float grown = math.smoothstep(0.1f, 0.85f, SnowLevel);
+            if (_moundDirty || math.abs(grown - _moundGrown) > 0.015f)
+            {
+                _moundDirty = false; _moundGrown = grown;
+                int n = 0;
+                for (int i = 0; i < _moundAll.Count; i++)
+                {
+                    int c = _moundCell[i];
+                    if (_matBytes[c] != _matOrig[c]) continue;
+                    var d = _moundAll[i];
+                    d.pos.y = _map.HeightAt(d.pos.x, d.pos.z) - 0.02f;
+                    d.scale = new float3(d.scale.x * (0.55f + 0.45f * grown), d.scale.y * grown, d.scale.z * (0.55f + 0.45f * grown));
+                    _moundBuf[n++] = d;
+                }
+                _mounds.Upload(_moundBuf, n);
+            }
+            _mounds.Draw();
         }
 
         // ------------------------------------------------------------------ falling snow
@@ -974,7 +1053,7 @@ namespace Firstlight.Game
                 _spearUp.Dispose(); _spearLevel.Dispose(); _tent.Dispose(); _fire.Dispose();
             }
             if (_covers != null) foreach (var cv in _covers) cv.Batch.Dispose();
-            _birds0?.Dispose(); _birds1?.Dispose(); _flakes?.Dispose();
+            _birds0?.Dispose(); _birds1?.Dispose(); _flakes?.Dispose(); _mounds?.Dispose();
         }
     }
 }

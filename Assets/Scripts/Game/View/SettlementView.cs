@@ -56,7 +56,7 @@ namespace Firstlight.Game
         bool _levelDirty;                 // a building was placed or removed: level the drawn ground again
         float[] _levelOld, _levelNew; int[] _levelStamp; int _levelGen;
 
-        struct Vis { public float2 Pos; public float Yaw, Stride; public int Seen; }
+        struct Vis { public float2 Pos; public float Yaw, Stride; public int Seen, Step; }
         readonly Dictionary<int, Vis> _vis = new();
         readonly List<int> _stale = new();
         int _frame;
@@ -275,6 +275,7 @@ namespace Firstlight.Game
             if (_levelDirty) Relevel();
             PushLights();
             DrawSmoke(dt);
+            DrawFootprints();
             DrawOres();
             DrawPeople(dt);
             DrawKills();
@@ -360,6 +361,57 @@ namespace Firstlight.Game
                 var p = b.Center + Turn(local, yaw);
                 PileFor(S.ResIndex(d.cost[i].id)).Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), i * 0.7f, new float3(0.45f + 0.55f * math.saturate(f)), White));
             }
+        }
+
+        // ------------------------------------------------------------------ footprints in the snow
+
+        // Everyone walking over lying snow leaves footprints: small dents drawn flat on the ground, the newest replacing
+        // the oldest once there are as many as the player's setting allows. They fill in after a few minutes, much
+        // sooner while snow is falling, and go with the thaw.
+        /// <summary>Player setting: the most footprints kept at once (0 = none).</summary>
+        public static int FootprintCap = 9000;
+        /// <summary>Set each frame by the game: how much snow lies (0..1) and how hard it is snowing (0..1).</summary>
+        public float SnowLevel, Snowfall;
+        InstanceBatch _prints;
+        InstanceData[] _printBuf = new InstanceData[0];
+        float[] _printBorn = new float[0];
+        int _printHigh, _printNext, _printScan;
+        bool _printsDirty;
+
+        void Footprint(float2 pos, float yaw, bool left, float size)
+        {
+            if (FootprintCap <= 0 || SnowLevel < 0.35f || _printBuf.Length != FootprintCap) return;
+            if (pos.x < 0 || pos.y < 0 || pos.x >= M.W || pos.y >= M.H) return;
+            int cell = M.Cell((int)pos.x, (int)pos.y);
+            if (M.WaterClass[cell] > 0) return;                       // wading leaves none
+            math.sincos(yaw, out float sn, out float cs);
+            var p = pos + new float2(cs, -sn) * ((left ? -0.05f : 0.05f) * size);
+            int i = _printHigh < _printBuf.Length ? _printHigh++ : _printNext;
+            _printNext = (i + 1) % _printBuf.Length;
+            _printBuf[i] = new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y) + 0.012f, p.y), yaw, new float3(size), White);
+            _printBorn[i] = _anim;
+            _printsDirty = true;
+        }
+
+        void DrawFootprints()
+        {
+            if (_printBuf.Length != FootprintCap)
+            {
+                _printBuf = new InstanceData[FootprintCap]; _printBorn = new float[FootprintCap];
+                _printHigh = _printNext = _printScan = 0; _printsDirty = true;
+            }
+            if (FootprintCap <= 0) return;
+            if (SnowLevel < 0.25f) { if (_printHigh > 0) { _printHigh = _printNext = 0; _printsDirty = true; } return; }
+            // A few hundred a frame are checked for age: five minutes of game time in clear weather, under one in heavy snow.
+            float life = math.lerp(300f, 45f, math.saturate(Snowfall));
+            for (int k = 0; k < 300 && _printHigh > 0; k++)
+            {
+                _printScan = (_printScan + 1) % _printHigh;
+                if (_printBuf[_printScan].scale.x > 0 && _anim - _printBorn[_printScan] > life) { _printBuf[_printScan].scale = 0; _printsDirty = true; }
+            }
+            _prints ??= new InstanceBatch(Shapes.Footprint, FootprintCap, _noSnow) { CastShadows = false };
+            if (_printsDirty) { _printsDirty = false; _prints.Upload(_printBuf, _printHigh); }
+            _prints.Draw();
         }
 
         // ------------------------------------------------------------------ smoke
@@ -591,6 +643,13 @@ namespace Firstlight.Game
                 float step = math.min(dist, maxStep);
                 v.Pos += delta / dist * step;
                 v.Stride += step / 0.85f;
+                // Two footfalls a stride: each leaves a print in the snow, left and right in turn.
+                int footfall = (int)(v.Stride * 2f);
+                if (footfall != v.Step)
+                {
+                    v.Step = footfall;
+                    if (step > 0.15f * dt) Footprint(v.Pos, math.atan2(delta.x, delta.y), (footfall & 1) == 0, c.Age < S.Data.Balance.adultAge ? 0.7f : 1f);
+                }
                 moving = step > 0.15f * dt;
                 if (moving) v.Yaw = TurnTo(v.Yaw, math.atan2(delta.x, delta.y), dt * 10f);
             }
@@ -837,6 +896,7 @@ namespace Firstlight.Game
         public void Dispose()
         {
             foreach (var b in _all) b.B.Dispose();
+            _prints?.Dispose();
         }
     }
 }

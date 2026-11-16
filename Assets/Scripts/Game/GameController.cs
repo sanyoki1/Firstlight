@@ -226,6 +226,8 @@ namespace Firstlight.Game
                 View.BirdsOut = _demo ? 0 : math.saturate(Atmo.Daylight * 1.5f - 0.2f) * (Atmo.Snow > 0.4f ? 0.4f : 1f) * (1f - Atmo.Snowfall);
                 View.Snowfall = _demo || InMenu ? 0 : Atmo.Snowfall * GameSettings.Current.fxSnowfall;
                 View.SnowFocus = Cam.Focus; View.SnowDistance = Cam.Distance;
+                View.SnowLevel = SView.SnowLevel = _demo || InMenu ? 0 : Atmo.Snow;
+                SView.Snowfall = Atmo.Snowfall;
                 var sel = Hud?.SelectedCitizen;
                 float2 cut = sel != null && !sel.Gone ? sel.Pos : new float2(Cam.Focus.x, Cam.Focus.z);
                 SView.CutCenter = cut;

@@ -139,6 +139,22 @@ namespace Firstlight.Game
             }
             if (only == null || only.Contains("cinematic"))
             {
+            if (only == null || only.Contains("tracks"))
+            {
+                // Footprints and mounds: the town at work on a winter's day, after half a minute of people walking about.
+                yield return Advance(() => Sim.DayFraction > 0.42f && Sim.DayFraction < 0.5f, 600, 0.5f);
+                _lookAtmo = (0.47f, 3.5f, 0.9f);
+                LookAt(World(tc + new float2(3, -2)), 15f, 34f, 70f);
+                Time.captureFramerate = 30;
+                Sim.SetSpeed(2);
+                for (int i = 0; i < 500; i++) yield return null;
+                Time.captureFramerate = 0;
+                yield return Shot("look_winter_tracks");
+                LookAt(World(tc + new float2(1, -1)), 7.5f, 40f, 40f);
+                yield return Shot("look_winter_tracks_close");
+                LookAt(World(tc + new float2(-14, 10)), 26f, 30f, 200f);
+                yield return Shot("look_winter_mounds");
+            }
                 // The cinematic view (F10): soft focus round the town fire in the evening light.
                 _lookAtmo = (0.76f, 1.4f, 0f);
                 _cine = true; _cineAmount = 1f;

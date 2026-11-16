@@ -106,8 +106,14 @@ half3 SnowColour(float3 posWS, float3 pBox, float3 nBox)
     half3 s = SampleBoxProjected(pBox, nBox, _FL_LayerSnow, 0).rgb;
     float2 px = floor(posWS.xz * _FL_TexelsPerUnit);
     float2 texel = (px + 0.5) / _FL_TexelsPerUnit;
-    float drift = VNoise(texel / 2.3 + 17.3) * 0.55 + VNoise(texel / 9.0 + 4.2) * 0.45;
-    s *= lerp(half3(0.88, 0.93, 1.0), half3(1.04, 1.03, 1.01), smoothstep(0.25, 0.75, drift));
+    // The snow lies in low swells a few metres across: the side of a swell toward the sun is brighter and warmer, its
+    // lee darker and bluer (in a few flat steps, like the texture's own ripples).
+    float2 toSun = normalize(_FL_SunDir.xz + float2(0.0001, 0));
+    float2 ahead = texel + toSun * 0.3;
+    float h0 = VNoise(texel / 1.7 + 17.3) * 0.6 + VNoise(texel / 5.5 + 4.2) * 0.4;
+    float h1 = VNoise(ahead / 1.7 + 17.3) * 0.6 + VNoise(ahead / 5.5 + 4.2) * 0.4;
+    float lit = floor(saturate(0.5 + (h0 - h1) * 5.0) * 4 + 0.5) / 4;
+    s *= lerp(half3(0.83, 0.89, 1.0), half3(1.05, 1.04, 1.01), lit);
     float2 h = Hash22(px + floor(posWS.y * _FL_TexelsPerUnit) * 13.0);
     if (h.x > 0.9935 && sin(_Time.y * (1.2 + h.y * 2.5) + h.x * 900.0) > 0.1) s *= 1 + 1.5 * _FL_WaterSky.a;
     return s;

@@ -46,7 +46,8 @@
     "tuft",
     "flowers",
     "reeds",
-    "fern"
+    "fern",
+    "footprint"
   ],
   "densities": [
     64
@@ -88,6 +89,13 @@
       "d64": [
         54,
         32
+      ]
+    },
+    {
+      "name": "footprint",
+      "d64": [
+        11,
+        23
       ]
     }
   ]
