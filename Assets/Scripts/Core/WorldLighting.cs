@@ -11,6 +11,10 @@ namespace Firstlight.Core
         static readonly int AmbientGroundId = Shader.PropertyToID("_FL_AmbientGround");
 
         public static readonly Color SkyColour = new(0.62f, 0.68f, 0.72f);
+        // Full daylight: a warm sun against cool light from the sky, so lit and shaded sides differ in colour as well as brightness.
+        public static readonly Color SunColour = new(1.0f, 0.93f, 0.80f);
+        public const float SunIntensity = 1.42f;
+        public static readonly Color AmbientSky = new(0.40f, 0.49f, 0.62f), AmbientGround = new(0.27f, 0.25f, 0.22f);
 
         public static OrbitCamera CreateCamera()
         {
@@ -22,8 +26,8 @@ namespace Firstlight.Core
             cam.allowMSAA = true;
             var data = go.AddComponent<UniversalAdditionalCameraData>();
             data.renderShadows = true;
-            data.renderPostProcessing = false;
             go.AddComponent<AudioListener>();
+            Look.Init(cam);       // sky, haze, post effects
             return go.AddComponent<OrbitCamera>();
         }
 
@@ -32,17 +36,12 @@ namespace Firstlight.Core
             var go = new GameObject("Sun");
             var light = go.AddComponent<Light>();
             light.type = LightType.Directional;
-            light.color = new Color(1.0f, 0.95f, 0.86f);
-            light.intensity = 1.25f;
+            light.color = SunColour;
+            light.intensity = SunIntensity;
             light.shadows = LightShadows.Soft;
-            light.shadowStrength = 0.75f;
+            light.shadowStrength = 0.82f;
             go.transform.rotation = Quaternion.Euler(48f, -35f, 0f);
-            SetAmbient(new Color(0.50f, 0.55f, 0.60f), new Color(0.30f, 0.28f, 0.24f));
-            RenderSettings.fog = true;
-            RenderSettings.fogMode = FogMode.Linear;
-            RenderSettings.fogColor = SkyColour;
-            RenderSettings.fogStartDistance = 150f;
-            RenderSettings.fogEndDistance = 600f;
+            SetAmbient(AmbientSky, AmbientGround);
             return light;
         }
 
@@ -55,10 +54,7 @@ namespace Firstlight.Core
         /// <summary>Keeps shadow distance and fog sensible for the current zoom.</summary>
         public static void UpdateForZoom(float distance)
         {
-            if (GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset urp)
-                urp.shadowDistance = Mathf.Clamp(distance * 2.2f, 40f, 260f);
-            RenderSettings.fogStartDistance = distance * 1.8f + 40f;
-            RenderSettings.fogEndDistance = distance * 5f + 250f;
+            Look.UpdateForZoom(distance);
         }
 
         public static Material FlatMaterial(Color tint)

@@ -42,6 +42,7 @@ the people decide who walks where. Everything else (who works, who hauls, who bu
 | F1 | Help |
 | F5 / F8 | Quicksave / quickload |
 | F9 | Let the auto-player run the settlement (again to take it back) |
+| F10 | Cinematic view: no interface, wide-screen bars, soft focus away from the middle and a slow turn round the view. Space pauses; F10 or Esc leaves it |
 | F11 | Hide the interface |
 | Tab | While choosing the campfire site: show a good site |
 

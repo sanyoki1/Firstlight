@@ -104,7 +104,7 @@ namespace Firstlight.Game
             Sim = loaded?.Sim ?? new Settlement(Data, Map, _seed);
             if (loaded == null) Sim.SetDifficulty(launch.Difficulty);
             SView = new SettlementView(Sim, View, Wild);
-            Atmo = new Atmosphere(_sun, Cam.Cam);
+            Atmo = new Atmosphere(_sun, Cam.Cam) { MistTop = (Map.RiverTop + Map.RiverBottom) * 0.5f + 1.1f };
             Hud = new Hud(this);
             Sound = new SoundScape(this);
             if (loaded != null)
@@ -133,6 +133,7 @@ namespace Firstlight.Game
             if (HasArg("-deerpair")) StartCoroutine(DeerPairShots());
             if (HasArg("-huntshots")) StartCoroutine(HuntShots());
             if (HasArg("-uishots")) StartCoroutine(UiShots());
+            if (HasArg("-lookshots")) StartCoroutine(LookShots());
             if (HasArg("-p4shots")) StartCoroutine(P4Shots());
             if (HasArg("-guideshots")) StartCoroutine(GuideShots());
             if (HasArg("-panelshots")) StartCoroutine(HasArg("-badgeshots") ? BadgeShots() : PanelShots());
@@ -183,6 +184,9 @@ namespace Firstlight.Game
             if (kb != null)
             {
                 if (kb.f6Key.wasPressedThisFrame) StartFlood();
+                if (kb.f10Key.wasPressedThisFrame && !InMenu && !_demo && !_faulted && !Sim.NeedsCampfire) SetCinematic(!_cine);
+                if (_cine && kb.escapeKey.wasPressedThisFrame) SetCinematic(false);
+                else if (_cine && kb.spaceKey.wasPressedThisFrame) TogglePause();
                 if (kb.f7Key.wasPressedThisFrame) Band?.StartHunt();
             }
             // Each part runs under its own guard (GameController.Errors.cs): an exception in the settlement's step or the
@@ -194,7 +198,7 @@ namespace Firstlight.Game
                 try
                 {
                     if (InMenu) MenuUpdate();
-                    else if (!_demo) Hud.Update(Time.deltaTime);   // HUD keys and mouse (speed, panels, placing, selecting)
+                    else if (!_demo && !_cine) Hud.Update(Time.deltaTime);   // HUD keys and mouse (speed, panels, placing, selecting)
                 }
                 catch (Exception e) { Fault("the interface's update", e); }
                 PerfProbe.End(PerfProbe.S.HudUpdate);
@@ -216,14 +220,17 @@ namespace Firstlight.Game
             {
                 PerfProbe.Begin(PerfProbe.S.Atmo);
                 WorldLighting.UpdateForZoom(Cam.Distance);
+                CinematicUpdate();
                 // Firelight at night, and trees cut away round the focus (or the selected person) when zoomed in.
                 SView.Night = InMenu || _demo ? 0 : 1f - Atmo.Daylight;
+                View.BirdsOut = _demo ? 0 : math.saturate(Atmo.Daylight * 1.5f - 0.2f) * (Atmo.Snow > 0.4f ? 0.4f : 1f);
                 var sel = Hud?.SelectedCitizen;
                 float2 cut = sel != null && !sel.Gone ? sel.Pos : new float2(Cam.Focus.x, Cam.Focus.z);
                 SView.CutCenter = cut;
                 SView.CutRadius = 5f + Cam.Distance * 0.1f;
                 SView.CutStrength = InMenu || _demo || CanopyCutOff || Sim.NeedsCampfire ? 0 : math.saturate((27f - Cam.Distance) / 10f);
                 if (InMenu) Atmo.Apply(0.7f, 1.35f, 0f);          // the title backdrop: a late summer afternoon
+                else if (_lookAtmo is { } la) { Atmo.Apply(la.day, la.season, la.snow); View.HideGroundCover = Atmo.Snow > 0.4f; }
                 else if (!_demo) { Atmo.Apply(Sim); View.HideGroundCover = Atmo.Snow > 0.4f; }
                 PerfProbe.End(PerfProbe.S.Atmo);
             }
@@ -289,11 +296,17 @@ namespace Firstlight.Game
         void OnGUI()
         {
             if (_dataError != null) { DataErrorGUI(); return; }
-            if (_hideGui || View == null || _demo) return;
+            if (View == null || _demo || (_hideGui && _cineAmount <= 0.01f)) return;
             // -uishots: on the frame of a shot the camera renders into _shotRT and the HUD is drawn into it too.
             bool shot = _pendingShot != null && Event.current.type == EventType.Repaint && Cam.Cam.targetTexture == _shotRT;
             var prev = RenderTexture.active;
             if (shot) RenderTexture.active = _shotRT;
+            if (_cineAmount > 0.01f && Event.current.type == EventType.Repaint) Letterbox();
+            if (_hideGui || _cine)
+            {
+                if (shot) { _guiDrawn = true; RenderTexture.active = prev; }
+                return;
+            }
             PerfProbe.Begin(PerfProbe.S.OnGUI);
             if (_faulted) FaultGUI();
             else
@@ -308,6 +321,44 @@ namespace Firstlight.Game
         }
 
         bool _hideGui;
+
+        // ------------------------------------------------------------------ cinematic view (F10)
+
+        // The settlement as a film shot: no interface, wide-screen bars, soft focus away from the point the camera looks
+        // at, and a slow turn round it. The camera keys and mouse still work; Space pauses; F10 or Esc leaves.
+        bool _cine;
+        float _cineAmount;          // eases 0..1 as the view comes and goes
+
+        public bool Cinematic => _cine;
+
+        public void SetCinematic(bool on)
+        {
+            if (_cine == on) return;
+            _cine = on;
+            if (on) { Hud.Select(null); OrbitCamera.PointerOverUI = false; OrbitCamera.KeyboardCaptured = false; }
+        }
+
+        void CinematicUpdate()
+        {
+            _cineAmount = Mathf.MoveTowards(_cineAmount, _cine ? 1f : 0f, Time.unscaledDeltaTime * 1.5f);
+            Look.Cinematic(_cineAmount, Cam.Distance);
+            if (!_cine) return;
+            var mouse = Mouse.current;
+            bool held = mouse != null && (mouse.rightButton.isPressed || mouse.middleButton.isPressed);
+            if (!held) Cam.Yaw += 2.2f * Time.unscaledDeltaTime;
+        }
+
+        /// <summary>Black bars above and below for a 2.39:1 picture, sliding in with the view.</summary>
+        void Letterbox()
+        {
+            float bar = Mathf.Max(0f, (Screen.height - Screen.width / 2.39f) * 0.5f) * Mathf.SmoothStep(0f, 1f, _cineAmount);
+            if (bar < 1f) return;
+            var old = GUI.color;
+            GUI.color = Color.black;
+            GUI.DrawTexture(new Rect(0, 0, Screen.width, bar), Texture2D.whiteTexture);
+            GUI.DrawTexture(new Rect(0, Screen.height - bar, Screen.width, bar), Texture2D.whiteTexture);
+            GUI.color = old;
+        }
         /// <summary>-p4shots: the same view without the canopy cut-away, for comparison.</summary>
         public bool CanopyCutOff;
 

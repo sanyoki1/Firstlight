@@ -628,7 +628,63 @@ MATERIALS = [
     ("stone_wall", stone_wall), ("pottery", pottery), ("cloth", cloth), ("ore_copper", ore_copper), ("ore_tin", ore_tin),
     ("metal", metal), ("daub", daub),
 ]
-SPRITES = [("bush", sprite_bush), ("tuft", sprite_tuft), ("flowers", sprite_flowers)]
+def sprite_reeds(d, seed=23):
+    """A clump of reeds for the river bank: tall thin stems leaning a little, some with a dark seed head."""
+    w, h = max(6, round(0.7 * d)), max(8, round(1.05 * d))
+    p = Painter(d, (w, h), seed, wrap=False)
+    cv = p.cv
+    for _ in range(max(5, int(w * 0.55))):
+        x0 = p.ri(w // 5, w - w // 5)
+        lean = p.r(-w / 5, w / 5)
+        top = p.ri(0, h // 3)
+        x1 = int(min(w - 1, max(0, x0 + lean)))
+        tone = ["grass1", "grass2", "grass3", "flax2", "stubble2"][p.ri(0, 5)]
+        cv.line(x0, h - 1, x1, top, tone)
+        if p.r(1) < 0.45:                                   # a seed head: a short dark club near the top
+            s = max(2, p.px(0.11))
+            for k in range(s):
+                cv.px(x1, min(h - 1, top + k), "brush1")
+                if d >= 32:
+                    cv.px(min(w - 1, x1 + 1), min(h - 1, top + k), "brush2")
+    return cv
+
+
+def sprite_fern(d, seed=24):
+    """A fern for the forest floor: fronds arching out from the middle, each a spine with short leaflets."""
+    w, h = max(8, round(0.85 * d)), max(5, round(0.5 * d))
+    p = Painter(d, (w, h), seed, wrap=False)
+    cv = p.cv
+    n = max(5, int(w / 7))
+    order = list(range(n))
+    p.rng.shuffle(order)
+    for i in order:
+        a = math.pi * (0.06 + 0.88 * (i + p.r(-0.25, 0.25)) / (n - 1))
+        length = p.r(0.7, 1.0) * w * 0.5
+        spine, leaf = [("needle0", "leaf1"), ("needle1", "leaf2"), ("leaf0", "leaf2"), ("needle1", "needle3")][p.ri(0, 4)]
+        steps = max(4, int(length * 1.5))
+        px_, py_ = w / 2, h - 1
+        for s in range(steps):
+            t = s / steps
+            x = w / 2 + math.cos(a) * length * t
+            y = (h - 1) - math.sin(a) * length * t * (h / (w * 0.5)) * (1 - 0.3 * t)   # the frond arches over
+            # Leaflets across the frond, longest a third of the way out, tapering to the tip.
+            dx, dy = x - px_, y - py_
+            ln = math.hypot(dx, dy) or 1.0
+            nx, ny = -dy / ln, dx / ln
+            half = max(0.0, (0.07 * d) * math.sin(math.pi * min(1.0, t * 0.85 + 0.12)))
+            if s % 2 == 0:
+                for k in range(-int(round(half)), int(round(half)) + 1):
+                    xi, yi = int(round(x + nx * k)), int(round(y + ny * k))
+                    if 0 <= xi < w and 0 <= yi < h:
+                        cv.px(xi, yi, leaf)
+            xi, yi = int(round(x)), int(round(y))
+            if 0 <= xi < w and 0 <= yi < h:
+                cv.px(xi, yi, spine)
+            px_, py_ = x, y
+    return cv
+
+
+SPRITES = [("bush", sprite_bush), ("tuft", sprite_tuft), ("flowers", sprite_flowers), ("reeds", sprite_reeds), ("fern", sprite_fern)]
 
 
 def main():

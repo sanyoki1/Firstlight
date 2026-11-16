@@ -42,8 +42,8 @@ namespace Firstlight.Game
         readonly Dictionary<string, Batch> _ores = new();
         readonly List<Batch> _all = new();
         Batch[] _people;                  // [pose * 2 + woman]
-        Batch _spearUp, _spearLevel, _rings, _markers;
-        static Material _noSnow;
+        Batch _spearUp, _spearLevel, _rings, _markers, _smoke;
+        static Material _noSnow, _smokeMat;
 
         // ------------------------------------------------------------------ per building / citizen view state
         float[] _base = new float[64];    // ground height per building id (NaN = not yet seen)
@@ -101,6 +101,13 @@ namespace Firstlight.Game
             _rings = Track(new Batch(BuildingMeshes.Ring, _noSnow, false));
             _markers = Track(new Batch(BuildingMeshes.Marker, _noSnow, false));
             foreach (var k in BuildingMeshes.PileKinds) _piles[k] = Track(new Batch(BuildingMeshes.Pile(k)));
+            if (_smokeMat == null)
+            {
+                _smokeMat = new Material(InstanceBatch.SharedMaterial) { name = "InstancedFlatSmoke" };
+                _smokeMat.SetFloat("_Snowable", 0f);
+                _smokeMat.SetFloat("_Smoke", 1f);
+            }
+            _smoke = Track(new Batch(Shapes.Puff, _smokeMat, false));
         }
 
         Batch Track(Batch b) { _all.Add(b); return b; }
@@ -196,8 +203,10 @@ namespace Firstlight.Game
             _anim += dt * S.Speed;
             SyncPaths();
             _fires.Clear();
+            _chimneys.Clear();
             DrawBuildings();
             PushLights();
+            DrawSmoke(dt);
             DrawOres();
             DrawPeople(dt);
             DrawKills();
@@ -242,9 +251,13 @@ namespace Firstlight.Game
                     {
                         glow.Add(new InstanceData(at, yaw, new float3(1f, flicker, 1f), White));
                         // A pool of firelight round it at night: the town fire reaches farthest.
-                        float reach = b.Def.townCenter ? 5.5f : b.Def.warmthRadius > 0 || b.Def.knowledgePerWorker > 0 ? 3.6f : 2.6f;
+                        float reach = b.Def.townCenter ? 7f : b.Def.warmthRadius > 0 || b.Def.knowledgePerWorker > 0 ? 4.6f : 3.4f;
                         _fires.Add(new Vector4(b.Center.x, y + 0.45f, b.Center.y, reach * (0.94f + 0.06f * flicker)));
+                        _chimneys.Add(new Vector4(b.Center.x, y + 0.55f, b.Center.y, b.Def.townCenter ? 1.5f : 1f));
                     }
+                    // A hearth inside: homes with people in them smoke through the roof on winter days and at night.
+                    else if (b.Def.housing > 0 && b.Residents > 0 && (S.Season == 3 || Night > 0.4f))
+                        _chimneys.Add(new Vector4(b.Center.x, y + height * 0.96f, b.Center.y, 0.55f));
                     DrawStore(b, at);
                     continue;
                 }
@@ -281,6 +294,69 @@ namespace Firstlight.Game
             }
         }
 
+        // ------------------------------------------------------------------ smoke
+
+        // Smoke rises from every burning fire and from the roofs of warmed homes: puffs that swell as they climb, lean
+        // with the wind and thin out. Drawn as small faceted balls (lit like everything else, so firelit at night).
+        struct Puff { public float3 Pos; public float Age, Life, Size, Yaw; public float2 Drift; }
+        readonly List<Puff> _puffs = new();
+        readonly List<Vector4> _chimneys = new();     // xyz = where the smoke starts, w = how much (1 = a work fire)
+        float _smokeClock;
+        const int MaxPuffs = 1500;
+
+        void DrawSmoke(float dt)
+        {
+            // Smoke keeps the game's pace up to double speed and stands still while the game is paused.
+            float step = dt * math.min(S.Speed, 2f);
+            if (_puffs.Count == 0 && _chimneys.Count > 0)
+                for (int i = 0; i < 40; i++) StepSmoke(0.2f);      // a view that opens on a burning fire shows its plume at once
+            if (step > 0) StepSmoke(step);
+            foreach (var pf in _puffs)
+            {
+                // A puff starts small and dense, swells as it climbs and thins to nothing.
+                float a = pf.Age / pf.Life;
+                float size = pf.Size * math.lerp(0.3f, 1f, math.sqrt(a));
+                float solid = math.saturate(1.3f - a * 1.35f) * 0.9f;
+                if (solid < 0.04f) continue;
+                float k = 0.80f + 0.12f * pf.Drift.x * 7f;
+                uint col = Pal.Pack(new Color(k, k, k * 1.01f, solid));
+                _smoke.Add(new InstanceData(pf.Pos, pf.Yaw + a * 2f, new float3(size, size * 0.8f, size), col));
+            }
+        }
+
+        void StepSmoke(float step)
+        {
+            for (int i = _puffs.Count - 1; i >= 0; i--)
+            {
+                var pf = _puffs[i];
+                pf.Age += step;
+                if (pf.Age >= pf.Life) { _puffs[i] = _puffs[_puffs.Count - 1]; _puffs.RemoveAt(_puffs.Count - 1); continue; }
+                float a = pf.Age / pf.Life;
+                pf.Pos.y += step * math.lerp(0.7f, 0.28f, a);
+                pf.Pos.x += step * (0.86f * 0.7f * a + pf.Drift.x);
+                pf.Pos.z += step * (0.5f * 0.7f * a + pf.Drift.y);
+                _puffs[i] = pf;
+            }
+            _smokeClock += step;
+            const float every = 0.2f;
+            while (_smokeClock >= every)
+            {
+                _smokeClock -= every;
+                for (int k = 0; k < _chimneys.Count && _puffs.Count < MaxPuffs; k++)
+                {
+                    var c = _chimneys[k];
+                    int seed = _puffs.Count * 7 + k * 131 + (int)(_anim * 10f);
+                    if (Hash(seed, 31) > c.w * 0.75f) continue;
+                    _puffs.Add(new Puff
+                    {
+                        Pos = new float3(c.x + (Hash(seed, 32) - 0.5f) * 0.12f, c.y, c.z + (Hash(seed, 33) - 0.5f) * 0.12f),
+                        Life = 4.5f + Hash(seed, 34) * 3f, Size = (0.2f + Hash(seed, 35) * 0.2f) * math.lerp(0.75f, 1.2f, math.saturate(c.w)),
+                        Yaw = Hash(seed, 36) * 6.28f, Drift = new float2(Hash(seed, 37) - 0.5f, Hash(seed, 38) - 0.5f) * 0.14f,
+                    });
+                }
+            }
+        }
+
         static float Yaw(int rot) => (rot & 3) * math.PI * 0.5f;
 
         /// <summary>Turns a footprint-local offset like the models turn (the instance shader's yaw convention).</summary>
@@ -303,7 +379,7 @@ namespace Firstlight.Game
             }
             Shader.SetGlobalVectorArray(FiresId, _fireArr);
             Shader.SetGlobalFloat(FireCountId, n);
-            Shader.SetGlobalFloat(FireStrengthId, Night * 1.15f);
+            Shader.SetGlobalFloat(FireStrengthId, Night * 1.7f);
             Shader.SetGlobalVector(CutId, new Vector4(CutCenter.x, CutCenter.y, 0, CutRadius));
             Shader.SetGlobalFloat(CutStrengthId, CutStrength);
         }

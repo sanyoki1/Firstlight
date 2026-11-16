@@ -272,13 +272,13 @@ namespace Firstlight.Core
     /// <summary>Shared meshes for nature and placeholders. Sprite meshes are rebuilt when the texture density changes.</summary>
     public static class Shapes
     {
-        static Mesh _citizen, _carry, _conifer, _broadleaf, _rock, _box, _bush, _tuft, _flowers;
+        static Mesh _citizen, _carry, _conifer, _broadleaf, _rock, _box, _bush, _tuft, _flowers, _reeds, _fern, _log, _stump, _puff, _bird0, _bird1;
 
         static Shapes() { MaterialLibrary.DensityChanged += Reset; }
 
         public static void Reset()
         {
-            _bush = _tuft = _flowers = null; // sprite UVs and sizes depend on density
+            _bush = _tuft = _flowers = _reeds = _fern = null; // sprite UVs and sizes depend on density
         }
 
         static readonly Color Tinted = new(1, 1, 1, 1), Fixed = new(1, 1, 1, 0);
@@ -292,6 +292,30 @@ namespace Firstlight.Core
         public static Mesh Bush => _bush ??= Sprite("bush");
         public static Mesh Tuft => _tuft ??= Sprite("tuft");
         public static Mesh Flowers => _flowers ??= Sprite("flowers");
+        public static Mesh Reeds => _reeds ??= Sprite("reeds");
+        public static Mesh Fern => _fern ??= Sprite("fern");
+        /// <summary>A fallen trunk lying along z, and a stump.</summary>
+        public static Mesh Log => _log ??= Build(b =>
+        {
+            b.Mat("bark_conifer").Frustum(Matrix4x4.TRS(new Vector3(0, 0.1f, -0.7f), Quaternion.Euler(90, 0, 0), new Vector3(0.24f, 1.4f, 0.24f)), 6, 0.5f, 0.4f, Tinted);
+            b.Frustum(Matrix4x4.TRS(new Vector3(0.02f, 0.12f, 0.1f), Quaternion.Euler(50, 70, 0), new Vector3(0.08f, 0.35f, 0.08f)), 5, 0.5f, 0.3f, Tinted);
+        }, "log");
+        public static Mesh Stump => _stump ??= Build(b => b.Mat("bark_broad").Frustum(MeshBuilder.TRS(new Vector3(0, -0.03f, 0), 0, new Vector3(0.34f, 0.24f, 0.34f)), 7, 0.5f, 0.4f, Tinted), "stump");
+        /// <summary>A puff of smoke: a faceted ball centred on its origin, tinted by the instance.</summary>
+        public static Mesh Puff => _puff ??= Build(b => b.Mat("snow").Sphere(MeshBuilder.TRS(new Vector3(0, -0.5f, 0), 0, Vector3.one), Tinted, 1), "puff");
+        /// <summary>A bird seen from afar: two wings up (frame 0) or down (frame 1), flying along +z.</summary>
+        public static Mesh Bird(int frame) => frame == 0 ? _bird0 ??= BuildBird(0.09f) : _bird1 ??= BuildBird(-0.05f);
+
+        static Mesh BuildBird(float tip)
+        {
+            var b = new MeshBuilder().Mat("hair");
+            var col = new Color(0.55f, 0.55f, 0.58f, 0);
+            Vector3 nose = new(0, 0, 0.11f), tail = new(0, 0, -0.1f), l = new(-0.2f, tip, -0.03f), r = new(0.2f, tip, -0.03f);
+            // Both faces of each wing, so the bird shows from above and below.
+            b.Tri(nose, l, tail, col); b.Tri(nose, tail, l, col);
+            b.Tri(nose, tail, r, col); b.Tri(nose, r, tail, col);
+            return b.ToMesh("bird");
+        }
 
         static Mesh Build(System.Action<MeshBuilder> f, string name)
         {

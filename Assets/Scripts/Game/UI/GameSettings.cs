@@ -17,6 +17,7 @@ namespace Firstlight.Game.UI
         public int width, height;             // 0 = the desktop's resolution
         public bool vsync = true;
         public int frameCap = 0;              // 0 = none (vsync decides), else frames per second
+        public bool effects = true;           // post effects: soft shadowing in creases, glow, colour grading (off = plainer, faster)
         public bool edgeScroll = true;
         public float cameraSpeed = 1f;
         public bool autosave = true;
@@ -52,6 +53,7 @@ namespace Firstlight.Game.UI
             UiTheme.UserScale = s.uiScale;
             OrbitCamera.SpeedScale = s.cameraSpeed;
             OrbitCamera.EdgeScrollEnabled = s.edgeScroll;
+            Look.SetEffects(s.effects);
             QualitySettings.vSyncCount = s.vsync ? 1 : 0;
             Application.targetFrameRate = s.frameCap > 0 ? s.frameCap : -1;
             if (!display || Application.isBatchMode) return;

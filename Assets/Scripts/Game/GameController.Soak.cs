@@ -61,6 +61,7 @@ namespace Firstlight.Game
             _shotDir = Path.GetFullPath(Arg("-outdir") ?? Path.Combine(Application.dataPath, "..", "..", "runs", "shots"));
             Directory.CreateDirectory(_shotDir);
             if (float.TryParse(Arg("-shotscale"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float sc)) UI.UiTheme.UserScale = sc;
+            if (HasArg("-cine")) { SetCinematic(true); _cineAmount = 1f; }   // the cinematic view (F10) for the still
             for (int i = 0; i < 40; i++) yield return null;
             yield return Shot(name);
             Application.Quit();

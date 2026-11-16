@@ -15,6 +15,8 @@ namespace Firstlight.Core
         public float Pitch = 52f;
         public float Distance = 40f;
         public float MinDistance = 6f;
+        /// <summary>The lowest tilt (degrees above the horizon): low enough to look across the land to the sky.</summary>
+        public float MinPitch = 12f;
         public float MaxDistance = 320f;
         public Vector2 BoundsMin = new(0, 0);
         public Vector2 BoundsMax = new(256, 256);
@@ -41,8 +43,14 @@ namespace Firstlight.Core
         public void SetView(Vector3 focus, float distance, float pitch, float yaw)
         {
             Focus = focus; Distance = distance; Pitch = pitch; Yaw = yaw;
+            _snap = true;
             Apply();
         }
+
+        // What is drawn glides after Focus / Yaw / Pitch / Distance (the values input and the game set), so zoom steps,
+        // jumps to an event and key turns ease in and out instead of snapping. SetView cuts straight to a view.
+        Vector3 _sFocus; float _sYaw, _sPitch, _sDist;
+        bool _snap = true;
 
         void LateUpdate()
         {
@@ -105,7 +113,7 @@ namespace Firstlight.Core
                 if (mouse.rightButton.isPressed)
                 {
                     Yaw += delta.x * 0.25f;
-                    Pitch = Mathf.Clamp(Pitch - delta.y * 0.2f, 20f, 85f);
+                    Pitch = Mathf.Clamp(Pitch - delta.y * 0.2f, MinPitch, 85f);
                 }
                 if (mouse.middleButton.isPressed)
                 {
@@ -124,12 +132,16 @@ namespace Firstlight.Core
         void Apply()
         {
             if (HeightAt != null) Focus.y = Mathf.Lerp(Focus.y, HeightAt(Focus.x, Focus.z), 0.2f);
-            var rotation = Quaternion.Euler(Pitch, Yaw, 0);
-            transform.SetPositionAndRotation(Focus + rotation * new Vector3(0, 0, -Distance), rotation);
+            float k = _snap ? 1f : 1f - Mathf.Exp(-Mathf.Min(Time.unscaledDeltaTime, 0.1f) * 13f);
+            _snap = false;
+            _sFocus = Vector3.Lerp(_sFocus, Focus, k);
+            _sYaw = Mathf.Lerp(_sYaw, Yaw, k); _sPitch = Mathf.Lerp(_sPitch, Pitch, k); _sDist = Mathf.Lerp(_sDist, Distance, k);
+            var rotation = Quaternion.Euler(_sPitch, _sYaw, 0);
+            transform.SetPositionAndRotation(_sFocus + rotation * new Vector3(0, 0, -_sDist), rotation);
             if (Cam != null)
             {
-                Cam.nearClipPlane = Mathf.Max(0.3f, Distance * 0.02f);
-                Cam.farClipPlane = Distance * 4f + 300f;
+                Cam.nearClipPlane = Mathf.Max(0.3f, _sDist * 0.02f);
+                Cam.farClipPlane = _sDist * 4f + 400f;
             }
         }
 

@@ -334,6 +334,7 @@ namespace Firstlight.Game.UI
                 { "P", "Problem badges over buildings on / off (click one to select it)" },
                 { "F1", "This help" },
                 { "F9", "Let the auto-player run the settlement" },
+                { "F10", "Cinematic view: no interface, a slow turn round the view (again or Esc to leave)" },
                 { "F11", "Hide the interface" },
             };
             float y = r.y + 50;

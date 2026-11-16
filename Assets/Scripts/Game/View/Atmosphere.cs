@@ -19,6 +19,8 @@ namespace Firstlight.Game
         /// <summary>0 = deep night, 1 = full day (for the HUD and the view).</summary>
         public float Daylight { get; private set; } = 1f;
         public float Snow { get; private set; }
+        /// <summary>World height the morning mist reaches up to (a little above the river).</summary>
+        public float MistTop = 0.9f;
 
         // Spring, summer, autumn, winter.
         static readonly Vector3[] Grass = { new(1.0f, 1.05f, 0.95f), new(1.03f, 1.0f, 0.86f), new(1.14f, 0.97f, 0.7f), new(0.98f, 0.9f, 0.78f) };
@@ -44,21 +46,32 @@ namespace Firstlight.Game
             var moonRot = Quaternion.Euler(52f, 150f, 0);
             _sun.transform.rotation = Quaternion.Slerp(moonRot, sunRot, day);
             float low = 1f - math.saturate((elev - 8f) / 22f);                 // warm light near the horizon
-            var sunCol = Color.Lerp(new Color(1.0f, 0.95f, 0.86f), new Color(1.0f, 0.74f, 0.52f), low * 0.8f);
-            var moonCol = new Color(0.55f, 0.64f, 0.85f);
+            var sunCol = Color.Lerp(WorldLighting.SunColour, new Color(1.0f, 0.66f, 0.40f), low * 0.85f);
+            var moonCol = new Color(0.50f, 0.62f, 0.90f);
             _sun.color = Color.Lerp(moonCol, sunCol, day);
-            _sun.intensity = math.lerp(0.38f, 1.25f - low * 0.25f, day);
-            _sun.shadowStrength = math.lerp(0.45f, 0.75f, day);
-            var skyDay = WorldLighting.SkyColour;
-            var dusk = new Color(0.64f, 0.52f, 0.47f);
-            var night = new Color(0.13f, 0.16f, 0.23f);
-            var sky = Color.Lerp(night, Color.Lerp(dusk, skyDay, 1f - low), day);
-            if (season == 3) sky = Color.Lerp(sky, new Color(0.7f, 0.73f, 0.76f) * (0.3f + 0.7f * day), 0.35f);
-            _cam.backgroundColor = sky;
-            RenderSettings.fogColor = sky;
-            WorldLighting.SetAmbient(Color.Lerp(new Color(0.22f, 0.26f, 0.36f), new Color(0.50f, 0.55f, 0.60f), day),
-                                     Color.Lerp(new Color(0.12f, 0.12f, 0.15f), new Color(0.30f, 0.28f, 0.24f), day));
-            Shader.SetGlobalFloat(GlowId, math.lerp(1.9f, 1.05f, day));
+            _sun.intensity = math.lerp(0.42f, WorldLighting.SunIntensity - low * 0.2f, day);
+            _sun.shadowStrength = math.lerp(0.5f, 0.82f, day);
+            float winter = season == 3 ? 1f : 0f;
+            // The sky: haze at the horizon, deeper overhead; orange low in the sky at dawn and dusk, a band of rose
+            // lingering through twilight; deep blue at night.
+            float twi = math.saturate(1f - math.abs(day - 0.45f) / 0.45f);
+            var horizon = Color.Lerp(new Color(0.07f, 0.10f, 0.17f), Color.Lerp(new Color(0.70f, 0.77f, 0.83f), new Color(0.90f, 0.68f, 0.50f), low), day);
+            horizon = Color.Lerp(horizon, new Color(0.38f, 0.37f, 0.46f), twi * 0.5f);
+            var zenith = Color.Lerp(new Color(0.02f, 0.035f, 0.08f), Color.Lerp(new Color(0.33f, 0.50f, 0.74f), new Color(0.36f, 0.40f, 0.58f), low), day);
+            zenith = Color.Lerp(zenith, new Color(0.20f, 0.22f, 0.40f), twi * 0.5f);
+            if (season == 3) { horizon = Color.Lerp(horizon, new Color(0.80f, 0.83f, 0.86f) * (0.12f + 0.88f * day), 0.5f); zenith = Color.Lerp(zenith, new Color(0.55f, 0.62f, 0.72f) * (0.1f + 0.9f * day), 0.45f); }
+            var glow = Color.Lerp(new Color(0.05f, 0.07f, 0.12f), Color.Lerp(new Color(0.32f, 0.27f, 0.18f), new Color(0.95f, 0.50f, 0.20f), low), day);
+            var disc = Color.Lerp(new Color(1.6f, 1.7f, 1.9f), Color.Lerp(new Color(3.2f, 3.0f, 2.6f), new Color(3.4f, 2.0f, 1.0f), low), day);
+            var cloud = Color.Lerp(new Color(0.10f, 0.12f, 0.18f), Color.Lerp(new Color(0.96f, 0.97f, 0.98f), new Color(0.98f, 0.76f, 0.62f), low), day);
+            Look.SetSky(horizon, zenith, glow, math.lerp(5f, 3.5f, low * day), -_sun.transform.forward, disc, 1f - day, cloud, 0.9f);
+            // Mist lies in the valley from before dawn into the morning, thickest in autumn; cloud shadows by day only.
+            float dawn = math.saturate((dayFraction - 0.12f) / 0.06f) * math.saturate((0.36f - dayFraction) / 0.1f);
+            float mist = dawn * (season == 2 ? 0.75f : season == 3 ? 0.5f : 0.55f) + (1f - day) * 0.12f;
+            Look.SetWeather(mist, MistTop, 0.42f * day * (1f - low * 0.5f), season == 3 ? 0.7f : 1f);
+            Look.Grade(day, low, winter * math.saturate(snow * 2f));
+            WorldLighting.SetAmbient(Color.Lerp(new Color(0.20f, 0.26f, 0.40f), Color.Lerp(WorldLighting.AmbientSky, new Color(0.42f, 0.42f, 0.52f), low), day),
+                                     Color.Lerp(new Color(0.11f, 0.12f, 0.17f), Color.Lerp(WorldLighting.AmbientGround, new Color(0.30f, 0.23f, 0.18f), low), day));
+            Shader.SetGlobalFloat(GlowId, math.lerp(2.4f, 1.25f, day));
 
             // Season tints blend into the next season over its last couple of days.
             float f = seasonPos - math.floor(seasonPos);

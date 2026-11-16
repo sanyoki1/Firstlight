@@ -35,13 +35,13 @@ Shader "Firstlight/FlatLit"
             #pragma fragment frag
             #pragma multi_compile _ _MAIN_LIGHT_SHADOWS _MAIN_LIGHT_SHADOWS_CASCADE _MAIN_LIGHT_SHADOWS_SCREEN
             #pragma multi_compile_fragment _ _SHADOWS_SOFT _SHADOWS_SOFT_LOW _SHADOWS_SOFT_MEDIUM _SHADOWS_SOFT_HIGH
-            #pragma multi_compile_fog
+            #pragma multi_compile_fragment _ _SCREEN_SPACE_OCCLUSION
 
             struct Attributes { float4 positionOS : POSITION; half4 color : COLOR; float2 uv : TEXCOORD0; float2 mat : TEXCOORD1; };
             struct Varyings
             {
                 float4 positionCS : SV_POSITION; float3 positionWS : TEXCOORD0; float3 positionOS : TEXCOORD1;
-                half4 color : COLOR; float2 uv : TEXCOORD2; nointerpolation float2 mat : TEXCOORD3; half fog : TEXCOORD4;
+                half4 color : COLOR; float2 uv : TEXCOORD2; nointerpolation float2 mat : TEXCOORD3;
             };
 
             Varyings vert(Attributes v)
@@ -53,7 +53,6 @@ Shader "Firstlight/FlatLit"
                 o.color = v.color * _BaseColor;
                 o.uv = v.uv;
                 o.mat = v.mat;
-                o.fog = ComputeFogFactor(o.positionCS.z);
                 return o;
             }
 
@@ -64,8 +63,7 @@ Shader "Firstlight/FlatLit"
                 if (_UseMatMap > 0.5) layer = TerrainLayer(i.positionWS, n);
                 if (i.mat.y > 1.5)
                 {
-                    half3 wc = SampleWater(i.positionWS, i.uv, i.color.a, layer);
-                    return half4(MixFog(FlatShade(i.positionWS, n, wc), i.fog), 1);
+                    return half4(FL_Fog(WaterShade(i.positionWS, n, i.uv, i.color.a, layer, i.positionCS), i.positionWS), 1);
                 }
                 float2 scroll = floor(_Time.y * _UVScroll.xy) / _FL_TileTexels;
                 half4 t = i.mat.y > 0.5 ? SampleExplicit(i.uv + scroll, layer) : SampleBoxProjected(i.positionOS, n, layer, scroll);
@@ -73,11 +71,11 @@ Shader "Firstlight/FlatLit"
                 half3 albedo = t.rgb * i.color.rgb;
                 if (_UseMatMap > 0.5)
                 {
-                    albedo = SeasonTint(albedo * MacroVariation(i.positionWS.xz), layer);
+                    albedo = SeasonTint(GroundVariation(albedo, i.positionWS.xz, layer), layer);
                     albedo = ApplySnow(albedo, i.positionWS, n, i.positionOS, n);
                 }
-                half3 c = FlatShade(i.positionWS, n, albedo);
-                return half4(MixFog(c, i.fog), 1);
+                half3 c = FlatShade(i.positionWS, n, albedo, i.positionCS, 0);
+                return half4(FL_Fog(c, i.positionWS), 1);
             }
             ENDHLSL
         }

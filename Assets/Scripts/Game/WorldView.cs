@@ -17,8 +17,23 @@ namespace Firstlight.Game
         Texture2D _matMap;
         byte[] _matBytes, _matOrig;
         bool _matDirty;
-        InstanceBatch _conifers, _broadleaves, _rocks, _bushes, _tufts, _flowers;
-        readonly List<InstanceData> _bushData = new(), _tuftData = new(), _flowerData = new();
+        InstanceBatch _conifers, _broadleaves, _rocks;
+
+        /// <summary>
+        /// One kind of ground cover (tufts, flowers, bushes, reeds, ferns, pebbles, fallen wood): every plant with the
+        /// cell it stands on; only those on ground still in its natural state are drawn (not on trodden earth, paths,
+        /// under buildings or fields).
+        /// </summary>
+        sealed class Cover
+        {
+            public InstanceBatch Batch; public System.Func<Mesh> Mesh; public bool UnderSnow;
+            public readonly List<InstanceData> All = new(); public readonly List<int> Cell = new();
+            public InstanceData[] Buf = new InstanceData[0];
+            public void Add(int cell, InstanceData d) { All.Add(d); Cell.Add(cell); }
+        }
+        Cover _bushes, _tufts, _flowers, _reeds, _ferns, _pebbles, _logs, _stumps;
+        Cover[] _covers;
+        bool _coverDirty; float _coverClock;
         readonly List<InstanceData> _tmp = new();
         Wildlife _wild;
         InstanceBatch[] _deer;                 // [pose * 2 + (stag ? 1 : 0)]
@@ -58,6 +73,7 @@ namespace Firstlight.Game
                 _deerBuf[k] = new InstanceData[32];
             }
             BuildDecor();
+            BuildOutskirtTrees();
             RefreshTrees();
             RefreshRocks();
         }
@@ -115,10 +131,120 @@ namespace Firstlight.Game
             if (_matBytes[c] != _matOrig[c]) { _matBytes[c] = _matOrig[c]; _matDirty = true; }
         }
 
-        void BuildTerrain()
+        // Distances from the border of the strips the outskirts are drawn in (finer near the map).
+        static readonly float[] Skirt = { 0f, 2f, 5f, 10f, 18f, 30f, 46f, 64f, Look.Outskirts };
+
+        // Per border (south, north along x; west, east along y), per corner along it: the border's height, that height
+        // smoothed along the border, and how much the river is there (1 at the water, falling off over a few cells).
+        float[][] _edgeH, _edgeAvg, _edgeRiver;
+
+        void BuildOutskirtProfiles()
         {
             int w = _map.W, h = _map.H, w1 = w + 1;
-            int quads = w * h;
+            _edgeH = new float[4][]; _edgeAvg = new float[4][]; _edgeRiver = new float[4][];
+            for (int side = 0; side < 4; side++)
+            {
+                int n = (side < 2 ? w : h) + 1;
+                var e = new float[n]; var avg = new float[n]; var river = new float[n];
+                for (int i = 0; i < n; i++)
+                {
+                    int cx = side < 2 ? i : side == 2 ? 0 : w, cy = side < 2 ? (side == 0 ? 0 : h) : i;
+                    e[i] = _map.Corners[cy * w1 + cx];
+                    int cellX = math.clamp(cx, 0, w - 1), cellY = math.clamp(cy, 0, h - 1);
+                    river[i] = _map.Ground[cellY * w + cellX] != Ground.Grass ? 1f : 0f;
+                }
+                for (int pass = 0; pass < 7; pass++)       // the river's hold spreads out a few cells each side, fading
+                {
+                    var next = (float[])river.Clone();
+                    for (int i = 0; i < n; i++) next[i] = math.max(river[i], math.max(i > 0 ? river[i - 1] : 0, i < n - 1 ? river[i + 1] : 0) - 0.15f);
+                    river = next;
+                }
+                for (int i = 0; i < n; i++)
+                {
+                    float sum = 0; int cnt = 0;
+                    for (int k = -14; k <= 14; k++) { int j = i + k; if (j < 0 || j >= n) continue; sum += e[j]; cnt++; }
+                    avg[i] = sum / cnt;
+                }
+                _edgeH[side] = e; _edgeAvg[side] = avg; _edgeRiver[side] = river;
+            }
+        }
+
+        static float Along(float[] a, float t)
+        {
+            t = math.clamp(t, 0, a.Length - 1);
+            int i = math.min((int)t, a.Length - 2);
+            return math.lerp(a[i], a[i + 1], t - i);
+        }
+
+        /// <summary>
+        /// Ground height beyond the border: the border's own height at the edge, easing over some 25 units into gentle
+        /// rolling land at the border's average level; where the river crosses the border its channel carries straight on.
+        /// </summary>
+        public float OutskirtHeight(float x, float z)
+        {
+            int w = _map.W, h = _map.H;
+            float dx = x < 0 ? -x : x > w ? x - w : 0, dz = z < 0 ? -z : z > h ? z - h : 0;
+            if (dx <= 0 && dz <= 0) return _map.HeightAt(x, z);
+            int side = dz > 0 && dz >= dx ? (z < 0 ? 0 : 1) : (x < 0 ? 2 : 3);
+            float t = side < 2 ? x : z;
+            float d = math.sqrt(dx * dx + dz * dz);
+            float e = Along(_edgeH[side], t), avg = Along(_edgeAvg[side], t), river = Along(_edgeRiver[side], t);
+            float s = math.smoothstep(0f, 26f, d);
+            float roll = (Mathf.PerlinNoise(x * 0.028f + 31.7f, z * 0.028f + 12.3f) - 0.45f) * 2.6f + (Mathf.PerlinNoise(x * 0.09f + 5.1f, z * 0.09f + 77.9f) - 0.5f) * 0.7f;
+            return math.lerp(math.lerp(e, avg + roll, s), e, river);
+        }
+
+        /// <summary>The forests carry on beyond the border too (no shadows, never felled): what stands at the border, easing into its own woods.</summary>
+        void BuildOutskirtTrees()
+        {
+            int w = _map.W, h = _map.H;
+            var rng = new System.Random(777);
+            var con = new List<InstanceData>(); var brd = new List<InstanceData>();
+            int R = (int)(Look.Outskirts * 0.8f);
+            for (int z = -R; z < h + R; z++)
+                for (int x = -R; x < w + R; x++)
+                {
+                    if (x >= 0 && x < w && z >= 0 && z < h) continue;
+                    int bx = math.clamp(x, 0, w - 1), bz = math.clamp(z, 0, h - 1);
+                    float d = math.length(new float2(x - bx, z - bz));
+                    if (d > R) continue;
+                    // Woods at the border: the share of tree cells near the closest border cell.
+                    int near = 0, cells = 0;
+                    for (int oy = -2; oy <= 2; oy++)
+                        for (int ox = -2; ox <= 2; ox++)
+                        {
+                            if (!_map.InBounds(bx + ox, bz + oy)) continue;
+                            cells++; if (_map.Tree[_map.Cell(bx + ox, bz + oy)]) near++;
+                        }
+                    float atBorder = cells > 0 ? math.saturate(near / (cells * 0.55f)) : 0;
+                    float woods = math.saturate((Mathf.PerlinNoise(x * 0.043f + 9.2f, z * 0.043f + 3.4f) - 0.47f) * 6f);
+                    float p = math.lerp(atBorder, woods, math.smoothstep(2f, 22f, d)) * 0.62f;
+                    if (rng.NextDouble() >= p) continue;
+                    int side = z < 0 ? 0 : z >= h ? 1 : x < 0 ? 2 : 3;
+                    if (Along(_edgeRiver[side], side < 2 ? x : z) > 0.35f) continue;      // not in the river's channel
+                    float px = x + (float)rng.NextDouble(), pz = z + (float)rng.NextDouble();
+                    float sc = 0.8f + (float)rng.NextDouble() * 0.5f;
+                    bool conifer = Mathf.PerlinNoise(x * 0.06f + 55.5f, z * 0.06f + 21.1f) > 0.45f ? rng.NextDouble() < 0.85 : rng.NextDouble() < 0.2;
+                    float k = 0.84f + (float)rng.NextDouble() * 0.14f;
+                    uint tint = Pal.Pack(new Color(k + 0.02f, k, k - 0.02f));
+                    var at = new float3(px, OutskirtHeight(px, pz) - 0.05f, pz);
+                    if (conifer) con.Add(new InstanceData(at, (float)rng.NextDouble() * 6.28f, new float3(1.9f * sc, 2.3f * sc, 1.9f * sc), tint));
+                    else brd.Add(new InstanceData(at, (float)rng.NextDouble() * 6.28f, new float3(2.2f * sc, 2.0f * sc, 2.2f * sc), tint));
+                }
+            _farConifers = new InstanceBatch(Shapes.Conifer, con.Count) { CastShadows = false };
+            _farBroadleaves = new InstanceBatch(Shapes.Broadleaf, brd.Count) { CastShadows = false };
+            _farConifers.Upload(con.ToArray(), con.Count);
+            _farBroadleaves.Upload(brd.ToArray(), brd.Count);
+        }
+
+        InstanceBatch _farConifers, _farBroadleaves;
+
+        void BuildTerrain()
+        {
+            Look.SetMap(_map.W, _map.H);
+            int w = _map.W, h = _map.H, w1 = w + 1;
+            int inner = w * h;
+            int quads = inner + (2 * w + 2 * h) * (Skirt.Length - 1) + 4 * (Skirt.Length - 1) * (Skirt.Length - 1);
             var verts = new Vector3[quads * 4];
             var tris = new int[quads * 6];
             var cols = new Color[quads * 4];
@@ -138,6 +264,29 @@ namespace Firstlight.Game
                     if (((x + y) & 1) == 0) { tris[t] = v; tris[t + 1] = v + 1; tris[t + 2] = v + 2; tris[t + 3] = v; tris[t + 4] = v + 2; tris[t + 5] = v + 3; }
                     else { tris[t] = v; tris[t + 1] = v + 1; tris[t + 2] = v + 3; tris[t + 3] = v + 1; tris[t + 4] = v + 2; tris[t + 5] = v + 3; }
                 }
+            // The outskirts: the land carries on past the map's border until it is lost in the haze (FL_Fog). Never walked on.
+            BuildOutskirtProfiles();
+            int qn = inner;
+            void Quad(float x0, float z0, float x1, float z1)
+            {
+                int v = qn * 4, t = qn * 6;
+                verts[v] = new Vector3(x0, OutskirtHeight(x0, z0), z0); verts[v + 1] = new Vector3(x0, OutskirtHeight(x0, z1), z1);
+                verts[v + 2] = new Vector3(x1, OutskirtHeight(x1, z1), z1); verts[v + 3] = new Vector3(x1, OutskirtHeight(x1, z0), z0);
+                for (int k = 0; k < 4; k++) { cols[v + k] = Color.white; normals[v + k] = Vector3.up; }
+                tris[t] = v; tris[t + 1] = v + 1; tris[t + 2] = v + 2; tris[t + 3] = v; tris[t + 4] = v + 2; tris[t + 5] = v + 3;
+                qn++;
+            }
+            for (int k = 0; k < Skirt.Length - 1; k++)
+            {
+                float d0 = Skirt[k], d1 = Skirt[k + 1];
+                for (int x = 0; x < w; x++) { Quad(x, -d1, x + 1, -d0); Quad(x, h + d0, x + 1, h + d1); }      // south, north
+                for (int y = 0; y < h; y++) { Quad(-d1, y, -d0, y + 1); Quad(w + d0, y, w + d1, y + 1); }      // west, east
+                for (int j = 0; j < Skirt.Length - 1; j++)
+                {
+                    float e0 = Skirt[j], e1 = Skirt[j + 1];
+                    Quad(-d1, -e1, -d0, -e0); Quad(w + d0, -e1, w + d1, -e0); Quad(-d1, h + e0, -d0, h + e1); Quad(w + d0, h + e0, w + d1, h + e1);
+                }
+            }
             var mesh = new Mesh { name = "Terrain", indexFormat = UnityEngine.Rendering.IndexFormat.UInt32 };
             mesh.vertices = verts; mesh.colors = cols; mesh.normals = normals;
             mesh.SetUVs(0, new Vector2[verts.Length]);
@@ -175,8 +324,9 @@ namespace Firstlight.Game
         {
             _water = water;
             int n = _map.W * _map.H, nc = (_map.W + 1) * (_map.H + 1);
-            _wv = new Vector3[n * 4]; _wc = new Color[n * 4]; _wuv = new Vector2[n * 4]; _wmat = new Vector2[n * 4];
-            _wt = new int[n * 6];
+            int room = n + 2 * (_map.W + _map.H);   // every cell, and a strip beyond each border cell (the river carries on)
+            _wv = new Vector3[room * 4]; _wc = new Color[room * 4]; _wuv = new Vector2[room * 4]; _wmat = new Vector2[room * 4];
+            _wt = new int[room * 6];
             _cs = new float[nc]; _cd = new float[nc]; _cvel = new Vector2[nc];
             _wDepth = new float[n]; _wBed = new float[n]; _wVel = new float2[n];
             _water.Bed.CopyTo(_wBed);
@@ -302,6 +452,15 @@ namespace Firstlight.Game
                 }
                 _wt[nt++] = v0; _wt[nt++] = v0 + 1; _wt[nt++] = v0 + 2;
                 _wt[nt++] = v0; _wt[nt++] = v0 + 2; _wt[nt++] = v0 + 3;
+                // Water at the border carries on over the outskirts at the same level and flow, into the haze.
+                const float R = Look.Outskirts;
+                if (depth[c] > WetDepth)
+                {
+                    if (y == 0) Strip(x, -R, x, 0, x + 1, 0, x + 1, -R, y * w1 + x, y * w1 + x, y * w1 + x + 1, y * w1 + x + 1, mat, ref nv, ref nt);
+                    if (y == h - 1) Strip(x, h, x, h + R, x + 1, h + R, x + 1, h, h * w1 + x, h * w1 + x, h * w1 + x + 1, h * w1 + x + 1, mat, ref nv, ref nt);
+                    if (x == 0) Strip(-R, y, -R, y + 1, 0, y + 1, 0, y, y * w1, (y + 1) * w1, (y + 1) * w1, y * w1, mat, ref nv, ref nt);
+                    if (x == w - 1) Strip(w, y, w, y + 1, w + R, y + 1, w + R, y, y * w1 + w, (y + 1) * w1 + w, (y + 1) * w1 + w, y * w1 + w, mat, ref nv, ref nt);
+                }
             }
             _waterMesh.Clear(false);
             _waterMesh.SetVertices(_wv, 0, nv);
@@ -309,7 +468,25 @@ namespace Firstlight.Game
             _waterMesh.SetUVs(0, _wuv, 0, nv);
             _waterMesh.SetUVs(1, _wmat, 0, nv);
             _waterMesh.SetTriangles(_wt, 0, nt, 0, false);
-            _waterMesh.bounds = new Bounds(new Vector3(w / 2f, 0, h / 2f), new Vector3(w, 20, h));
+            _waterMesh.bounds = new Bounds(new Vector3(w / 2f, 0, h / 2f), new Vector3(w + 2 * Look.Outskirts, 20, h + 2 * Look.Outskirts));
+        }
+
+        /// <summary>One water quad beyond the border; each of its four points takes the level, depth and flow of a border corner.</summary>
+        void Strip(float ax, float az, float bx, float bz, float cx, float cz, float dx, float dz, int ca, int cb, int cc, int cd, Vector2 mat, ref int nv, ref int nt)
+        {
+            int v0 = nv;
+            Put(ax, az, ca, mat, ref nv); Put(bx, bz, cb, mat, ref nv); Put(cx, cz, cc, mat, ref nv); Put(dx, dz, cd, mat, ref nv);
+            _wt[nt++] = v0; _wt[nt++] = v0 + 1; _wt[nt++] = v0 + 2;
+            _wt[nt++] = v0; _wt[nt++] = v0 + 2; _wt[nt++] = v0 + 3;
+        }
+
+        void Put(float x, float z, int corner, Vector2 mat, ref int nv)
+        {
+            _wv[nv] = new Vector3(x, _cs[corner] - 0.01f, z);
+            _wc[nv] = new Color(1, 1, 1, Mathf.Clamp01(_cd[corner] / 0.45f));
+            _wuv[nv] = _cvel[corner] * WaterFlowScale;
+            _wmat[nv] = mat;
+            nv++;
         }
 
         // ------------------------------------------------------------------ nature
@@ -364,48 +541,117 @@ namespace Firstlight.Game
         void BuildDecor()
         {
             var rng = new System.Random(4242);
-            _bushData.Clear(); _tuftData.Clear(); _flowerData.Clear();
+            Cover Make(System.Func<Mesh> mesh, bool sprite, bool shadows, bool underSnow) => new Cover { Mesh = mesh, UnderSnow = underSnow, Batch = new InstanceBatch(mesh(), 1, sprite ? InstanceBatch.DoubleSidedMaterial : null) { CastShadows = shadows } };
+            _bushes = Make(() => Shapes.Bush, true, true, true);
+            _tufts = Make(() => Shapes.Tuft, true, false, true);
+            _flowers = Make(() => Shapes.Flowers, true, false, true);
+            _reeds = Make(() => Shapes.Reeds, true, false, false);
+            _ferns = Make(() => Shapes.Fern, true, false, true);
+            _pebbles = Make(() => Shapes.Rock, false, false, false);
+            _logs = Make(() => Shapes.Log, false, true, false);
+            _stumps = Make(() => Shapes.Stump, false, true, false);
+            _covers = new[] { _bushes, _tufts, _flowers, _reeds, _ferns, _pebbles, _logs, _stumps };
             int grass = MaterialLibrary.Layer("grass"), litter = MaterialLibrary.Layer("litter");
+            bool reeds = MaterialLibrary.HasLayer("reeds"), ferns = MaterialLibrary.HasLayer("fern");
             for (int c = 0; c < _map.W * _map.H; c++)
             {
-                if (_map.Tree[c] || _map.Rock[c] > 0 || _map.Ground[c] != Ground.Grass || RiverDist[c] <= 2.01f) continue;
+                if (_map.Tree[c] && _matBytes[c] != litter) continue;
+                if (_map.Rock[c] > 0 || _map.Ground[c] != Ground.Grass) continue;
                 int x = c % _map.W, y = c / _map.W;
-                int trees = 0;
+                int trees = 0, rocks = 0;
                 for (int dy = -1; dy <= 1; dy++)
                     for (int dx = -1; dx <= 1; dx++)
-                        if (_map.InBounds(x + dx, y + dy) && _map.Tree[_map.Cell(x + dx, y + dy)]) trees++;
+                    {
+                        if (!_map.InBounds(x + dx, y + dy)) continue;
+                        int n = _map.Cell(x + dx, y + dy);
+                        if (_map.Tree[n]) trees++;
+                        if (_map.Rock[n] > 0) rocks++;
+                    }
+                // The river's bank: reeds at the water's edge, pebbles on the shingle.
+                if (RiverDist[c] <= 2.01f)
+                {
+                    if (_map.Tree[c]) continue;
+                    if (reeds && RiverDist[c] <= 1.01f && rng.NextDouble() < 0.5)
+                        for (int k = rng.Next(1, 4); k > 0; k--) _reeds.Add(c, Plant(x, y, rng));
+                    if (rng.NextDouble() < 0.55)
+                        for (int k = rng.Next(1, 4); k > 0; k--) _pebbles.Add(c, Pebble(x, y, rng, c * 31 + k));
+                    continue;
+                }
+                if (rocks > 0 && rng.NextDouble() < 0.6)
+                    for (int k = rng.Next(1, 3); k > 0; k--) _pebbles.Add(c, Pebble(x, y, rng, c * 31 + k));
+                if (_map.Tree[c])
+                {
+                    // Under the trees: ferns between the trunks.
+                    if (ferns && rng.NextDouble() < 0.22) _ferns.Add(c, Plant(x, y, rng));
+                    continue;
+                }
                 bool edge = trees >= 1 && trees <= 5;
-                if (edge && rng.NextDouble() < 0.35) _bushData.Add(Plant(x, y, rng, 1.6f, 2.2f));
+                if (edge && rng.NextDouble() < 0.35) _bushes.Add(c, Plant(x, y, rng));
+                if (_matBytes[c] == litter)
+                {
+                    // Forest floor in the gaps: ferns, now and then a fallen trunk or a stump.
+                    if (ferns && rng.NextDouble() < 0.45)
+                        for (int k = rng.Next(1, 3); k > 0; k--) _ferns.Add(c, Plant(x, y, rng));
+                    double roll = rng.NextDouble();
+                    if (roll < 0.03) _logs.Add(c, Wood(x, y, rng, 0.8f, 1.15f));
+                    else if (roll < 0.055) _stumps.Add(c, Wood(x, y, rng, 0.8f, 1.3f));
+                }
                 if (_matBytes[c] == grass || _matBytes[c] == litter)
                 {
-                    int tufts = rng.NextDouble() < 0.55 ? rng.Next(1, 4) : 0;
-                    for (int k = 0; k < tufts; k++) _tuftData.Add(Plant(x, y, rng, 1.6f, 2.4f));
-                    if (rng.NextDouble() < 0.05) _flowerData.Add(Plant(x, y, rng, 1.6f, 2.2f));
+                    int tufts = rng.NextDouble() < 0.7 ? rng.Next(1, 5) : 0;
+                    for (int k = 0; k < tufts; k++) _tufts.Add(c, Plant(x, y, rng));
+                    // Flowers come in drifts: a cell with flowers has several, and its neighbours often do too.
+                    if (_matBytes[c] == grass && Mathf.PerlinNoise(x * 0.11f + 40f, y * 0.11f + 90f) > 0.62f && rng.NextDouble() < 0.5)
+                        for (int k = rng.Next(1, 4); k > 0; k--) _flowers.Add(c, Plant(x, y, rng));
+                    else if (rng.NextDouble() < 0.03) _flowers.Add(c, Plant(x, y, rng));
                 }
             }
-            _bushes = new InstanceBatch(Shapes.Bush, _bushData.Count, InstanceBatch.DoubleSidedMaterial);
-            _tufts = new InstanceBatch(Shapes.Tuft, _tuftData.Count, InstanceBatch.DoubleSidedMaterial) { CastShadows = false };
-            _flowers = new InstanceBatch(Shapes.Flowers, _flowerData.Count, InstanceBatch.DoubleSidedMaterial) { CastShadows = false };
-            _bushes.Upload(_bushData.ToArray(), _bushData.Count);
-            _tufts.Upload(_tuftData.ToArray(), _tuftData.Count);
-            _flowers.Upload(_flowerData.ToArray(), _flowerData.Count);
+            RefreshCover();
         }
 
-        InstanceData Plant(int x, int y, System.Random rng, float sMin, float sMax)
+        /// <summary>Uploads the ground cover that stands on ground still in its natural state.</summary>
+        void RefreshCover()
+        {
+            _coverDirty = false;
+            foreach (var cv in _covers)
+            {
+                if (cv.Buf.Length < cv.All.Count) cv.Buf = new InstanceData[cv.All.Count];
+                int n = 0;
+                for (int i = 0; i < cv.All.Count; i++)
+                {
+                    int c = cv.Cell[i];
+                    if (_matBytes[c] == _matOrig[c]) cv.Buf[n++] = cv.All[i];
+                }
+                cv.Batch.Upload(cv.Buf, n);
+            }
+        }
+
+        InstanceData Plant(int x, int y, System.Random rng)
         {
             float px = x + (float)rng.NextDouble(), pz = y + (float)rng.NextDouble();
+            // Plants are drawn at their true pixel density (scale 1), so their pixels match the ground's.
+            return new InstanceData(new float3(px, _map.HeightAt(px, pz) - 0.02f, pz), (float)rng.NextDouble() * 6.28f, new float3(1f), Pal.Pack(new Color(0.92f + (float)rng.NextDouble() * 0.08f, 0.95f, 0.9f)));
+        }
+
+        InstanceData Pebble(int x, int y, System.Random rng, int seed)
+        {
+            float px = x + (float)rng.NextDouble(), pz = y + (float)rng.NextDouble();
+            float s = 0.1f + (float)rng.NextDouble() * (float)rng.NextDouble() * 0.26f;
+            return new InstanceData(new float3(px, _map.HeightAt(px, pz) - 0.01f, pz), (float)rng.NextDouble() * 6.28f, new float3(s, s * 0.8f, s), Tint(seed, 0.8f, 1f));
+        }
+
+        InstanceData Wood(int x, int y, System.Random rng, float sMin, float sMax)
+        {
+            float px = x + 0.3f + (float)rng.NextDouble() * 0.4f, pz = y + 0.3f + (float)rng.NextDouble() * 0.4f;
             float s = sMin + (float)rng.NextDouble() * (sMax - sMin);
-            // Plants are sized at their true pixel density; scale stays an integer-ish factor so pixels stay square.
-            s = 1f;
-            return new InstanceData(new float3(px, _map.HeightAt(px, pz) - 0.02f, pz), (float)rng.NextDouble() * 6.28f, new float3(s), Pal.Pack(new Color(0.92f + (float)rng.NextDouble() * 0.08f, 0.95f, 0.9f)));
+            float k = 0.8f + (float)rng.NextDouble() * 0.2f;
+            return new InstanceData(new float3(px, _map.HeightAt(px, pz), pz), (float)rng.NextDouble() * 6.28f, new float3(s), Pal.Pack(new Color(k, k, k * 0.97f)));
         }
 
         void OnDensityChanged()
         {
-            if (_bushes == null) return;
-            _bushes.Mesh = Shapes.Bush;
-            _tufts.Mesh = Shapes.Tuft;
-            _flowers.Mesh = Shapes.Flowers;
+            if (_covers == null) return;
+            foreach (var cv in _covers) cv.Batch.Mesh = cv.Mesh();
         }
 
         static float Hash01(int c) { uint h = (uint)c * 2654435761u; h ^= h >> 15; h *= 2246822519u; h ^= h >> 13; return (h & 0xffffff) / 16777216f; }
@@ -433,6 +679,7 @@ namespace Firstlight.Game
             if (_matDirty)
             {
                 _matDirty = false;
+                _coverDirty = true;
                 _matMap.SetPixelData(_matBytes, 0);
                 _matMap.Apply(false, false);
             }
@@ -443,13 +690,72 @@ namespace Firstlight.Game
             if (_water != null && (_water.Version != _waterVersion || WaterFlowScale != _builtFlowScale)) UpdateWaterMesh();
             PerfProbe.End(PerfProbe.S.WaterMesh);
             _conifers.Draw(); _broadleaves.Draw(); _rocks.Draw();
+            _farConifers.Draw(); _farBroadleaves.Draw();
             foreach (var batch in _deer) batch.Draw();
             if (_people != null)
             {
                 foreach (var batch in _people) batch.Draw();
                 _spearUp.Draw(); _spearLevel.Draw(); _tent.Draw(); _fire.Draw();
             }
-            if (!HideGroundCover) { _bushes.Draw(); _tufts.Draw(); _flowers.Draw(); }
+            // Ground cover follows the ground: gone where it has been trodden, built on or tilled (checked a few times a second).
+            _coverClock += Time.unscaledDeltaTime;
+            if (_coverDirty && _coverClock > 0.3f) { _coverClock = 0; RefreshCover(); }
+            foreach (var cv in _covers) if (!(HideGroundCover && cv.UnderSnow)) cv.Batch.Draw();
+            DrawBirds();
+        }
+
+        // ------------------------------------------------------------------ birds
+
+        // A few flocks that circle high over the land by day: a little life in the air, seen from the usual view as
+        // small dark shapes crossing the ground. Purely for show (not in the simulation).
+        struct Flock { public float2 Center; public float Radius, Speed, Phase, Height; public int Count; }
+        Flock[] _flocks;
+        InstanceBatch _birds0, _birds1;
+        InstanceData[] _birdBuf0 = new InstanceData[64], _birdBuf1 = new InstanceData[64];
+        float _birdTime;
+        /// <summary>0 = none in the air (night), 1 = all of them.</summary>
+        public float BirdsOut = 1f;
+
+        void DrawBirds()
+        {
+            if (_flocks == null)
+            {
+                var rng = new System.Random(_map.W * 31 + 5);
+                _flocks = new Flock[5];
+                for (int i = 0; i < _flocks.Length; i++)
+                    _flocks[i] = new Flock
+                    {
+                        Center = new float2(_map.W * (0.15f + 0.7f * (float)rng.NextDouble()), _map.H * (0.15f + 0.7f * (float)rng.NextDouble())),
+                        Radius = 14f + 22f * (float)rng.NextDouble(), Speed = (rng.NextDouble() < 0.5 ? -1f : 1f) * (0.09f + 0.07f * (float)rng.NextDouble()),
+                        Phase = (float)rng.NextDouble() * 6.28f, Height = 7f + 4f * (float)rng.NextDouble(), Count = 5 + rng.Next(0, 8),
+                    };
+                _birds0 = new InstanceBatch(Shapes.Bird(0), 64);
+                _birds1 = new InstanceBatch(Shapes.Bird(1), 64);
+            }
+            _birdTime += Time.deltaTime;
+            int n0 = 0, n1 = 0;
+            if (BirdsOut > 0.05f)
+                for (int f = 0; f < _flocks.Length; f++)
+                {
+                    var fl = _flocks[f];
+                    int count = (int)math.round(fl.Count * BirdsOut);
+                    for (int i = 0; i < count; i++)
+                    {
+                        // Each bird trails the flock's lead round the circle, weaving a little, and flaps out of step.
+                        float h1 = Hash01(f * 97 + i * 13), h2 = Hash01(f * 53 + i * 7 + 1);
+                        float a = fl.Phase + _birdTime * fl.Speed - math.sign(fl.Speed) * i * 0.035f + (h1 - 0.5f) * 0.12f;
+                        float r = fl.Radius + (h2 - 0.5f) * 4f + math.sin(_birdTime * 0.7f + i) * 0.6f;
+                        var p = fl.Center + new float2(math.cos(a), math.sin(a)) * r;
+                        float yaw = math.atan2(-math.sin(a), math.cos(a)) + (fl.Speed > 0 ? 0 : math.PI);
+                        float ground = _map.HeightAt(math.clamp(p.x, 0, _map.W - 0.01f), math.clamp(p.y, 0, _map.H - 0.01f));
+                        var inst = new InstanceData(new float3(p.x, ground + fl.Height + (h1 - 0.5f) * 1.5f, p.y), yaw, new float3(1.6f), Pal.Pack(Color.white));
+                        bool up = ((_birdTime * 2.6f + h2 * 5f) % 1f) < 0.5f;
+                        if (up) { if (n0 < _birdBuf0.Length) _birdBuf0[n0++] = inst; }
+                        else if (n1 < _birdBuf1.Length) _birdBuf1[n1++] = inst;
+                    }
+                }
+            _birds0.Upload(_birdBuf0, n0); _birds1.Upload(_birdBuf1, n1);
+            _birds0.Draw(); _birds1.Draw();
         }
 
         /// <summary>Bushes, grass tufts and flowers are not drawn (snow lies over them).</summary>
@@ -560,13 +866,15 @@ namespace Firstlight.Game
         {
             MaterialLibrary.DensityChanged -= OnDensityChanged;
             _conifers?.Dispose(); _broadleaves?.Dispose(); _rocks?.Dispose();
+            _farConifers?.Dispose(); _farBroadleaves?.Dispose();
             if (_deer != null) foreach (var batch in _deer) batch.Dispose();
             if (_people != null)
             {
                 foreach (var batch in _people) batch.Dispose();
                 _spearUp.Dispose(); _spearLevel.Dispose(); _tent.Dispose(); _fire.Dispose();
             }
-            _bushes?.Dispose(); _tufts?.Dispose(); _flowers?.Dispose();
+            if (_covers != null) foreach (var cv in _covers) cv.Batch.Dispose();
+            _birds0?.Dispose(); _birds1?.Dispose();
         }
     }
 }

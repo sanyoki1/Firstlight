@@ -378,6 +378,7 @@ namespace Firstlight.Game.UI
                 if (GUI.Button(new Rect(cx + 246, y, 40, 30), ">", Button)) { st.frameCap = caps[(idx + 1) % caps.Length]; changed = true; }
                 y += 36;
             }
+            Toggle("Visual effects", ref st.effects, tip: "Soft shadowing where things meet, glow from fires and bright snow, colour grading. Off is plainer and lighter on the graphics card.");
             Step("Interface size", ref st.uiScale, 0.1f, 0.7f, 1.6f, $"{st.uiScale:P0}");
             y += 6;
             Head("Camera");
