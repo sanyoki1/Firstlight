@@ -224,7 +224,7 @@ namespace Firstlight.Game
                 // Firelight at night, and trees cut away round the focus (or the selected person) when zoomed in.
                 SView.Night = InMenu || _demo ? 0 : 1f - Atmo.Daylight;
                 View.BirdsOut = _demo ? 0 : math.saturate(Atmo.Daylight * 1.5f - 0.2f) * (Atmo.Snow > 0.4f ? 0.4f : 1f) * (1f - Atmo.Snowfall);
-                View.Snowfall = _demo || InMenu ? 0 : Atmo.Snowfall;
+                View.Snowfall = _demo || InMenu ? 0 : Atmo.Snowfall * GameSettings.Current.fxSnowfall;
                 View.SnowFocus = Cam.Focus; View.SnowDistance = Cam.Distance;
                 var sel = Hud?.SelectedCitizen;
                 float2 cut = sel != null && !sel.Gone ? sel.Pos : new float2(Cam.Focus.x, Cam.Focus.z);
@@ -355,7 +355,7 @@ namespace Firstlight.Game
         void Letterbox()
         {
             float bar = Mathf.Max(0f, (Screen.height - Screen.width / 2.39f) * 0.5f) * Mathf.SmoothStep(0f, 1f, _cineAmount);
-            if (bar < 1f) return;
+            if (bar < 1f || !GameSettings.Current.cineBars) return;
             var old = GUI.color;
             GUI.color = Color.black;
             GUI.DrawTexture(new Rect(0, 0, Screen.width, bar), Texture2D.whiteTexture);

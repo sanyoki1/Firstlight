@@ -46,6 +46,7 @@ float4 _FL_Cloud;          // xy = drift offset, z = 1 / size, w = how dark the 
 float4 _FL_Wind;           // xy = direction, z = strength, w = time
 float4 _FL_SkyZenith;      // rgb = sky overhead
 float4 _FL_WaterSky;       // rgb = what the water mirrors at a low angle, a = strength of sun glints
+float4 _FL_Fx;             // the player's strengths (Look.Strength): x = soft shadowing in creases, y = haze beyond the border
 
 
 
@@ -267,7 +268,7 @@ half3 FL_Fog(half3 c, float3 posWS)
         float dense = saturate(max(od - back, 0) * _FL_MapBounds.z);
         dense = dense * dense * (3 - 2 * dense);
         // In front of the bank a thin veil thickens with distance, in streaks, so the border itself never shows as a line.
-        float veil = saturate(od / 45.0) * (0.22 + 0.5 * wisp);
+        float veil = saturate(od / 45.0) * (0.22 + 0.5 * wisp) * _FL_Fx.y;
         float outside = max(dense, veil);
         f = 1 - (1 - f) * (1 - outside);
     }
@@ -358,7 +359,7 @@ half3 FlatShade(float3 posWS, float3 n, half3 albedo, float4 positionCS, half wr
     half3 amb = lerp(_FL_AmbientGround.rgb, _FL_AmbientSky.rgb, n.y * 0.5 + 0.5);
     half ao = 1;
 #if defined(_SCREEN_SPACE_OCCLUSION)
-    ao = SampleAmbientOcclusion(GetNormalizedScreenSpaceUV(positionCS));
+    ao = saturate(1 - (1 - SampleAmbientOcclusion(GetNormalizedScreenSpaceUV(positionCS))) * _FL_Fx.x);
 #endif
     return albedo * (direct * lerp(1, ao, 0.3) + amb * ao + FireLight(posWS, n));
 }

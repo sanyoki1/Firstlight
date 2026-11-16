@@ -31,6 +31,8 @@ namespace Firstlight.Core
         /// <summary>Player settings: edge scrolling on/off and a multiplier on pan and turn speed.</summary>
         public static bool EdgeScrollEnabled = true;
         public static float SpeedScale = 1f;
+        /// <summary>Player setting: the view eases after zooms, turns and jumps (off = it follows at once).</summary>
+        public static bool Glide = true;
         /// <summary>No input at all (the main menu's slow orbit, a modal screen).</summary>
         public static bool InputLocked;
         /// <summary>Set when the player pans the camera (keys, screen edge, middle-drag); the HUD's "Follow" stops on it and clears it.</summary>
@@ -132,7 +134,7 @@ namespace Firstlight.Core
         void Apply()
         {
             if (HeightAt != null) Focus.y = Mathf.Lerp(Focus.y, HeightAt(Focus.x, Focus.z), 0.2f);
-            float k = _snap ? 1f : 1f - Mathf.Exp(-Mathf.Min(Time.unscaledDeltaTime, 0.1f) * 13f);
+            float k = _snap || !Glide ? 1f : 1f - Mathf.Exp(-Mathf.Min(Time.unscaledDeltaTime, 0.1f) * 13f);
             _snap = false;
             _sFocus = Vector3.Lerp(_sFocus, Focus, k);
             _sYaw = Mathf.Lerp(_sYaw, Yaw, k); _sPitch = Mathf.Lerp(_sPitch, Pitch, k); _sDist = Mathf.Lerp(_sDist, Distance, k);

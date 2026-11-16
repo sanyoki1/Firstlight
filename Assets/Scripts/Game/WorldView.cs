@@ -35,6 +35,10 @@ namespace Firstlight.Game
         Cover[] _covers;
         bool _coverDirty; float _coverClock;
         readonly List<InstanceData> _tmp = new();
+        /// <summary>Player settings: the share of the ground cover drawn (0..1), and whether birds fly.</summary>
+        public static float GroundDetail = 1f;
+        public static bool BirdsOn = true;
+        float _coverShare = -1f;
         Wildlife _wild;
         InstanceBatch[] _deer;                 // [pose * 2 + (stag ? 1 : 0)]
         InstanceData[][] _deerBuf;
@@ -620,7 +624,8 @@ namespace Firstlight.Game
                 for (int i = 0; i < cv.All.Count; i++)
                 {
                     int c = cv.Cell[i];
-                    if (_matBytes[c] == _matOrig[c]) cv.Buf[n++] = cv.All[i];
+                    // The share to draw is picked plant by plant (the same ones every time), not cell by cell.
+                    if (_matBytes[c] == _matOrig[c] && (GroundDetail >= 0.999f || Hash01(i * 2 + 17) < GroundDetail)) cv.Buf[n++] = cv.All[i];
                 }
                 cv.Batch.Upload(cv.Buf, n);
             }
@@ -656,6 +661,7 @@ namespace Firstlight.Game
 
         static float Hash01(int c) { uint h = (uint)c * 2654435761u; h ^= h >> 15; h *= 2246822519u; h ^= h >> 13; return (h & 0xffffff) / 16777216f; }
 
+            _coverShare = GroundDetail;
         static uint Tint(int seed, float lo, float hi)
         {
             // Hash, not System.Random: trees are re-uploaded whenever one is felled or grows (no garbage).
@@ -735,13 +741,14 @@ namespace Firstlight.Game
             }
             _birdTime += Time.deltaTime;
             int n0 = 0, n1 = 0;
-            if (BirdsOut > 0.05f)
+            if (BirdsOut > 0.05f && BirdsOn)
                 for (int f = 0; f < _flocks.Length; f++)
                 {
                     var fl = _flocks[f];
                     int count = (int)math.round(fl.Count * BirdsOut);
                     for (int i = 0; i < count; i++)
                     {
+            if (_coverShare != GroundDetail) _coverDirty = true;
                         // Each bird trails the flock's lead round the circle, weaving a little, and flaps out of step.
                         float h1 = Hash01(f * 97 + i * 13), h2 = Hash01(f * 53 + i * 7 + 1);
                         float a = fl.Phase + _birdTime * fl.Speed - math.sign(fl.Speed) * i * 0.035f + (h1 - 0.5f) * 0.12f;

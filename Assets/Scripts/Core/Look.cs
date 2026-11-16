@@ -25,6 +25,26 @@ namespace Firstlight.Core
 
         public static bool Effects { get; private set; } = true;
 
+        /// <summary>
+        /// The player's strength for each part of the look (GameSettings): 0 = off, 1 = as designed, up to 1.5 = stronger.
+        /// Occlusion, Bloom, Grade, Vignette and Focus are post effects (all off when <see cref="Effects"/> is off).
+        /// </summary>
+        public static class Strength
+        {
+            public static float Occlusion = 1f;   // soft shadowing in creases and where things meet the ground
+            public static float Bloom = 1f;       // glow from fires, bright snow, glints
+            public static float Grade = 1f;       // contrast, colour and warmth by time of day
+            public static float Vignette = 1f;    // darker corners
+            public static float Focus = 1f;       // soft focus in the cinematic view
+            public static float Haze = 1f;        // distance haze and the veil in front of the fog bank
+            public static float Mist = 1f;        // low morning mist
+            public static float Clouds = 1f;      // cloud shadows on the land
+            public static float Wind = 1f;        // plants swaying
+            public static float Sparkle = 1f;     // glints on water, glitter on snow
+        }
+
+        static readonly int FxId = Shader.PropertyToID("_FL_Fx");
+
         static Camera _cam;
         static Volume _volume;
         static Bloom _bloom;
@@ -41,7 +61,7 @@ namespace Firstlight.Core
         /// <summary>Sky, volume and defaults for a new scene's camera (a clear summer day until something sets otherwise).</summary>
         public static void Init(Camera cam)
         {
-            _cam = cam;
+            _cam = cam; _rendererSet = false;
             if (_sky == null) _sky = new Material(Resources.Load<Shader>("Shaders/Sky")) { name = "Sky" };
             RenderSettings.skybox = _sky;
             RenderSettings.fog = false;       // the shaders do their own haze (FL_Fog)
@@ -82,9 +102,24 @@ namespace Firstlight.Core
             if (_cam == null) return;
             var data = _cam.GetUniversalAdditionalCameraData();
             data.renderPostProcessing = on;
-            // Renderer 0 has the ambient occlusion feature, renderer 1 (if the project has it) is the same without.
-            if (GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset urp && urp.rendererDataList.Length > 1)
-                data.SetRenderer(on ? 0 : 1);
+            // Renderer 0 has the ambient occlusion feature, renderer 1 (if the project has it) is the same without
+            // (so occlusion set to off costs nothing).
+            bool occlusion = on && Strength.Occlusion > 0.01f;
+            if (occlusion != _occlusionOn || !_rendererSet)
+            {
+                _occlusionOn = occlusion; _rendererSet = true;
+                if (GraphicsSettings.currentRenderPipeline is UniversalRenderPipelineAsset urp && urp.rendererDataList.Length > 1)
+                    data.SetRenderer(occlusion ? 0 : 1);
+            }
+        }
+
+        static bool _occlusionOn, _rendererSet;
+
+        /// <summary>After the strengths changed (the settings screen): puts the ones that are not read every frame into effect.</summary>
+        public static void ApplyStrengths()
+        {
+            SetEffects(Effects);
+            if (_tone != null) _tone.mode.value = Strength.Grade > 0.01f ? TonemappingMode.Neutral : TonemappingMode.None;
         }
 
         /// <summary>The map's size: beyond its border the land fades into the haze.</summary>
@@ -107,7 +142,7 @@ namespace Firstlight.Core
             var c = cloud.linear; c.a = cloudCover;
             Shader.SetGlobalVector(SkyCloudId, c);
             // The water mirrors a sky between horizon and zenith; glints only while the sun (not the moon) is up.
-            var w = Color.Lerp(horizon, zenith, 0.35f).linear; w.a = 1f - stars;
+            var w = Color.Lerp(horizon, zenith, 0.35f).linear; w.a = (1f - stars) * Strength.Sparkle;
             Shader.SetGlobalVector(WaterSkyId, w);
         }
 
@@ -125,10 +160,11 @@ namespace Firstlight.Core
             float dt = Mathf.Min(Time.deltaTime, 0.1f);
             _cloudTime += dt; _windTime += dt;
             _cloudOffset = new Vector2(_cloudTime * 0.011f, _cloudTime * 0.004f);
-            Shader.SetGlobalVector(CloudId, new Vector4(_cloudOffset.x, _cloudOffset.y, 1f / 46f, _cloudDark));
-            Shader.SetGlobalVector(WindId, new Vector4(0.86f, 0.5f, _windStrength, _windTime));
+            Shader.SetGlobalVector(CloudId, new Vector4(_cloudOffset.x, _cloudOffset.y, 1f / 46f, Mathf.Min(0.9f, _cloudDark * Strength.Clouds)));
+            Shader.SetGlobalVector(WindId, new Vector4(0.86f, 0.5f, _windStrength * Strength.Wind, _windTime));
             // Haze starts beyond the part of the land in view at this zoom and is never complete inside the map.
-            Shader.SetGlobalVector(FogParamsId, new Vector4(distance * 1.25f + 25f, 1f / (distance * 3.2f + 190f), 0.8f, _mist));
+            Shader.SetGlobalVector(FogParamsId, new Vector4(distance * 1.25f + 25f, 1f / (distance * 3.2f + 190f), Mathf.Min(0.95f, 0.8f * Strength.Haze), Mathf.Min(1f, _mist * Strength.Mist)));
+            Shader.SetGlobalVector(FxId, new Vector4(Effects ? Strength.Occlusion : 0f, Strength.Haze, 0, 0));
             Shader.SetGlobalVector(FogHeightId, new Vector4(_mistTop, 1f / 1.6f, 0, 0));
         }
 
@@ -140,18 +176,21 @@ namespace Firstlight.Core
         {
             if (_adj == null) return;
             float golden = low * day, night = 1f - day;
-            _adj.contrast.value = Mathf.Lerp(14f, 8f, night) + golden * 4f;
-            _adj.saturation.value = 2f + golden * 12f - night * 12f - cold * 6f;
-            _adj.postExposure.value = 0.05f + night * 0.35f;
-            _wb.temperature.value = 2f + golden * 16f - night * 18f - cold * 10f;
-            _wb.tint.value = golden * 5f;
-            // Cool shadows against warm lights by day; at night both sides lean blue.
-            _split.shadows.value = Color.Lerp(new Color(0.44f, 0.48f, 0.60f), new Color(0.40f, 0.45f, 0.62f), night);
-            _split.highlights.value = Color.Lerp(Color.Lerp(new Color(0.58f, 0.54f, 0.46f), new Color(0.68f, 0.52f, 0.36f), golden), new Color(0.50f, 0.52f, 0.58f), night);
+            float g = Strength.Grade, gs = Mathf.Min(g, 1f);
+            _adj.contrast.value = (Mathf.Lerp(14f, 8f, night) + golden * 4f) * g;
+            _adj.saturation.value = (2f + golden * 12f - night * 12f - cold * 6f) * g;
+            _adj.postExposure.value = (0.05f + night * 0.35f) * gs;
+            _wb.temperature.value = (2f + golden * 16f - night * 18f - cold * 10f) * g;
+            _wb.tint.value = golden * 5f * g;
+            // Cool shadows against warm lights by day; at night both sides lean blue. (Grey = no toning.)
+            var shadows = Color.Lerp(new Color(0.44f, 0.48f, 0.60f), new Color(0.40f, 0.45f, 0.62f), night);
+            var lights = Color.Lerp(Color.Lerp(new Color(0.58f, 0.54f, 0.46f), new Color(0.68f, 0.52f, 0.36f), golden), new Color(0.50f, 0.52f, 0.58f), night);
+            _split.shadows.value = Color.Lerp(Color.grey, shadows, gs);
+            _split.highlights.value = Color.Lerp(Color.grey, lights, gs);
             _split.balance.value = 10f;
-            _bloom.intensity.value = 0.28f + golden * 0.2f + night * 0.35f - cold * day * 0.12f;
+            _bloom.intensity.value = (0.28f + golden * 0.2f + night * 0.35f - cold * day * 0.12f) * Strength.Bloom;
             _bloom.threshold.value = Mathf.Lerp(1.0f, 0.85f, night) + cold * day * 0.25f;
-            _vig.intensity.value = 0.2f + night * 0.08f + _cine * 0.12f;
+            _vig.intensity.value = Mathf.Min(0.6f, (0.2f + night * 0.08f + _cine * 0.12f) * Strength.Vignette);
         }
 
         static float _cine;
@@ -161,12 +200,12 @@ namespace Firstlight.Core
         {
             _cine = amount;
             if (_dof == null) return;
-            if (amount <= 0.01f) { _dof.mode.value = DepthOfFieldMode.Off; return; }
+            if (amount <= 0.01f || Strength.Focus <= 0.01f) { _dof.mode.value = DepthOfFieldMode.Off; return; }
             _dof.mode.value = DepthOfFieldMode.Bokeh;
             _dof.focusDistance.value = Mathf.Max(0.5f, focusDistance);
             // A long lens wide open: the blur grows with the zoom so near and far views both show it.
             _dof.focalLength.value = Mathf.Lerp(40f, 115f, amount);
-            _dof.aperture.value = Mathf.Clamp(focusDistance * 0.05f, 1f, 5.6f);
+            _dof.aperture.value = Mathf.Clamp(focusDistance * 0.05f / Strength.Focus, 1f, 16f);   // a smaller opening = less blur
             _dof.bladeCount.value = 6;
         }
     }

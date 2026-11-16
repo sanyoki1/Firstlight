@@ -371,10 +371,13 @@ namespace Firstlight.Game
                 {
                     var c = _chimneys[k];
                     int seed = _puffs.Count * 7 + k * 131 + (int)(_anim * 10f);
-                    if (Hash(seed, 31) > c.w * 0.75f) continue;
+        /// <summary>Player setting: 0 = no smoke, 1 = as designed, more = thicker plumes.</summary>
+        public static float SmokeAmount = 1f;
+                    if (Hash(seed, 31) > c.w * 0.75f * SmokeAmount) continue;
                     _puffs.Add(new Puff
                     {
                         Pos = new float3(c.x + (Hash(seed, 32) - 0.5f) * 0.12f, c.y, c.z + (Hash(seed, 33) - 0.5f) * 0.12f),
+            if (SmokeAmount <= 0.01f) { _puffs.Clear(); return; }
                         Life = 4.5f + Hash(seed, 34) * 3f, Size = (0.2f + Hash(seed, 35) * 0.2f) * math.lerp(0.75f, 1.2f, math.saturate(c.w)),
                         Yaw = Hash(seed, 36) * 6.28f, Drift = new float2(Hash(seed, 37) - 0.5f, Hash(seed, 38) - 0.5f) * 0.14f,
                     });

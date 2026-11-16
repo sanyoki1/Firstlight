@@ -32,7 +32,9 @@ namespace Firstlight.Game.UI
         // reading each header on every OnGUI call cost about 3 ms a frame) and again after a save or a delete.
         (SaveGame.Header h, string file)? _latest;
         bool _latestRead;
-        float _settingsH = 760;
+        readonly float[] _settingsHs = { 760, 900 };
+        /// <summary>The settings screen's tab: 0 = general, 1 = visuals.</summary>
+        public int SettingsTab;
 
         // ------------------------------------------------------------------ actions
 
@@ -329,12 +331,16 @@ namespace Firstlight.Game.UI
         void DrawSettings()
         {
             var st = GameSettings.Current;
-            float w = 640, h = _settingsH;
+            SettingsTab = math.clamp(SettingsTab, 0, 1);
+            float w = 640, h = _settingsHs[SettingsTab];
             var r = Box(new Rect(G.InMenu ? 660 : VW / 2 - w / 2, VH / 2 - h / 2, w, h));
             GUI.Label(new Rect(r.x + 24, r.y + 14, 400, 32), "Settings", Title24);
             if (GUI.Button(new Rect(r.xMax - 40, r.y + 14, 26, 24), "x", Button)) MenuBack();
             float y = r.y + 60, lx = r.x + 28, cx = r.x + 300;
             bool changed = false, display = false;
+            if (GUI.Button(new Rect(lx, y, 180, 32), "General", SettingsTab == 0 ? ButtonOn : Button)) SettingsTab = 0;
+            if (GUI.Button(new Rect(lx + 186, y, 180, 32), "Visuals", SettingsTab == 1 ? ButtonOn : Button)) SettingsTab = 1;
+            y += 46;
 
             void Head(string t) { GUI.Label(new Rect(lx, y, 400, 24), Col(t, Accent), Bold); y += 30; }
             void Toggle(string label, ref bool v, string on = "On", string off = "Off", string tip = null)
@@ -353,6 +359,56 @@ namespace Firstlight.Game.UI
                 if (GUI.Button(new Rect(cx + 246, y, 40, 30), "+", Button)) { v = math.min(max, (float)Math.Round(v + step, 2)); changed = true; }
                 if (tip != null) Tip(new Rect(lx, y, 260, 30), tip);
                 y += 36;
+            }
+
+            // A strength from off to 150 % in quarter steps.
+            void Strength(string label, ref float v, string tip, bool needsEffects = false)
+            {
+                bool dead = needsEffects && !st.effects;
+                Step(label, ref v, 0.25f, 0f, GameSettings.MaxStrength, dead ? Col("Off (post effects are off)", Dim) : v <= 0.001f ? "Off" : $"{v:P0}", tip);
+            }
+
+            if (SettingsTab == 1)
+            {
+                Head("Post effects");
+                Toggle("All post effects", ref st.effects, tip: "The five below as a whole. Off is plainer and lighter on the graphics card.");
+                Strength("Soft shadowing", ref st.fxOcclusion, "Darkens creases and the ground where things stand on it (ambient occlusion).", true);
+                Strength("Glow", ref st.fxBloom, "Light spilling from fires, bright snow and glints on the water (bloom).", true);
+                Strength("Colour grading", ref st.fxGrade, "Contrast, colour and warmth that shift with the time of day. Off shows the plain colours.", true);
+                Strength("Dark corners", ref st.fxVignette, "A slight darkening toward the corners of the screen (vignette).", true);
+                Strength("Cinematic soft focus", ref st.fxFocus, "In the cinematic view (F10): blur away from the point the camera looks at.", true);
+                y += 6;
+                Head("Air");
+                Strength("Haze", ref st.fxHaze, "Far land fading into the sky's colour. The fog bank beyond the map's border stays: it hides where the land ends.");
+                Strength("Mist", ref st.fxMist, "Low mist in the valley in the early morning.");
+                Strength("Cloud shadows", ref st.fxClouds, "Shadows of clouds drifting over the land.");
+                Strength("Falling snow", ref st.fxSnowfall, "Snowflakes in the air in winter. Snow on the ground is not affected.");
+                y += 6;
+                Head("Land and life");
+                Strength("Wind in plants", ref st.fxWind, "Trees, grass and reeds swaying.");
+                Strength("Sparkle", ref st.fxSparkle, "Glints of sun on the water and glitter on snow.");
+                Strength("Smoke", ref st.fxSmoke, "Smoke from fires and from the roofs of warmed homes.");
+                {
+                    GUI.Label(new Rect(lx, y, 260, 30), "Ground detail", Label);
+                    float[] steps = { 0f, 0.5f, 1f }; string[] names = { "Off", "Half", "Full" };
+                    int idx = st.groundDetail < 0.25f ? 0 : st.groundDetail < 0.75f ? 1 : 2;
+                    if (GUI.Button(new Rect(cx, y, 40, 30), "-", Button) && idx > 0) { st.groundDetail = steps[idx - 1]; changed = true; }
+                    GUI.Label(new Rect(cx + 46, y, 194, 30), names[idx], Center);
+                    if (GUI.Button(new Rect(cx + 246, y, 40, 30), "+", Button) && idx < 2) { st.groundDetail = steps[idx + 1]; changed = true; }
+                    Tip(new Rect(lx, y, 260, 30), "Grass tufts, flowers, reeds, ferns, pebbles and fallen wood.");
+                    y += 36;
+                }
+                Toggle("Birds", ref st.birds, tip: "Flocks circling over the land by day.");
+                y += 6;
+                Head("Camera");
+                Toggle("Gliding camera", ref st.cameraGlide, tip: "The view eases after zooms, turns and jumps. Off: it follows at once.");
+                Toggle("Cinematic wide-screen bars", ref st.cineBars, tip: "Black bars above and below in the cinematic view (F10).");
+                if (changed) { GameSettings.Apply(false); GameSettings.Save(); }
+                y += 14;
+                if (GUI.Button(new Rect(r.x + 28, y, 200, 38), "Reset visuals", Button)) { st.ResetVisuals(); GameSettings.Apply(false); GameSettings.Save(); }
+                if (GUI.Button(new Rect(r.xMax - 184, y, 160, 38), "Back", Button)) MenuBack();
+                _settingsHs[1] = y + 56 - r.y;
+                return;
             }
 
             Head("Display");
@@ -378,7 +434,6 @@ namespace Firstlight.Game.UI
                 if (GUI.Button(new Rect(cx + 246, y, 40, 30), ">", Button)) { st.frameCap = caps[(idx + 1) % caps.Length]; changed = true; }
                 y += 36;
             }
-            Toggle("Visual effects", ref st.effects, tip: "Soft shadowing where things meet, glow from fires and bright snow, colour grading. Off is plainer and lighter on the graphics card.");
             Step("Interface size", ref st.uiScale, 0.1f, 0.7f, 1.6f, $"{st.uiScale:P0}");
             y += 6;
             Head("Camera");
@@ -403,7 +458,7 @@ namespace Firstlight.Game.UI
             y += 14;
             if (GUI.Button(new Rect(r.xMax - 184, y, 160, 38), "Back", Button)) MenuBack();
             GUI.Label(new Rect(r.x + 28, y, 400, 38), Col("Changes are kept at once.", Dim), Small);
-            _settingsH = y + 56 - r.y;
+            _settingsHs[0] = y + 56 - r.y;
         }
 
         // ------------------------------------------------------------------ in-game menu (Esc)

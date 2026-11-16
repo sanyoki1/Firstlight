@@ -62,6 +62,7 @@ namespace Firstlight.Game
             Directory.CreateDirectory(_shotDir);
             if (float.TryParse(Arg("-shotscale"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float sc)) UI.UiTheme.UserScale = sc;
             if (HasArg("-cine")) { SetCinematic(true); _cineAmount = 1f; }   // the cinematic view (F10) for the still
+            if (Arg("-settingstab") != null) { Hud.SettingsTab = ArgInt("-settingstab", 0); Hud.OpenMenu(); Hud.ShowScreen(Firstlight.Game.UI.Hud.MenuScreen.Settings); }   // the settings screen open on a tab
             for (int i = 0; i < 40; i++) yield return null;
             yield return Shot(name);
             Application.Quit();

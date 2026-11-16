@@ -36,6 +36,12 @@ namespace Firstlight.Game
             Directory.CreateDirectory(_shotDir);
             _hideGui = true;
             Auto = null;
+            // -fxscale X: every strength in the settings' Visuals tab at X (0 = all off, 1 = as shipped, 1.5 = the most).
+            if (float.TryParse(Arg("-fxscale"), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out float fx))
+            {
+                UI.GameSettings.Current.ScaleVisuals(fx);
+                UI.GameSettings.Apply(false);
+            }
             for (int i = 0; i < 30; i++) yield return null;
             yield return Settle(60);
             var tc = Sim.TownCenter != null ? Sim.TownCenter.Center : new float2(Cam.Focus.x, Cam.Focus.z);
