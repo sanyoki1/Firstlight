@@ -13,7 +13,7 @@ TEXTURE2D_ARRAY(_FL_Tex);
 SAMPLER(sampler_FL_Tex);
 float _FL_TexelsPerUnit;   // texture pixels per world unit (unit = 2 m)
 float _FL_TileTexels;      // size of one layer in pixels
-float _FL_LayerDirt, _FL_LayerGrass, _FL_LayerLitter, _FL_LayerSnow, _FL_LayerShallow, _FL_LayerBed;
+float _FL_LayerDirt, _FL_LayerGrass, _FL_LayerLitter, _FL_LayerSnow, _FL_LayerShallow, _FL_LayerBed, _FL_LayerPath;
 float _FL_LayerLeaves, _FL_LayerNeedles, _FL_LayerTuft, _FL_LayerBush, _FL_LayerFlowers, _FL_LayerReeds, _FL_LayerFern;
 
 // Seasons and time of day (Atmosphere.cs): tints for grass and foliage, snow cover 0..1, glow of fires.
@@ -95,16 +95,48 @@ half3 SeasonTint(half3 albedo, float layer)
     return albedo;
 }
 
-// Snow lies on upward-facing surfaces in pixel clumps (one decision per 2x2 texture pixels), thicker on flat
-// ground, so it reads as pixel art and comes and goes with _FL_Snow.
-half3 ApplySnow(half3 albedo, float3 posWS, float3 n, float3 pBox, float3 nBox)
+float2 Hash22(float2 p);
+float VNoise(float2 q);
+
+// The colour of lying snow at a point: its texture, drifts (hollows a touch darker and bluer than the crests, in broad
+// soft shapes, constant per texture pixel) and, by day, a scatter of pixels that glitter on and off.
+half3 SnowColour(float3 posWS, float3 pBox, float3 nBox)
+{
+    half3 s = SampleBoxProjected(pBox, nBox, _FL_LayerSnow, 0).rgb;
+    float2 px = floor(posWS.xz * _FL_TexelsPerUnit);
+    float2 texel = (px + 0.5) / _FL_TexelsPerUnit;
+    float drift = VNoise(texel / 2.3 + 17.3) * 0.55 + VNoise(texel / 9.0 + 4.2) * 0.45;
+    s *= lerp(half3(0.88, 0.93, 1.0), half3(1.04, 1.03, 1.01), smoothstep(0.25, 0.75, drift));
+    float2 h = Hash22(px + floor(posWS.y * _FL_TexelsPerUnit) * 13.0);
+    if (h.x > 0.9935 && sin(_Time.y * (1.2 + h.y * 2.5) + h.x * 900.0) > 0.1) s *= 1 + 1.5 * _FL_WaterSky.a;
+    return s;
+}
+
+// Snow lies on upward-facing surfaces, thickest on flat ground. Where it is thin (slopes, the first and last days,
+// trodden ground) it breaks up into soft-edged patches a few pixels across rather than single specks, so a roof or a
+// tree carries drifts of snow, not salt. `amount` scales the cover (trodden ground holds less); `tint` colours it.
+half3 SnowOn(half3 albedo, float3 posWS, float3 n, float3 pBox, float3 nBox, float amount, half3 tint)
 {
     if (_FL_Snow <= 0.001 || n.y < 0.3) return albedo;
-    float2 block = floor(posWS.xz * _FL_TexelsPerUnit / 2) + floor(posWS.y * _FL_TexelsPerUnit / 2) * 17.0;
-    float h = frac(sin(dot(block, float2(12.9898, 78.233))) * 43758.5453);
-    float cover = _FL_Snow * smoothstep(0.3, 0.85, n.y) * 1.15;
-    if (h > cover) return albedo;
-    return SampleBoxProjected(pBox, nBox, _FL_LayerSnow, 0).rgb;
+    float2 block = floor((posWS.xz + posWS.y * float2(0.37, 0.61)) * _FL_TexelsPerUnit / 2);   // height slides the pattern along, so slopes get patches, not stripes
+    float speck = frac(sin(dot(block, float2(12.9898, 78.233))) * 43758.5453);
+    float patch = VNoise(block / 6.0 + 3.7) * 0.6 + VNoise(block / 17.0 + 8.9) * 0.25 + speck * 0.15;
+    float cover = _FL_Snow * smoothstep(0.3, 0.85, n.y) * 1.15 * amount;
+    // patch is mostly between 0.25 and 0.75: full cover hides everything, half cover leaves about half in patches.
+    if (patch * 0.9 + 0.05 > cover) return albedo;
+    return SnowColour(posWS, pBox, nBox) * tint;
+}
+
+half3 ApplySnow(half3 albedo, float3 posWS, float3 n, float3 pBox, float3 nBox)
+{
+    return SnowOn(albedo, posWS, n, pBox, nBox, 1, half3(1, 1, 1));
+}
+
+// Snow on the ground: trodden earth and paths hold less of it, and what lies there is packed and greyer.
+half3 ApplyGroundSnow(half3 albedo, float3 posWS, float3 n, float layer)
+{
+    bool trodden = layer == _FL_LayerDirt || layer == _FL_LayerPath;
+    return SnowOn(albedo, posWS, n, posWS, n, trodden ? 0.74 : 1, trodden ? half3(0.86, 0.85, 0.83) : half3(1, 1, 1));
 }
 
 // Flowing water: the texture is carried along the simulated flow (flow = velocity in units/s) using two
@@ -141,6 +173,31 @@ float VNoise(float2 q)
     f = f * f * (3 - 2 * f);
     float a = Hash22(i).x, b = Hash22(i + float2(1, 0)).x, c = Hash22(i + float2(0, 1)).x, d = Hash22(i + float2(1, 1)).x;
     return lerp(lerp(a, b, f.x), lerp(c, d, f.x), f.y);
+}
+
+// Gradient noise (about 0..1, centred on 0.5): rounder than VNoise, with no hint of the grid it is made on.
+float GNoise(float2 p)
+{
+    float2 i = floor(p), f = frac(p);
+    float2 u = f * f * f * (f * (f * 6 - 15) + 10);
+    float a = dot(Hash22(i) * 2 - 1, f), b = dot(Hash22(i + float2(1, 0)) * 2 - 1, f - float2(1, 0));
+    float c = dot(Hash22(i + float2(0, 1)) * 2 - 1, f - float2(0, 1)), d = dot(Hash22(i + float2(1, 1)) * 2 - 1, f - float2(1, 1));
+    return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y) * 0.75 + 0.5;
+}
+
+// Billowing shapes for clouds, fog and mist: three sizes of gradient noise laid over each other, the whole thing
+// pushed about by a slower noise so the outlines curl instead of following straight lines.
+float Billow(float2 p)
+{
+    float2 w = float2(GNoise(p * 0.6 + 3.1), GNoise(p * 0.6 + 9.4)) - 0.5;
+    p += w * 1.5;
+    return GNoise(p) * 0.55 + GNoise(p * 2.07 + 11.3) * 0.28 + GNoise(p * 4.3 + 5.7) * 0.17;
+}
+
+// A point's position along and across the wind: noise stretched along the wind gives wisps.
+float2 WindSpace(float2 pxz)
+{
+    return float2(dot(pxz, _FL_Wind.xy), dot(pxz, float2(-_FL_Wind.y, _FL_Wind.x)));
 }
 
 // Terrain layer at a world position: the cell's material, with borders broken up into pixel clumps
@@ -181,27 +238,48 @@ half3 GroundVariation(half3 albedo, float2 pxz, float layer)
     return albedo;
 }
 
-// Shadows of slow clouds, as seen from the sun: 1 = open sky, lower under a cloud.
+// Shadows of slow clouds, as seen from the sun: 1 = open sky, lower under a cloud. Soft-edged, rounded shapes.
 half CloudShadow(float3 posWS)
 {
     if (_FL_Cloud.w <= 0.001) return 1;
     float2 p = (posWS.xz - _FL_SunDir.xz / max(_FL_SunDir.y, 0.25) * posWS.y) * _FL_Cloud.z + _FL_Cloud.xy;
-    float n = VNoise(p) * 0.62 + VNoise(p * 2.7 + 7.1) * 0.38;
-    return 1 - smoothstep(0.5, 0.7, n) * _FL_Cloud.w;
+    return 1 - smoothstep(0.5, 0.64, Billow(p * 1.3)) * _FL_Cloud.w;
 }
 
-// Haze: distance, the world beyond the map's border, and low mist; its colour is the sky's at the horizon.
+// Haze: distance, the fog bank beyond the map's border, and low mist; its colour is the sky's at the horizon.
 half3 FL_Fog(half3 c, float3 posWS)
 {
     float3 toP = posWS - GetCameraPositionWS();
     float d = max(length(toP), 0.001);
     float f = saturate((d - _FL_FogParams.x) * _FL_FogParams.y);
     f = f * (2 - f) * _FL_FogParams.z;
+    float2 wp = WindSpace(posWS.xz);
+    float drift = _FL_Wind.w * 0.35;
+    // Beyond the border a fog bank closes over the land. Its edge is not the border's straight line: it billows in and
+    // out by some 35 units, in tongues drawn out along the wind that drift slowly, thinner where the land stands higher.
     float2 o = max(max(-posWS.xz, posWS.xz - _FL_MapBounds.xy), 0);
-    float outside = saturate(length(o) * _FL_MapBounds.z);
-    f = 1 - (1 - f) * (1 - outside * (2 - outside));
-    float mist = _FL_FogParams.w * saturate((_FL_FogHeight.x - posWS.y) * _FL_FogHeight.y) * saturate(d * 0.012);
-    f = 1 - (1 - f) * (1 - mist);
+    float od = length(o);
+    if (od > 0)
+    {
+        float bank = Billow(float2(wp.x * 0.55 - drift, wp.y) / 24.0);
+        float wisp = GNoise(float2(wp.x * 0.3 - drift * 1.7, wp.y) / 5.0);
+        float back = (smoothstep(0.3, 0.7, bank) * 24.0 + wisp * 5.0 + max(posWS.y, 0) * 1.0) * saturate((76.0 - od) / 36.0);   // none of it by the end of the drawn land
+        float dense = saturate(max(od - back, 0) * _FL_MapBounds.z);
+        dense = dense * dense * (3 - 2 * dense);
+        // In front of the bank a thin veil thickens with distance, in streaks, so the border itself never shows as a line.
+        float veil = saturate(od / 45.0) * (0.22 + 0.5 * wisp);
+        float outside = max(dense, veil);
+        f = 1 - (1 - f) * (1 - outside);
+    }
+    // Mist lies low in drifting banks with wispy tops rather than as one flat sheet.
+    if (_FL_FogParams.w > 0.001)
+    {
+        float banks = Billow(float2(wp.x * 0.45 - drift, wp.y) / 13.0 + 31.7);
+        float top = _FL_FogHeight.x + (banks - 0.5) * 2.2;
+        float lying = saturate((top - posWS.y) * _FL_FogHeight.y);
+        float mist = _FL_FogParams.w * lying * (0.3 + 1.1 * smoothstep(0.34, 0.66, banks)) * saturate(d * 0.012);
+        f = 1 - (1 - f) * (1 - saturate(mist));
+    }
     float3 dir = toP / d;
     half glow = pow(saturate(dot(dir, _FL_SunDir.xyz)), _FL_FogSun.a);
     return lerp(c, _FL_FogColor.rgb + _FL_FogSun.rgb * glow, f);
@@ -298,10 +376,22 @@ half3 WaterShade(float3 posWS, float3 n, float2 flow, float depth01, float layer
     float fh = frac(fhh.x + floor(t * 1.5 + fhh.y * 4) * 0.37);
     float foam = step(depth01 + fh * 0.16, 0.13);
     base = lerp(base, half3(0.80, 0.85, 0.84), foam * 0.8);
+    // Winter: ice grows out from the banks over the shallows (never right across: people still fetch water), with a
+    // ragged edge and a dusting of snow on it.
+    float ice = 0;
+    if (_FL_Snow > 0.01)
+    {
+        float2 ib = floor(posWS.xz * tpu / 2);
+        float ragged = VNoise(ib / 9.0 + 5.3) * 0.7 + Hash22(ib).x * 0.3;
+        ice = step(depth01 + ragged * 0.3, 0.16 + 0.42 * _FL_Snow);
+        half3 iceCol = lerp(half3(0.62, 0.74, 0.80), SnowColour(posWS, posWS, float3(0, 1, 0)), step(ragged, 0.25 + 0.35 * _FL_Snow));
+        base = lerp(base, iceCol, ice);
+        foam *= 1 - ice;
+    }
     half3 c = FlatShade(posWS, n, base, positionCS, 0);
     float3 v = normalize(GetCameraPositionWS() - posWS);
     half fres = pow(1 - saturate(v.y), 3);
-    c = lerp(c, _FL_WaterSky.rgb, fres * 0.6 * (1 - foam));
+    c = lerp(c, _FL_WaterSky.rgb, fres * 0.6 * (1 - foam) * (1 - ice * 0.7));
     // Glints: cells carried along by the flow, each lit for a moment, brightest along the sun's reflection.
     float4 shadowCoord = TransformWorldToShadowCoord(posWS);
     Light light = GetMainLight(shadowCoord, posWS, half4(1, 1, 1, 1));
@@ -311,7 +401,7 @@ half3 WaterShade(float3 posWS, float3 n, float2 flow, float depth01, float layer
     float3 h = normalize(light.direction + v);
     float lobe = pow(saturate(h.y), 24);
     float glint = step(0.93, tw) * step(0.55, gh.y) * lobe;
-    c += light.color * light.shadowAttenuation * CloudShadow(posWS) * (glint * 2.2 + lobe * 0.10) * _FL_WaterSky.a;
+    c += light.color * light.shadowAttenuation * CloudShadow(posWS) * (glint * 2.2 + lobe * 0.10) * _FL_WaterSky.a * (1 - ice);
     return c;
 }
 

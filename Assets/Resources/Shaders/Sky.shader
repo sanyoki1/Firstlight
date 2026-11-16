@@ -44,8 +44,8 @@ Shader "Firstlight/Sky"
                 }
                 // Clouds on a flat layer overhead, drifting with the cloud shadows.
                 float2 uv = dir.xz / (dir.y + 0.14) * 0.9 + _FL_Cloud.xy * 3.0;
-                float n = VNoise(uv) * 0.6 + VNoise(uv * 2.6 + 4.7) * 0.4;
-                float cover = smoothstep(0.5, 0.74, n) * saturate(dir.y * 5) * _FL_SkyCloud.a;
+                float n = Billow(uv * 1.3);
+                float cover = smoothstep(0.48, 0.66, n) * saturate(dir.y * 5) * _FL_SkyCloud.a;
                 c = lerp(c, _FL_SkyCloud.rgb, cover);
                 float sd = saturate(dot(dir, _FL_SunDir.xyz));
                 c += _FL_FogSun.rgb * pow(sd, _FL_FogSun.a) * (1 - cover * 0.7);

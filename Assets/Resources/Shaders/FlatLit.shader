@@ -75,7 +75,7 @@ Shader "Firstlight/FlatLit"
                 if (_UseMatMap > 0.5)
                 {
                     albedo = SeasonTint(GroundVariation(albedo, i.positionWS.xz, layer), layer);
-                    albedo = ApplySnow(albedo, i.positionWS, n, i.positionOS, n);
+                    albedo = ApplyGroundSnow(albedo, i.positionWS, n, layer);
                 }
                 half3 c = FlatShade(i.positionWS, n, albedo, i.positionCS, 0);
                 return half4(FL_Fog(c, i.positionWS), 1);

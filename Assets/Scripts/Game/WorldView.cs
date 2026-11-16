@@ -702,6 +702,7 @@ namespace Firstlight.Game
             if (_coverDirty && _coverClock > 0.3f) { _coverClock = 0; RefreshCover(); }
             foreach (var cv in _covers) if (!(HideGroundCover && cv.UnderSnow)) cv.Batch.Draw();
             DrawBirds();
+            DrawSnowfall();
         }
 
         // ------------------------------------------------------------------ birds
@@ -756,6 +757,55 @@ namespace Firstlight.Game
                 }
             _birds0.Upload(_birdBuf0, n0); _birds1.Upload(_birdBuf1, n1);
             _birds0.Draw(); _birds1.Draw();
+        }
+
+        // ------------------------------------------------------------------ falling snow
+
+        // Flakes fall through a box round the point the camera looks at, wrapping at its sides so the same flakes serve
+        // wherever the camera goes; the box and the flakes grow with the zoom so snowfall shows near and far.
+        /// <summary>0 = none, 1 = thick snowfall.</summary>
+        public float Snowfall;
+        public Vector3 SnowFocus; public float SnowDistance = 40f;
+        InstanceBatch _flakes;
+        readonly InstanceData[] _flakeBuf = new InstanceData[1600];
+        static Material _flakeMat;
+        float _snowTime;
+
+        static float Wrap(float v, float size) => v - math.floor(v / size) * size;
+
+        void DrawSnowfall()
+        {
+            if (Snowfall <= 0.02f) return;
+            if (_flakes == null)
+            {
+                if (_flakeMat == null)
+                {
+                    // The smoke material's soft all-round lighting, fully solid: flakes are small pale dots.
+                    _flakeMat = new Material(InstanceBatch.SharedMaterial) { name = "InstancedFlatSnowflake" };
+                    _flakeMat.SetFloat("_Snowable", 0f);
+                    _flakeMat.SetFloat("_Smoke", 1f);
+                }
+                _flakes = new InstanceBatch(Shapes.Puff, _flakeBuf.Length, _flakeMat) { CastShadows = false };
+            }
+            _snowTime += Time.deltaTime;
+            float r = math.clamp(SnowDistance * 0.95f, 9f, 75f), box = r * 2f, high = r * 0.9f;
+            float size = 0.028f + SnowDistance * 0.0017f;
+            float ground = SnowFocus.y - 0.5f;
+            int n = (int)(_flakeBuf.Length * math.saturate(Snowfall));
+            uint white = Pal.Pack(new Color(1f, 1f, 1f, 1f));
+            for (int i = 0; i < n; i++)
+            {
+                float h1 = Hash01(i * 3 + 1), h2 = Hash01(i * 3 + 2), h3 = Hash01(i * 3 + 3), h4 = Hash01(i * 7 + 5);
+                float fall = (0.9f + h4 * 0.7f) * (0.5f + r / 22f);
+                float sway = math.sin(_snowTime * (0.7f + h3) + h1 * 40f) * 0.35f;
+                float wx = h1 * box + _snowTime * 0.6f + sway, wz = h2 * box + _snowTime * 0.35f + sway * 0.6f;
+                float x = SnowFocus.x - r + Wrap(wx - SnowFocus.x, box), z = SnowFocus.z - r + Wrap(wz - SnowFocus.z, box);
+                float y = ground + Wrap(h3 * high - _snowTime * fall, high);
+                float s = size * (0.7f + h4 * 0.6f);
+                _flakeBuf[i] = new InstanceData(new float3(x, y, z), h1 * 6.28f, new float3(s), white);
+            }
+            _flakes.Upload(_flakeBuf, n);
+            _flakes.Draw();
         }
 
         /// <summary>Bushes, grass tufts and flowers are not drawn (snow lies over them).</summary>
@@ -874,7 +924,7 @@ namespace Firstlight.Game
                 _spearUp.Dispose(); _spearLevel.Dispose(); _tent.Dispose(); _fire.Dispose();
             }
             if (_covers != null) foreach (var cv in _covers) cv.Batch.Dispose();
-            _birds0?.Dispose(); _birds1?.Dispose();
+            _birds0?.Dispose(); _birds1?.Dispose(); _flakes?.Dispose();
         }
     }
 }

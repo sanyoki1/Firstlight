@@ -223,7 +223,9 @@ namespace Firstlight.Game
                 CinematicUpdate();
                 // Firelight at night, and trees cut away round the focus (or the selected person) when zoomed in.
                 SView.Night = InMenu || _demo ? 0 : 1f - Atmo.Daylight;
-                View.BirdsOut = _demo ? 0 : math.saturate(Atmo.Daylight * 1.5f - 0.2f) * (Atmo.Snow > 0.4f ? 0.4f : 1f);
+                View.BirdsOut = _demo ? 0 : math.saturate(Atmo.Daylight * 1.5f - 0.2f) * (Atmo.Snow > 0.4f ? 0.4f : 1f) * (1f - Atmo.Snowfall);
+                View.Snowfall = _demo || InMenu ? 0 : Atmo.Snowfall;
+                View.SnowFocus = Cam.Focus; View.SnowDistance = Cam.Distance;
                 var sel = Hud?.SelectedCitizen;
                 float2 cut = sel != null && !sel.Gone ? sel.Pos : new float2(Cam.Focus.x, Cam.Focus.z);
                 SView.CutCenter = cut;

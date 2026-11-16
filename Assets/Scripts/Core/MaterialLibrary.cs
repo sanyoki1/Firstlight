@@ -44,6 +44,7 @@ namespace Firstlight.Core
             Shader.SetGlobalFloat("_FL_LayerSnow", Layer("snow"));
             Shader.SetGlobalFloat("_FL_LayerShallow", Layer("shallow"));
             Shader.SetGlobalFloat("_FL_LayerBed", Layer("bed"));
+            Shader.SetGlobalFloat("_FL_LayerPath", Layer("path"));
             Shader.SetGlobalFloat("_FL_LayerLeaves", Layer("leaves"));
             Shader.SetGlobalFloat("_FL_LayerNeedles", Layer("needles"));
             Shader.SetGlobalFloat("_FL_LayerTuft", Layer("tuft"));

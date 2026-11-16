@@ -60,6 +60,9 @@ namespace Firstlight.Game
                 ("autumn_afternoon", 0.66f, 2.5f, 0f, tc, 60f, 36f, -60f),
                 ("winter_noon", 0.50f, 3.5f, 0.9f, tc, 40f, 42f, 30f),
                 ("horizon", 0.40f, 1.4f, 0f, tc, 160f, 20f, 200f),
+                ("winter_snowfall", 0.45f, 3.03f, 0.9f, tc + new float2(3, -2), 16f, 30f, 70f),
+                ("winter_first_snow", 0.55f, 3.2f, 0.4f, tc, 30f, 40f, -40f),
+                ("misty_dawn", 0.235f, 2.4f, 0f, tc, 75f, 28f, 20f),
             };
             string only = Arg("-lookonly");
             foreach (var s in shots)

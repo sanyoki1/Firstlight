@@ -88,7 +88,7 @@ namespace Firstlight.Core
         }
 
         /// <summary>The map's size: beyond its border the land fades into the haze.</summary>
-        public static void SetMap(float w, float h) => Shader.SetGlobalVector(MapBoundsId, new Vector4(w, h, 1f / (Outskirts * 0.74f), 0));
+        public static void SetMap(float w, float h) => Shader.SetGlobalVector(MapBoundsId, new Vector4(w, h, 1f / (Outskirts * 0.4f), 0));
 
         /// <summary>
         /// The sky's colours (sRGB): haze at the horizon, the zenith, the glow round the sun and how tight it is, the

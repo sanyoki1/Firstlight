@@ -19,6 +19,8 @@ namespace Firstlight.Game
         /// <summary>0 = deep night, 1 = full day (for the HUD and the view).</summary>
         public float Daylight { get; private set; } = 1f;
         public float Snow { get; private set; }
+        /// <summary>0 = clear, 1 = snow falling thickly (the first days of winter, and showers after).</summary>
+        public float Snowfall { get; private set; }
         /// <summary>World height the morning mist reaches up to (a little above the river).</summary>
         public float MistTop = 0.9f;
 
@@ -52,6 +54,12 @@ namespace Firstlight.Game
             _sun.intensity = math.lerp(0.42f, WorldLighting.SunIntensity - low * 0.2f, day);
             _sun.shadowStrength = math.lerp(0.5f, 0.82f, day);
             float winter = season == 3 ? 1f : 0f;
+            // Snow falls while it settles in the first days of winter, then in showers that come and go.
+            float intoWinter = seasonPos - 3f;
+            Snowfall = season == 3 ? math.max(math.saturate(1.25f - intoWinter * 5f), math.saturate((Mathf.PerlinNoise(seasonPos * 23f, 0.37f) - 0.56f) * 6f)) : 0f;
+            // Under falling snow the sun is veiled: weaker, with softer shadows.
+            _sun.intensity *= 1f - 0.3f * Snowfall;
+            _sun.shadowStrength *= 1f - 0.35f * Snowfall;
             // The sky: haze at the horizon, deeper overhead; orange low in the sky at dawn and dusk, a band of rose
             // lingering through twilight; deep blue at night.
             float twi = math.saturate(1f - math.abs(day - 0.45f) / 0.45f);

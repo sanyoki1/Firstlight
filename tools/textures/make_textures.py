@@ -321,8 +321,11 @@ def wood(d, t, seed=21):
 
 
 def snow(d, t, seed=15):
+    """Lying snow: bright, with long low drifts the wind has laid across it and a faint grain; no hard blotches."""
     p = Painter(d, (t, t), seed)
-    p.bands("snow", [2, 3, 4], [0.3, 0.75], 1.0)
+    p.bands("snow", [3, 4], [0.42], 2.6, 0.9, octaves=2)
+    p.blobs("snow3", 2.2, 0.035)
+    p.blobs("snow2", 0.5, 0.03)
     return p.cv
 
 
