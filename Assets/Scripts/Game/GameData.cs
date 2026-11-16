@@ -208,7 +208,8 @@ namespace Firstlight.Game
         public float migrantCheckDays = 4, migrantChance = 0.5f;
         public float foodWarnDays = 3;
         public float workHaulMin = 1f;                  // haulers pick up a workplace's goods once this much has piled up
-        public float demolishRefund = 0.5f;             // share of the cost returned when a finished building is pulled down
+        public float dismantleRefund = 0.5f;            // share of each building material a dismantled building gives back (rounded down)
+        public float dismantleWork = 0.5f;              // taking a building apart takes this share of the work of building it
         public float focusShare = 0.8f;                 // a focused workplace's chosen output gains this share of the other outputs' amounts
         public float homelessShelter = 0.3f;            // happiness from shelter when sleeping in the open
         public float happinessSmoothing = 0.35f;        // how fast happiness follows the needs each day

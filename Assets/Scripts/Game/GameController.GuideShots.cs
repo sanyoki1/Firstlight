@@ -172,7 +172,7 @@ namespace Firstlight.Game
             var crops = Sim.Buildings.Where(b => b.Active && b.Def.crop).ToList();
             for (int i = 0; i < crops.Count && !Sim.Warnings.Any(w => w.StartsWith("Expected harvest")); i++)
             {
-                Sim.Demolish(crops[i], out _);
+                Sim.Dismantle(crops[i], out _);
                 yield return Advance(() => Sim.Warnings.Any(w => w.StartsWith("Expected harvest")), 2, 1);
             }
             if (Sim.Warnings.Any(w => w.StartsWith("Expected harvest")))

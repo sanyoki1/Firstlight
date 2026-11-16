@@ -208,8 +208,8 @@ namespace Firstlight.Game
         /// <summary>Clears a footprint to trodden earth when it is placed; gives the ground back when it is removed.</summary>
         void Ground(Building b)
         {
-            byte want = b.Alive ? (byte)1 : (byte)2;
-            if (_ground[b.Id] == want || (!b.Alive && _ground[b.Id] == 0)) return;
+            byte want = b.OnMap ? (byte)1 : (byte)2;
+            if (_ground[b.Id] == want || (!b.OnMap && _ground[b.Id] == 0)) return;
             _ground[b.Id] = want;
             _levelDirty = true;
             for (int y = b.Origin.y - 1; y <= b.Origin.y + b.SY; y++)
@@ -219,7 +219,7 @@ namespace Firstlight.Game
                     int c = M.Cell(x, y);
                     bool inside = x >= b.Origin.x && x < b.Origin.x + b.SX && y >= b.Origin.y && y < b.Origin.y + b.SY;
                     if (!inside && c != b.Door) continue;
-                    if (b.Alive) W.SetCellMaterial(c, "dirt");
+                    if (b.OnMap) W.SetCellMaterial(c, "dirt");
                     else if (M.BuildingAt[c] < 0) W.RestoreCellMaterial(c);
                 }
         }
@@ -240,7 +240,7 @@ namespace Firstlight.Game
             _levelGen++;
             foreach (var b in S.Buildings)
             {
-                if (!b.Alive) continue;
+                if (!b.OnMap) continue;
                 float h = BaseOf(b);
                 for (int y = b.Origin.y; y <= b.Origin.y + b.SY; y++)
                     for (int x = b.Origin.x; x <= b.Origin.x + b.SX; x++)
@@ -292,11 +292,28 @@ namespace Firstlight.Game
             {
                 if (b.Id >= _ground.Length) BaseOf(b);
                 Ground(b);
-                if (!b.Alive) continue;
+                if (!b.OnMap) continue;
                 float y = BaseOf(b);
                 var at = new float3(b.Center.x, y, b.Center.y);
                 float yaw = Yaw(b.Rot);
                 var (body, glow, height) = Def(b.Def);
+                if (b.IsPile)
+                {
+                    // What a dismantled building left: its marked-out plot with the goods heaped on it.
+                    SiteMarks(b.Def).Add(new InstanceData(at, yaw, new float3(1f), White));
+                    DrawLeftGoods(b);
+                    continue;
+                }
+                if (b.Active && b.Dismantling)
+                {
+                    // Coming down: scaffolding round it, the body cut lower as the work goes on, in a reddish wash.
+                    SiteMarks(b.Def).Add(new InstanceData(at, yaw, new float3(1f), White));
+                    Scaffold(b.Def).Add(new InstanceData(at, yaw, new float3(1f), White));
+                    byte cut = (byte)math.clamp(math.round(height * math.saturate(b.Work) / 4f * 255f), 1, 254);
+                    body.Add(new InstanceData(at, yaw, new float3(1f), DismantleTint & 0x00ffffffu | ((uint)cut << 24)));
+                    DrawStore(b, at);
+                    continue;
+                }
                 if (b.Active)
                 {
                     body.Add(new InstanceData(at, yaw, new float3(1f), b.Flooded ? Flooded : White));
@@ -343,6 +360,24 @@ namespace Firstlight.Game
                 // A site: marked out, its materials piled up as they arrive, then the building rising inside scaffolding.
                 SiteMarks(b.Def).Add(new InstanceData(at, yaw, new float3(1f), White));
                 DrawRising(b, at, b.Def, height, true);
+            }
+        }
+
+        static readonly uint DismantleTint = Pal.Pack(new Color(1f, 0.62f, 0.55f));
+
+        /// <summary>The goods a dismantled building left, heaped on its plot (up to six kinds, the biggest heaps first in good order).</summary>
+        void DrawLeftGoods(Building b)
+        {
+            int shown = 0;
+            float yaw = Yaw(b.Rot);
+            for (int r = 0; r < b.Out.Length && shown < 6; r++)
+            {
+                if (b.Out[r] < 0.05f) continue;
+                var local = new float2((shown % 3 - 1) * 0.6f, (shown / 3) * 0.6f - 0.3f);
+                if (b.Def.sizeX < 2 || b.Def.sizeY < 2) local *= 0.5f;
+                var p = b.Center + Turn(local, yaw);
+                PileFor(r).Add(new InstanceData(new float3(p.x, M.HeightAt(p.x, p.y), p.y), shown * 0.7f, new float3(0.45f + 0.55f * math.saturate(b.Out[r] / 10f)), White));
+                shown++;
             }
         }
 
@@ -702,7 +737,7 @@ namespace Firstlight.Game
                 if (resting || c.Activity == Activity.Idle && !c.AtField && math.distancesq(c.Pos, tc.Center) < 36f)
                     sitAround = true;                                       // sleeping out / waiting round the fire
                 else if (c.Activity == Activity.Working && job != null && !c.AtField) target = WorkSpot(c, job, out faceTo, out faceSet);
-                else if (c.Activity == Activity.Building && c.TaskB2 is Building site && site.IsSite) target = BuildSpot(c, site, out faceTo, out faceSet);
+                else if (c.Activity == Activity.Building && c.TaskB2 is Building site && (site.IsSite || site.Dismantling)) target = BuildSpot(c, site, out faceTo, out faceSet);
                 else if (c.Activity == Activity.Playing)
                 {
                     float a = _anim * 1.3f + Hash(c.Id, 1) * 6.28f;
@@ -900,13 +935,13 @@ namespace Firstlight.Game
         void DrawOverlays()
         {
             var sel = new Color(0.95f, 0.9f, 0.7f);
-            if (Selected != null && Selected.Alive)
+            if (Selected != null && Selected.OnMap)
             {
                 float y = BaseOf(Selected) + 0.02f;
                 float r = math.max(Selected.Def.sizeX, Selected.Def.sizeY) * 0.75f;
                 Ring(new InstanceData(new float3(Selected.Center.x, y, Selected.Center.y), 0, new float3(r, 1, r), Pal.Pack(sel)));
             }
-            if (HoverBuilding != null && HoverBuilding.Alive && HoverBuilding != Selected)
+            if (HoverBuilding != null && HoverBuilding.OnMap && HoverBuilding != Selected)
             {
                 float y = BaseOf(HoverBuilding) + 0.02f;
                 float r = math.max(HoverBuilding.Def.sizeX, HoverBuilding.Def.sizeY) * 0.75f;

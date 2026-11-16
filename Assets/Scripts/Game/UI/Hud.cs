@@ -124,16 +124,19 @@ namespace Firstlight.Game.UI
             }
             if (Mode == ToolMode.Demolish)
             {
-                // A finished building takes a second click on it within 2 s (the tip says what goes with it); sites and
-                // path tiles go at once (a site's delivered materials go back to storage).
+                // A finished building takes a second click on it within 2 s (the tip says what goes with it), then it is
+                // marked for dismantling; sites are marked and path tiles go at once. A click on a marked building takes
+                // the mark off again. What a dismantled building left is cleared from its own panel, not with the tool.
                 var hb = HoverBuilding;
+                if (hb != null && hb.IsPile) return;
+                if (hb != null && hb.Dismantling) { S.CancelDismantle(hb); _toolConfirm = -1; return; }
                 if (hb != null && !hb.IsSite && hb != S.TownCenter && !ToolConfirmPending(hb))
                 {
                     _toolConfirm = hb.Id; _toolConfirmAt = Time.unscaledTime;
                     return;
                 }
                 _toolConfirm = -1;
-                if (hb != null && S.Demolish(hb, out _) && !keepTool) Mode = ToolMode.None;
+                if (hb != null && S.Dismantle(hb, out _) && !keepTool) Mode = ToolMode.None;
                 else if (HoverBuilding == null && S.RemovePath(HoverCell) && !keepTool) Mode = ToolMode.None;
                 return;
             }
@@ -147,23 +150,33 @@ namespace Firstlight.Game.UI
         int _toolConfirm = -1; float _toolConfirmAt;
         bool ToolConfirmPending(Building b) => b != null && _toolConfirm == b.Id && Time.unscaledTime - _toolConfirmAt <= 2f;
 
-        /// <summary>What goes with a building pulled down: "8 live here; half the materials come back".</summary>
+        /// <summary>What goes with a building taken apart: "8 live here; builders take it apart; comes back: 4 wood, 2 stone".</summary>
         string DemolishLoss(Building b)
         {
-            var parts = new List<string>(3);
+            var parts = new List<string>(4);
             if (b.Def.housing > 0 && b.Residents > 0) parts.Add($"{b.Residents} live{(b.Residents == 1 ? "s" : "")} here");
             if (b.Def.IsWorkplace && b.Workers > 0) parts.Add($"{b.Workers} work{(b.Workers == 1 ? "s" : "")} here");
-            if (b.Store != null && b.Stored >= 1f) parts.Add(b.Stored.ToString("0") == "1" ? "1 good moves to another store if there is room" : $"{b.Stored:0} goods move to other stores if there is room");
-            float refund = D.Balance.demolishRefund;
-            parts.Add(math.abs(refund - 0.5f) < 0.01f ? "half the materials come back" : $"{refund:P0} of the materials come back");
+            if (b.Store != null && b.Stored >= 1f) parts.Add(b.Stored.ToString("0") == "1" ? "1 good is moved to another store" : $"{b.Stored:0} goods are moved to other stores");
+            parts.Add("builders take it apart");
+            parts.Add("comes back: " + GoodsText(S.DismantleReturn(b, false)));
             return string.Join("; ", parts);
         }
 
+        /// <summary>"4 wood, 2 stone" for amounts per good ("nothing" when there is none).</summary>
+        string GoodsText(float[] amounts)
+        {
+            var parts = new List<string>();
+            for (int r = 0; r < amounts.Length; r++) if (amounts[r] >= 0.05f) parts.Add($"{amounts[r]:0.#} {D.Resources[r].name.ToLower()}");
+            return parts.Count == 0 ? "nothing" : string.Join(", ", parts);
+        }
+
+        /// <summary>The panel's Dismantle button: the second click marks the building (builders then take it apart).</summary>
         public void Demolish(Building b)
         {
             if (b == null) return;
             if (_confirmDemolish != b.Id) { _confirmDemolish = b.Id; return; }     // second click confirms
-            if (S.Demolish(b, out _)) Select(null);
+            S.Dismantle(b, out _);
+            if (!b.OnMap) Select(null);
             _confirmDemolish = -1;
         }
 
@@ -267,7 +280,7 @@ namespace Firstlight.Game.UI
             CheckGone();
             UpdateGuide();
             UpdateHints();
-            if (Selected != null && !Selected.Alive) Select(null);
+            if (Selected != null && !Selected.OnMap) Select(null);
             if (SelectedCitizen != null && SelectedCitizen.Gone) SelectCitizen(null);
             PushToView();
             SampleTrends();
@@ -614,11 +627,13 @@ namespace Firstlight.Game.UI
             {
                 var hb = HoverBuilding;
                 string what, sub;
-                if (hb == null) { what = "Click a building or path to remove it"; sub = null; }
+                if (hb == null) { what = "Click a building to have it dismantled, or a path to remove it"; sub = null; }
                 else if (hb == S.TownCenter) { what = Col("The campfire can't be removed", Bad); sub = null; }
-                else if (hb.IsSite) { what = $"Remove the {hb.Def.name} site"; sub = "Delivered materials go back to storage."; }
-                else if (ToolConfirmPending(hb)) { what = Col($"Click again to remove the {hb.Def.name}", Bad); sub = Cap(DemolishLoss(hb)) + "."; }
-                else { what = $"Remove the {hb.Def.name}: click twice"; sub = Cap(DemolishLoss(hb)) + "."; }
+                else if (hb.IsPile) { what = $"Goods left by the {hb.Def.name}"; sub = "They are carried to a store; select the pile to clear it away instead."; }
+                else if (hb.Dismantling) { what = $"The {hb.Def.name} is marked for dismantling"; sub = "Click to cancel."; }
+                else if (hb.IsSite) { what = $"Dismantle the {hb.Def.name} site"; sub = $"Comes back: {GoodsText(S.DismantleReturn(hb, false))} (all that was delivered)."; }
+                else if (ToolConfirmPending(hb)) { what = Col($"Click again to dismantle the {hb.Def.name}", Bad); sub = Cap(DemolishLoss(hb)) + "."; }
+                else { what = $"Dismantle the {hb.Def.name}: click twice"; sub = Cap(DemolishLoss(hb)) + "."; }
                 float h0 = sub != null ? 56 : 34;
                 var r0 = Box(new Rect(VW / 2 - 320, VH - 128 - h0, 640, h0), UiTheme.Header);
                 GUI.Label(new Rect(r0.x + 12, r0.y + (sub != null ? 4 : 0), 616, 28), what + Col("   (right-click or Esc to stop)", Dim), Label);
@@ -709,7 +724,7 @@ namespace Firstlight.Game.UI
             if (Mode != ToolMode.None || PointerOverUI) return;
             var c = HoverCitizen;
             var hb = c == null ? HoverBuilding : null;
-            if (c == null && (hb == null || !hb.Alive)) return;
+            if (c == null && (hb == null || !hb.OnMap)) return;
             Vector3 world = c != null
                 ? new Vector3(HoverCitizenPos.x, M.HeightAt(HoverCitizenPos.x, HoverCitizenPos.y) + 1.15f, HoverCitizenPos.y)
                 : new Vector3(hb.Center.x, M.HeightAt(hb.Center.x, hb.Center.y) + 1.6f, hb.Center.y);
@@ -743,6 +758,8 @@ namespace Firstlight.Game.UI
         {
             var d = b.Def;
             string sep = Col("  ·  ", Dim);
+            if (b.IsPile) return $"{Col("Goods left by the", Dim)} <b>{d.name}</b>{sep}{b.OutTotal:0.#} to carry off";
+            if (b.Dismantling) return $"<b>{d.name}</b>{sep}{Col($"being dismantled ({b.Work:P0} left)", Warn)}";
             if (b.IsSite) return $"{Col("Site:", Dim)} <b>{d.name}</b>{sep}{b.Progress:P0}";
             string text = $"<b>{d.name}</b>";
             if (b.UpgradeTo != null) text += sep + Col($"being rebuilt ({b.Progress:P0})", Warn);

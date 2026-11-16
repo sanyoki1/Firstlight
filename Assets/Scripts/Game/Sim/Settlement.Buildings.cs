@@ -198,42 +198,147 @@ namespace Firstlight.Game
             return b;
         }
 
+        // ------------------------------------------------------------------ dismantling
+        // Removing a building is a job. The player marks it (Dismantle); builders come and take it apart, the same way
+        // they built it (Work runs down from where it stood to 0); then the building materials it gives back, and any
+        // goods it still held, lie on its footprint as a pile (BuildState.Pile) until the normal hauling has carried
+        // them to a store. Until the work is done the player can cancel (CancelDismantle).
+
         /// <summary>
-        /// Pulls a building down. Sites give back what was delivered; finished buildings a share of their cost.
-        /// Stored goods move to other stores where there is room. The campfire can't be removed.
+        /// Marks a building or a site for dismantling. A finished building gives back balance.dismantleRefund of each
+        /// building material, rounded down; a site gives back everything delivered so far. A site nobody has built on
+        /// yet (and anything that took no work to build) comes apart at once. The campfire can't be removed.
         /// </summary>
-        public bool Demolish(Building b, out string reason)
+        public bool Dismantle(Building b, out string reason)
         {
             reason = "";
             if (b == null || !b.Alive) { reason = "Nothing to remove"; return false; }
             if (b == TownCenter) { reason = "The campfire can't be removed"; return false; }
-            var refund = new float[ResCount];
-            for (int i = 0; i < b.Def.cost.Length; i++)
-            {
-                // (The refund line is kept exactly as it was: the JIT may keep the product in higher precision, and a
-                // float local in between would round it differently and change the game.)
-                refund[ResIndex(b.Def.cost[i].id)] += b.IsSite ? b.Delivered[i] : b.Def.cost[i].amount * B.demolishRefund;
-                Consumed[ResIndex(b.Def.cost[i].id)] -= b.IsSite ? b.Delivered[i] : b.Def.cost[i].amount * B.demolishRefund;   // built-in materials come back
-            }
-            if (b.UpgradeTo != null)
-                for (int i = 0; i < b.UpgradeTo.cost.Length; i++) { refund[b.CostRes[i]] += b.Delivered[i]; Consumed[b.CostRes[i]] -= b.Delivered[i]; }
-            for (int r = 0; r < ResCount; r++) refund[r] += b.Out[r] + b.In[r];
-            if (b.Store != null) for (int r = 0; r < ResCount; r++) refund[r] += b.Store[r];
-            b.State = BuildState.Removed;
-            // What it held is moved out (or lost) below: nothing stays behind in the removed building.
-            if (b.Store != null) { Array.Clear(b.Store, 0, ResCount); b.Stored = 0; }
-            Array.Clear(b.Out, 0, ResCount); Array.Clear(b.In, 0, ResCount); b.OutTotal = 0;
-            float lost = 0;
-            for (int r = 0; r < ResCount; r++)
-            {
-                if (refund[r] > 0.01f) { float put = Deposit(r, refund[r], b.Center); lost += refund[r] - put; Lost[r] += refund[r] - put; }
-                else Lost[r] += refund[r];
-            }
+            if (b.Dismantling) { reason = "Already marked for dismantling"; return false; }
+            if (b.UpgradeTo != null) CancelUpgrade(b);        // the upgrade's materials go back to storage first
+            // Materials on their way to the site are carried back to a store.
+            foreach (var c in Citizens)
+                if (c.TaskB2 == b && (c.Task == Task.FetchMaterial || c.Task == Task.DeliverMaterial || c.Task == Task.GoBuild || c.Task == Task.Build)) CancelTask(c);
+            b.Dismantling = true;
+            _jobsDirty = true;
+            if (b.Def.buildWork <= 0 || b.IsSite && b.Work <= 0) { FinishDismantle(b); Map.CommitCostChanges(); }
+            return true;
+        }
+        public bool Dismantle(Building b) => Dismantle(b, out _);
+
+        /// <summary>Takes the mark off again. A finished building is whole again; a site is built on from where it stands.</summary>
+        public bool CancelDismantle(Building b)
+        {
+            if (b == null || !b.Alive || !b.Dismantling) return false;
+            b.Dismantling = false;
+            if (b.Active) b.Work = 1f;
+            _jobsDirty = true;
+            return true;
+        }
+
+        /// <summary>
+        /// What dismantling a building gives back, per good: the share of its building materials (a site: all that was
+        /// delivered) and, if <paramref name="withGoods"/>, the goods it holds now (stored, made, brought in as inputs).
+        /// </summary>
+        public float[] DismantleReturn(Building b, bool withGoods = true)
+        {
+            var back = new float[ResCount];
+            if (b == null || !b.Alive) return back;
+            if (b.IsSite)
+                for (int i = 0; i < b.Def.cost.Length && i < b.Delivered.Length; i++) back[b.CostRes[i]] += b.Delivered[i];
+            else
+                for (int i = 0; i < b.Def.cost.Length; i++)
+                {
+                    int r = ResIndex(b.Def.cost[i].id);
+                    if (r >= 0) back[r] += math.floor(b.Def.cost[i].amount * B.dismantleRefund + 1e-3f);
+                }
+            if (withGoods)
+                for (int r = 0; r < ResCount; r++) back[r] += b.Out[r] + b.In[r] + (b.Store != null ? b.Store[r] : 0f);
+            return back;
+        }
+
+        /// <summary>Builder-days (one builder at full speed) left to take a marked building apart.</summary>
+        public float DismantleWorkLeft(Building b) => b == null || !b.Dismantling ? 0f : b.Work * b.Def.buildWork * B.dismantleWork / math.max(0.01f, B.builderWorkPerDay);
+
+        /// <summary>The work is done: the materials and whatever the building still held become a pile on its footprint
+        /// (or, with nothing to give back, the ground is free at once).</summary>
+        void FinishDismantle(Building b)
+        {
+            var mats = DismantleReturn(b, false);
+            var pile = DismantleReturn(b, true);
+            for (int r = 0; r < ResCount; r++) Consumed[r] -= mats[r];          // built-in materials come back
+            // Everyone on an errand to or from it lets go of it (their promises are released).
             foreach (var c in Citizens)
             {
+                if (c.TaskB == b || c.TaskB2 == b) CancelTask(c);
                 if (c.Home == b) c.Home = null;
                 if (c.Job == b) c.Job = null;
             }
+            bool wasSite = b.IsSite;
+            b.Dismantling = false;
+            b.Work = 0; b.Workers = 0; b.Residents = 0; b.Builders = 0; b.HaulReserved = 0;
+            b.Store = null; b.Stored = 0; b.Allow = null; b.KeepMin = null; b.KeepMax = null; b.Incoming = null; b.Outgoing = null;
+            Array.Clear(b.In, 0, ResCount);
+            Array.Clear(b.Delivered, 0, b.Delivered.Length); Array.Clear(b.InTransit, 0, b.InTransit.Length);
+            float total = 0;
+            for (int r = 0; r < ResCount; r++)
+            {
+                if (pile[r] < 0.01f) { Lost[r] += pile[r]; pile[r] = 0; }
+                b.Out[r] = pile[r]; total += pile[r];
+            }
+            b.OutTotal = total;
+            b.Status = "";
+            string what = wasSite ? $"{b.Def.name} site" : b.Def.name;
+            if (total >= 0.01f)
+            {
+                b.State = BuildState.Pile;
+                Log(Severity.Info, $"{what} taken apart: {total:0.#} goods lie there until they are carried to a store.", b.Center);
+            }
+            else
+            {
+                RemoveFromMap(b);
+                Log(Severity.Info, $"{what} taken apart.", b.Center);
+            }
+            if (b.Def.enablesLaws) RebuildEffects();
+            _jobsDirty = true;
+            RefreshStock();
+        }
+
+        /// <summary>Gives up the goods of a dismantled building's pile (they are lost) and frees the ground.</summary>
+        public bool ClearPile(Building b)
+        {
+            if (b == null || !b.IsPile) return false;
+            foreach (var c in Citizens) if (c.TaskB == b || c.TaskB2 == b) CancelTask(c);
+            float lost = b.OutTotal;
+            for (int r = 0; r < ResCount; r++) { Lost[r] += b.Out[r]; b.Out[r] = 0; }
+            b.OutTotal = 0;
+            RemoveFromMap(b);
+            Map.CommitCostChanges();
+            if (lost >= 0.5f) Log(Severity.Info, $"{lost:0.#} goods left where the {b.Def.name} stood were cleared away.", b.Center);
+            return true;
+        }
+
+        /// <summary>A pile with nothing left that anyone would pick up frees its ground.</summary>
+        void PileTaken(Building b)
+        {
+            if (!b.IsPile) return;
+            for (int r = 0; r < ResCount; r++) if (b.Out[r] >= 0.05f) return;
+            foreach (var c in Citizens) if (!c.Gone && (c.TaskB == b || c.TaskB2 == b) && c.Task != Task.None) return;   // someone is still on the way
+            for (int r = 0; r < ResCount; r++) { Lost[r] += b.Out[r]; b.Out[r] = 0; }
+            b.OutTotal = 0;
+            RemoveFromMap(b);
+        }
+
+        /// <summary>Hourly: piles whose goods spoiled away or were all carried off.</summary>
+        void SweepPiles()
+        {
+            foreach (var b in Buildings) if (b.IsPile) PileTaken(b);
+        }
+
+        /// <summary>Takes a building, site or pile off the map: its cells and its entrance are free again.</summary>
+        void RemoveFromMap(Building b)
+        {
+            b.State = BuildState.Removed;
             for (int y = b.Origin.y; y < b.Origin.y + b.SY; y++)
                 for (int x = b.Origin.x; x < b.Origin.x + b.SX; x++)
                 {
@@ -243,16 +348,13 @@ namespace Firstlight.Game
                     Map.RefreshCost(c);
                 }
             bool doorShared = false;
-            foreach (var o in Buildings) if (o.Alive && o.Door == b.Door) doorShared = true;
+            foreach (var o in Buildings) if (o.OnMap && o.Door == b.Door) doorShared = true;
             if (!doorShared) Map.Reserved[b.Door] = false;
-            Map.CommitCostChanges();
-            Log(lost >= 1f ? Severity.Warning : Severity.Info, lost >= 1f ? $"{b.Def.name} removed. {lost:0} goods were lost: no store had room for them." : $"{b.Def.name} removed.", b.Center);
-            if (b.Def.enablesLaws) RebuildEffects();
+            // The freed cells' walking prices are committed by the caller when it is a player's command (as placing
+            // does), else by the next hourly step with every other change: a commit drops every cached path, and in
+            // the middle of a step each walker would then rebuild its own, one by one.
             _jobsDirty = true;
-            RefreshStock();
-            return true;
         }
-        public bool Demolish(Building b) => Demolish(b, out _);
 
         /// <summary>
         /// A good campfire origin for a default/suggestion: open buildable ground with forest, loose rock, the river
@@ -314,6 +416,7 @@ namespace Firstlight.Game
             var t = UpgradeOption(b);
             if (t == null) { reason = "Can't be upgraded"; return false; }
             if (b.UpgradeTo != null) { reason = "Already being upgraded"; return false; }
+            if (b.Dismantling) { reason = "Marked for dismantling"; return false; }
             if (!IsUnlocked(t)) { reason = !string.IsNullOrEmpty(t.unlockedBy) && !IsResearched(t.unlockedBy) ? $"Needs research: {Data.ResearchById(t.unlockedBy)?.name}" : $"Needs the {Data.Age(t.age)?.name}"; return false; }
             return true;
         }
@@ -425,7 +528,7 @@ namespace Firstlight.Game
             float foodMult = Effect("spoil.food");
             foreach (var b in Buildings)
             {
-                if (!b.Alive) continue;
+                if (!b.OnMap) continue;
                 for (int r = 0; r < ResCount; r++)
                 {
                     var rd = Data.Resources[r];

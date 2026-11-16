@@ -62,6 +62,7 @@ namespace Firstlight.Game.UI
             col = Warn; slow = false; slowDay = false;
             var d = b.Def;
             if (d.path || !b.Alive) return null;
+            if (b.Dismantling) return "Dismantling";
             if (b.IsSite)
             {
                 if (S.BuildersWanted == 0) return "No builders";

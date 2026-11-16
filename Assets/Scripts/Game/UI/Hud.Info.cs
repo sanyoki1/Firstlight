@@ -14,7 +14,7 @@ namespace Firstlight.Game.UI
 
         void DrawInfo()
         {
-            if (Selected != null && Selected.Alive) DrawBuilding(Selected);
+            if (Selected != null && Selected.OnMap) DrawBuilding(Selected);
             else if (SelectedCitizen != null) DrawCitizen(SelectedCitizen);
         }
 
@@ -56,6 +56,8 @@ namespace Firstlight.Game.UI
         {
             var d = b.Def;
             var r = BeginInfo(d.name);
+            if (b.IsPile) { DrawLeftGoods(b); EndInfo(r); return; }
+            if (b.Dismantling) DrawDismantling(b);
             if (b.IsSite) DrawSite(b);
             else
             {
@@ -71,18 +73,66 @@ namespace Firstlight.Game.UI
                 if (d.housing > 0) DrawHome(b);
                 if (b.Store != null) DrawStore(b);
                 DrawCoverage(b);
-                DrawUpgrade(b);
+                if (!b.Dismantling) DrawUpgrade(b);
             }
             Gap(6);
-            if (b != S.TownCenter)
+            if (b.Dismantling)
+            {
+                var br = new Rect(_lx, _ly, 200, 28);
+                if (GUI.Button(br, "Cancel dismantling", Button)) S.CancelDismantle(b);
+                if (Over(br)) Tip(br, b.IsSite ? "Take the mark off: the site is built on from where it stands." : "Take the mark off: the building stays, whole, and goes back to work.");
+                _ly += 32;
+            }
+            else if (b != S.TownCenter)
             {
                 bool confirm = _confirmDemolish == b.Id;
                 var br = new Rect(_lx, _ly, 200, 28);
-                if (GUI.Button(br, confirm ? Col("Click again to remove", Bad) : "Demolish", Button)) Demolish(b);
-                if (Over(br)) Tip(br, b.IsSite ? "Pull down the site. Delivered materials go back to storage." : $"Pull it down: {DemolishLoss(b)}.");
+                if (GUI.Button(br, confirm ? Col("Click again to dismantle", Bad) : "Dismantle", Button)) Demolish(b);
+                if (Over(br)) Tip(br, b.IsSite ? $"Mark the site for dismantling. Comes back: {GoodsText(S.DismantleReturn(b, false))} (all that was delivered)." : $"Mark it for dismantling: {DemolishLoss(b)}. You can cancel until the work is done.");
                 _ly += 32;
             }
             EndInfo(r);
+        }
+
+        /// <summary>A building marked for dismantling: how far the work is, who is on it, what comes back and what it means meanwhile.</summary>
+        void DrawDismantling(Building b)
+        {
+            var d = b.Def;
+            Row(Col("Marked for dismantling", Warn), Bold);
+            BarRow("Still standing", b.Work, Warn, $"{b.Work:P0}");
+            int builders = S.Citizens.Count(c => c.TaskB2 == b && (c.Activity == Activity.Building || c.Activity == Activity.Walking));
+            Row(builders > 0 ? $"{Many(builders, "builder", "builders")} on it, about {S.DismantleWorkLeft(b):0.#} builder-days of work left" : Col(SiteWait(b), Warn), Small, 20);
+            Para($"Comes back when it is down: {Col(GoodsText(S.DismantleReturn(b, false)), Good)}" + (b.IsSite ? " (all that was delivered)." : $" ({D.Balance.dismantleRefund:P0} of the building materials, rounded down).") + " The goods lie on the plot until they are carried to a store.");
+            if (b.Active && d.housing > 0 && b.Residents > 0) Para(Col($"{Many(b.Residents, "person lives", "people live")} here until it is down; then they need another home. Nobody new moves in.", Warn));
+            if (b.Active && b.Store != null) Para(b.Stored >= 0.5f ? Col($"It takes no more goods. The {b.Stored:0} it holds are being moved to other stores; what is still here when it comes down stays on the plot to be carried off.", Warn) : "It takes no more goods.");
+            if (b.Active && d.IsWorkplace) Para("Nobody works here while it is marked." + (b.OutTotal + b.In.Sum() >= 0.5f ? " Goods still here stay on the plot to be carried off." : ""));
+            if (b.Active) { DrawBuildOrder(b); Gap(4); }
+        }
+
+        /// <summary>What a dismantled building left on its plot: the goods waiting to be carried to a store.</summary>
+        void DrawLeftGoods(Building b)
+        {
+            Row(Col("Dismantled", Dim), Bold);
+            Para("These goods lie here until they are carried to a store. The ground is free again once they are gone.");
+            bool anyRoom = false;
+            for (int g = 0; g < b.Out.Length; g++)
+            {
+                if (b.Out[g] < 0.05f) continue;
+                bool room = S.Buildings.Any(s => s.Active && s.Store != null && !s.Flooded && S.Accepts(s, g) && S.Capacity(s) - s.Stored >= 0.5f);
+                anyRoom |= room;
+                Row($"{D.Resources[g].name}: <b>{b.Out[g]:0.#}</b>" + (room ? "" : Col("   no store has room for it", Bad)), Small, 20);
+            }
+            if (!anyRoom) Para(Col("No store has room for any of this: build a store, free some room, or clear the goods away.", Warn));
+            Gap(6);
+            bool confirm = _confirmDemolish == b.Id;
+            var br = new Rect(_lx, _ly, 200, 28);
+            if (GUI.Button(br, confirm ? Col("Click again: goods are lost", Bad) : "Clear away", Button))
+            {
+                if (!confirm) _confirmDemolish = b.Id;
+                else { S.ClearPile(b); _confirmDemolish = -1; Select(null); }
+            }
+            if (Over(br)) Tip(br, "Give these goods up: they are lost, and the ground is free at once.");
+            _ly += 32;
         }
 
         /// <summary>

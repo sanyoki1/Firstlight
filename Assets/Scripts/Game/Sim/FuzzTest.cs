@@ -145,7 +145,7 @@ namespace Firstlight.Game
             }
             if (S.NeedsCampfire) { S.Place(tc, S.SuggestCampfireSite(), out _); Act("campfire placed at the suggestion"); }
             if (S.Place(tc, S.SuggestCampfireSite(), out _) != null) Violation("two campfires", "a second campfire was placed");
-            if (S.Demolish(S.TownCenter)) Violation("campfire removed", "the campfire could be demolished");
+            if (S.Dismantle(S.TownCenter)) Violation("campfire removed", "the campfire could be demolished");
         }
 
         void Chaos(int n)
@@ -181,9 +181,12 @@ namespace Firstlight.Game
                         4 => RandomBuilding(x => x.Active && x.Workers > 0),
                         _ => RandomBuilding(x => true),
                     };
-                    if (b != null && S.Demolish(b)) Act($"demolish ({(kind == 0 ? "site" : kind == 1 ? "upgrade" : kind == 2 ? "occupied home" : kind == 3 ? "store with goods" : kind == 4 ? "staffed workplace" : "any")})");
-                    if (S.Demolish(S.TownCenter)) Violation("campfire removed", "the campfire could be demolished");
-                    if (b != null && !b.Alive && S.Demolish(b)) Violation("double demolish", "a removed building was demolished again");
+                    if (b != null && S.Dismantle(b)) Act($"demolish ({(kind == 0 ? "site" : kind == 1 ? "upgrade" : kind == 2 ? "occupied home" : kind == 3 ? "store with goods" : kind == 4 ? "staffed workplace" : "any")})");
+                    if (S.Dismantle(S.TownCenter)) Violation("campfire removed", "the campfire could be demolished");
+                    if (b != null && !b.Alive && S.Dismantle(b)) Violation("double demolish", "a removed building was demolished again");
+                    // Change of mind: take the mark off a building being dismantled; clear away a dismantled one's goods.
+                    if (R.NextDouble() < 0.25) { var m = RandomBuilding(x => x.Dismantling); if (m != null && S.CancelDismantle(m)) Act("cancel dismantling"); }
+                    if (R.NextDouble() < 0.1) { var piles = S.Buildings.Where(x => x.IsPile).ToList(); if (piles.Count > 0 && S.ClearPile(piles[R.Next(piles.Count)])) Act("clear pile"); }
                     break;
                 }
                 case 4: { var b = RandomBuilding(x => true); if (b != null) { S.SetPriority(b, (Priority)R.Next(3)); Act("priority"); } break; }
@@ -228,7 +231,7 @@ namespace Firstlight.Game
                 case 16: if (R.NextDouble() < 0.25) SaveLoad("at random"); break;
                 case 17: if (R.NextDouble() < 0.15) { S.DebugFloodTomorrow(0.3f + (float)R.NextDouble() * 0.3f); Act("flood forced"); } break;
                 case 18: { var b = RandomBuilding(x => x.Def.crop); if (b != null) { S.SetFocus(b, R.Next(-1, b.Def.outputs.Length + 1)); Act("crop choice"); } break; }
-                case 19: S.Upgrade(null, out _); S.CancelUpgrade(null); S.SetPriority(null, Priority.High); S.SetPaused(null, true); S.SetFocus(null, 1); S.Demolish(null); Act("null commands"); break;
+                case 19: S.Upgrade(null, out _); S.CancelUpgrade(null); S.SetPriority(null, Priority.High); S.SetPaused(null, true); S.SetFocus(null, 1); S.Dismantle(null); Act("null commands"); break;
                 case 20:
                 {
                     // Place the same thing twice on the same spot, and on a spot just taken.
@@ -239,14 +242,14 @@ namespace Firstlight.Game
                     Act("double place");
                     break;
                 }
-                case 21: { var b = RandomBuilding(x => x.Active && x.Def.housing > 0); if (b != null && S.Demolish(b)) Act("demolish home"); break; }
+                case 21: { var b = RandomBuilding(x => x.Active && x.Def.housing > 0); if (b != null && S.Dismantle(b)) Act("demolish home"); break; }
                 case 22:
                 {
                     // Demolish every store but the campfire (zero storage apart from the fire's own).
-                    if (_hostileOnly && R.NextDouble() < 0.1) foreach (var b in S.Buildings.Where(x => x.Alive && x.IsStorage && x != S.TownCenter).ToList()) { S.Demolish(b); Act("demolish all stores"); }
+                    if (_hostileOnly && R.NextDouble() < 0.1) foreach (var b in S.Buildings.Where(x => x.Alive && x.IsStorage && x != S.TownCenter).ToList()) { S.Dismantle(b); Act("demolish all stores"); }
                     break;
                 }
-                case 23: { var b = RandomBuilding(x => x.Active); if (b != null && S.UpgradeOption(b) != null && S.Upgrade(b, out _)) { Act("upgrade then demolish"); if (R.NextDouble() < 0.5) S.Demolish(b); } break; }
+                case 23: { var b = RandomBuilding(x => x.Active); if (b != null && S.UpgradeOption(b) != null && S.Upgrade(b, out _)) { Act("upgrade then demolish"); if (R.NextDouble() < 0.5) S.Dismantle(b); } break; }
                 case 24: StoreSettingsChaos(); break;
             }
         }
@@ -398,7 +401,7 @@ namespace Firstlight.Game
                     if (!float.IsFinite(b.In[r]) || b.In[r] < -eps) Violation("bad stock", $"{b.Def.id}#{b.Id} in {D.Resources[r].id} = {b.In[r]}");
                     ot += b.Out[r];
                 }
-                if (b.Alive && Math.Abs(ot - b.OutTotal) > 0.05 + ot * 1e-4) Violation("out total", $"{b.Def.id}#{b.Id} OutTotal {b.OutTotal} but holds {ot:F3}");
+                if (b.OnMap && Math.Abs(ot - b.OutTotal) > 0.05 + ot * 1e-4) Violation("out total", $"{b.Def.id}#{b.Id} OutTotal {b.OutTotal} but holds {ot:F3}");
                 if (!float.IsFinite(b.Work) || b.Work < -eps || b.Work > 1.001f) Violation("bad work", $"{b.Def.id}#{b.Id} work {b.Work}");
                 if (b.Delivered != null) foreach (var v in b.Delivered) if (!float.IsFinite(v) || v < -eps) Violation("bad delivered", $"{b.Def.id}#{b.Id} delivered {v}");
                 if (b.HaulReserved < -eps || !float.IsFinite(b.HaulReserved)) Violation("bad reservation", $"{b.Def.id}#{b.Id} haul reserved {b.HaulReserved}");
@@ -423,7 +426,8 @@ namespace Firstlight.Game
                 if (c.Job != null && (!c.Job.Active || !c.Job.Def.IsWorkplace)) Violation("dead reference", $"{who} works at {c.Job.Def.id}#{c.Job.Id} ({c.Job.State})");
                 if (c.Job != null && c.IsBuilder) Violation("two jobs", $"{who} has a job and is a builder");
                 if (c.IsHauler && (c.Job != null || c.IsBuilder)) Violation("two jobs", $"{who} is a hauler and has a job or builds");
-                if (c.TaskB != null && !c.TaskB.Alive || c.TaskB2 != null && !c.TaskB2.Alive) Violation("dead reference", $"{who} errand {c.Task} points at a removed building");
+                if (c.TaskB != null && !c.TaskB.OnMap || c.TaskB2 != null && !c.TaskB2.OnMap) Violation("dead reference", $"{who} errand {c.Task} points at a removed building");   // (a dismantled building's pile is still there to fetch from)
+                if (c.TaskB2 != null && c.TaskB2.IsPile) Violation("dead reference", $"{who} errand {c.Task} ends at a dismantled building's pile");
                 if (c.Job != null) jobCount[c.Job] = jobCount.TryGetValue(c.Job, out int j) ? j + 1 : 1;
                 if (c.Home != null) homeCount[c.Home] = homeCount.TryGetValue(c.Home, out int h) ? h + 1 : 1;
                 if (c.Age < S.Data.Balance.adultAge && (c.Job != null || c.IsBuilder || c.IsHauler)) Violation("child labour", $"{who} ({c.Age:F1}) has a job");
@@ -438,7 +442,7 @@ namespace Firstlight.Game
             for (int i = 0; i < owner.Length; i++) owner[i] = -1;
             foreach (var b in S.Buildings)
             {
-                if (!b.Alive) continue;
+                if (!b.OnMap) continue;        // buildings, sites and the piles dismantled ones leave
                 for (int y = b.Origin.y; y < b.Origin.y + b.SY; y++)
                     for (int x = b.Origin.x; x < b.Origin.x + b.SX; x++)
                     {
@@ -456,7 +460,7 @@ namespace Firstlight.Game
                 if (M.BuildingAt[c] != owner[c]) Violation("occupancy", $"cell {M.XY(c)} BuildingAt {M.BuildingAt[c]} but footprint says {owner[c]}");
                 if (M.LiveCost[c] != M.CostOf(c)) Violation("walk cost", $"cell {M.XY(c)} live cost {M.LiveCost[c]} but should be {M.CostOf(c)}");
                 if (M.Path[c]) { paths++; if (owner[c] >= 0) Violation("path under building", $"cell {M.XY(c)}"); }
-                if (M.Reserved[c] && !S.Buildings.Any(b => b.Alive && b.Door == c)) Violation("stale reservation", $"cell {M.XY(c)} reserved for no door");
+                if (M.Reserved[c] && !S.Buildings.Any(b => b.OnMap && b.Door == c)) Violation("stale reservation", $"cell {M.XY(c)} reserved for no door");
             }
             if (paths != S.PathCount) Violation("path count", $"PathCount {S.PathCount} but {paths} tiles");
 
@@ -556,7 +560,7 @@ namespace Firstlight.Game
             // at the turn of the day free beds that the next hour fills).
             int homeless = S.Citizens.Count(c => !c.Gone && c.Home == null);
             int free = 0;
-            foreach (var b in S.Buildings) if (b.Active && b.Def.housing > 0) free += Math.Max(0, b.Def.housing - S.Citizens.Count(c => c.Home == b));
+            foreach (var b in S.Buildings) if (b.Active && !b.Dismantling && b.Def.housing > 0) free += Math.Max(0, b.Def.housing - S.Citizens.Count(c => c.Home == b));
             if (homeless > 0 && free > 0) { if (++_homelessWithRoom == 24) Violation("homeless with free beds", $"{homeless} homeless, {free} beds free, for a day"); }
             else _homelessWithRoom = 0;
             foreach (var c in S.Citizens)

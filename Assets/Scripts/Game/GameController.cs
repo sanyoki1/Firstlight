@@ -136,7 +136,7 @@ namespace Firstlight.Game
             if (HasArg("-lookshots")) StartCoroutine(LookShots());
             if (HasArg("-p4shots")) StartCoroutine(P4Shots());
             if (HasArg("-guideshots")) StartCoroutine(GuideShots());
-            if (HasArg("-panelshots")) StartCoroutine(HasArg("-badgeshots") ? BadgeShots() : PanelShots());
+            if (HasArg("-panelshots")) StartCoroutine(HasArg("-badgeshots") ? BadgeShots() : HasArg("-dismantleshots") ? DismantleShots() : PanelShots());
             if (_smoke > 0 || HasArg("-smoketest")) StartCoroutine(SmokeTest());
             if (HasArg("-soak")) StartCoroutine(Soak(ArgInt("-soak", 10)));
             if (HasArg("-reloadtest")) StartCoroutine(ReloadTest());
@@ -885,6 +885,7 @@ namespace Firstlight.Game
                 if (HasArg("-soundcheck")) { Debug.Log("[Sound] " + SoundScape.Check(out bool sok)); code = sok ? 0 : 1; }
                 else if (HasArg("-savecheck")) code = FuzzTest.SaveRobustness(Data, Map, _seed, outDir) ? 0 : 1;
                 else if (HasArg("-sitecheck")) code = FuzzTest.SiteCheck(Data, Map, _seed) ? 0 : 1;
+                else if (HasArg("-dismantlecheck")) code = DismantleCheck.Run(Data, Map, _seed, outDir, ArgInt("-dismantleyears", 3)) ? 0 : 1;
                 else if (HasArg("-storagecheck")) code = StorageCheck.Run(Data, Map, _seed, outDir, ArgInt("-storageyears", 2)) ? 0 : 1;
                 else if (HasArg("-fuzztest")) { var fz = new FuzzTest(Data, Map, _seed, outDir); code = fz.Run(years) ? 0 : 1; Map = fz.Map; }
                 else if (ArgInt("-crowd", 0) > 0) { AutoTest.Crowd(Data, Map, _seed, ArgInt("-crowd", 0)); code = 0; }

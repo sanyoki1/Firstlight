@@ -303,13 +303,13 @@ namespace Firstlight.Game
             {
                 if (!kv.site.Alive) { _replacing.Remove(kv); continue; }
                 if (!kv.site.Active) continue;
-                if (kv.old.Alive) { S.Demolish(kv.old); Note($"removed worn-out {kv.old.Def.id}"); }
+                if (kv.old.Alive) { S.Dismantle(kv.old); Note($"marked worn-out {kv.old.Def.id} for dismantling"); }
                 _replacing.Remove(kv);
             }
             if (S.Sites.Count() >= 2) return;
             foreach (var b in S.Buildings)
             {
-                if (!b.Active || !b.Def.HasNearby || b.Def.nearby.feature == "water" || b.Fullness >= 0.3f || _replacing.Any(kv => kv.old == b)) continue;
+                if (!b.Active || b.Dismantling || !b.Def.HasNearby || b.Def.nearby.feature == "water" || b.Fullness >= 0.3f || _replacing.Any(kv => kv.old == b)) continue;
                 // A search that found nothing is not repeated for a few days (it scans a wide square; late in the game,
                 // with the woods cut back, it failed every hour for every worn-out producer and cost more than the sim).
                 if (_relocateFailed.TryGetValue(b.Id, out int failed) && S.Day - failed < RelocateRetryDays) continue;

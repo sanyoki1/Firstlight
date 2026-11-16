@@ -78,7 +78,7 @@ namespace Firstlight.Game
         {
             if (c.Gone) return;
             // Anything the errand points at may have been pulled down.
-            if ((c.TaskB != null && !c.TaskB.Alive) || (c.TaskB2 != null && !c.TaskB2.Alive)) { CancelTask(c); }
+            if ((c.TaskB != null && !c.TaskB.OnMap) || (c.TaskB2 != null && !c.TaskB2.OnMap)) { CancelTask(c); }
             if (c.Target >= 0)
             {
                 if (!Move(c)) return;
@@ -214,10 +214,10 @@ namespace Firstlight.Game
                 case Task.FetchMaterial:
                 {
                     var site = c.TaskB2;
-                    if (!site.UnderWork || c.TaskIdx >= site.InTransit.Length) { c.Task = Task.None; break; }
+                    if (!site.UnderWork || site.Dismantling || c.TaskIdx >= site.InTransit.Length) { c.Task = Task.None; break; }
                     site.InTransit[c.TaskIdx] -= c.TaskAmt;
                     float still = site.BuildDef.cost[c.TaskIdx].amount - site.Delivered[c.TaskIdx] - site.InTransit[c.TaskIdx];
-                    float got = c.TaskB.Active ? TakeAny(c.TaskB, site.CostRes[c.TaskIdx], math.min(c.TaskAmt, still)) : 0;
+                    float got = c.TaskB.Active || c.TaskB.IsPile ? TakeAny(c.TaskB, site.CostRes[c.TaskIdx], math.min(c.TaskAmt, still)) : 0;
                     c.Task = Task.None;
                     if (got > 0)
                     {
@@ -231,7 +231,7 @@ namespace Firstlight.Game
                 case Task.DeliverMaterial:
                 {
                     var site = c.TaskB2;
-                    if (site.UnderWork && c.TaskIdx < site.Delivered.Length && site.CostRes[c.TaskIdx] == c.CarryRes)
+                    if (site.UnderWork && !site.Dismantling && c.TaskIdx < site.Delivered.Length && site.CostRes[c.TaskIdx] == c.CarryRes)
                     {
                         site.InTransit[c.TaskIdx] -= c.CarryAmt;
                         var bd = site.BuildDef;
@@ -252,6 +252,7 @@ namespace Firstlight.Game
                     b.HaulReserved = math.max(0, b.HaulReserved - c.TaskAmt);
                     c.Task = Task.None;
                     if (b.Active) TakeOutput(c, b);
+                    else if (b.IsPile) { TakeOutput(c, b); PileTaken(b); }    // the last of a dismantled building's goods frees its ground
                     break;
                 }
                 case Task.Leave:
@@ -735,7 +736,17 @@ namespace Firstlight.Game
         {
             foreach (var site in Buildings)
             {
-                if (!site.UnderWork || site.Priority != tier) continue;
+                if (site.Priority != tier) continue;
+                if (site.Dismantling)
+                {
+                    // Taking a marked building apart: no materials to bring, just the work.
+                    if (B.buildersUseTools) EnsureTool(c, true);
+                    c.Task = Task.GoBuild;
+                    c.TaskB2 = site;
+                    Walk(c, site.Door, Activity.Walking);
+                    return true;
+                }
+                if (!site.UnderWork) continue;
                 var bd = site.BuildDef;
                 if (!site.MaterialsComplete)
                 {
@@ -769,8 +780,17 @@ namespace Firstlight.Game
         void BuildAct(Citizen c, bool work)
         {
             var site = c.TaskB2;
-            if (!work || site == null || !site.UnderWork) { Decide(c, work); return; }
+            if (!work || site == null || !site.UnderWork && !site.Dismantling) { Decide(c, work); return; }
             float speed = WorkSpeed(c, B.buildersUseTools, false);
+            if (site.Dismantling)
+            {
+                // Building in reverse: the work runs down, a share (balance.dismantleWork) of what building it took.
+                site.Work -= B.builderWorkPerDay * Step / WorkdaySeconds * speed * Effect("build.speed") / math.max(0.05f, site.Def.buildWork * B.dismantleWork);
+                c.Activity = Activity.Building;
+                if (B.buildersUseTools) WearTool(c);
+                if (site.Work <= 0f) { FinishDismantle(site); Decide(c, work); }
+                return;
+            }
             site.Work += B.builderWorkPerDay * Step / WorkdaySeconds * speed * Effect("build.speed") / math.max(0.05f, site.BuildDef.buildWork);
             c.Activity = Activity.Building;
             if (B.buildersUseTools) WearTool(c);
@@ -783,7 +803,7 @@ namespace Firstlight.Game
             Building best = null; float bd = float.MaxValue;
             foreach (var b in Buildings)
             {
-                if (!b.Active || b.Store != null || b.Out[r] - b.HaulReserved < 0.5f) continue;
+                if (!(b.Active && b.Store == null || b.IsPile) || b.Out[r] - b.HaulReserved < 0.5f) continue;
                 float d = math.distancesq(b.DoorPos, from);
                 if (d < bd) { bd = d; best = b; }
             }
@@ -807,12 +827,15 @@ namespace Firstlight.Game
             Building best = null; float bestScore = 0;
             foreach (var b in Buildings)
             {
-                if (!b.Active || b.IsStorage) continue;
+                if (!b.IsPile && (!b.Active || b.IsStorage)) continue;
                 float avail = b.OutTotal - b.HaulReserved;
                 if (avail <= 0 || !HasRoomFor(b)) continue;
-                float min = b.Workers > 0 ? B.carryCapacity : B.workHaulMin;
+                float min = b.IsPile ? 0.05f : b.Workers > 0 ? B.carryCapacity : B.workHaulMin;   // a dismantled building's pile is cleared to the last
                 if (avail < min) continue;
                 float score = avail / (1f + math.distance(b.DoorPos, c.Pos) * 0.05f);
+                // What a dismantled building left goes first: it blocks its plot, and nobody works there to carry it
+                // (a small pile never outscored the heaps at busy workplaces and lay for weeks).
+                if (b.IsPile) score += 1e6f;
                 if (score > bestScore) { bestScore = score; best = b; }
             }
             if (best == null) return false;
@@ -841,7 +864,7 @@ namespace Firstlight.Game
                 Building best = null; float bd = float.MaxValue;
                 foreach (var b in Buildings)
                 {
-                    if (!b.Active || b.Def.housing <= b.Residents) continue;
+                    if (!b.Active || b.Dismantling || b.Def.housing <= b.Residents) continue;
                     float d = math.distancesq(b.Center, c.Pos);
                     if (d < bd) { bd = d; best = b; }
                 }
@@ -858,7 +881,7 @@ namespace Firstlight.Game
                 Building best = null; float bd = float.MaxValue;
                 foreach (var b in Buildings)
                 {
-                    if (!b.Active || b == h || b.Def.housing <= b.Residents) continue;
+                    if (!b.Active || b.Dismantling || b == h || b.Def.housing <= b.Residents) continue;
                     float d = math.distancesq(b.Center, h.Center);
                     if (d < bd) { bd = d; best = b; }
                 }
@@ -880,17 +903,21 @@ namespace Firstlight.Game
             if (TownCenter == null) return;
             foreach (var b in Buildings) { b.Workers = 0; b.Builders = 0; }
             bool sites = false;
-            foreach (var b in Buildings) if (b.UnderWork) { sites = true; break; }
+            // Builders are kept for sites and for buildings marked for dismantling. What a dismantled building left is
+            // carried off by the haulers (kept on for it below); with no haulers set, the builders are kept for that too.
+            bool piles = PilesWaiting();
+            foreach (var b in Buildings) if (b.UnderWork || b.Dismantling) { sites = true; break; }
+            if (piles && HaulersWanted == 0) sites = true;
             int wantBuilders = sites ? BuildersWanted : 0, builders = 0;
             // Like builders only while there are sites: haulers only while a store's settings ask for goods to be moved
             // (a permanent hauler slowed every young settlement by a worker it mostly did not need).
-            int wantHaulers = StoreOrders() ? HaulersWanted : 0, haulers = 0;
+            int wantHaulers = StoreOrders() || piles ? HaulersWanted : 0, haulers = 0;
             _free.Clear();
             foreach (var c in Citizens)
             {
                 bool able = !c.Gone && IsAdult(c) && !c.Sick && c.DisputeDays == 0 && c.Task != Task.Arrive;
                 if (!able) { if (c.Job != null || c.IsBuilder || c.IsHauler) Unassign(c); continue; }
-                if (c.Job != null && (!c.Job.Active || c.Job.Paused || !c.Job.Def.IsWorkplace || c.Job.Workers >= c.Job.Def.maxWorkers || !WantsWorkers(c.Job))) Unassign(c);
+                if (c.Job != null && (!c.Job.Active || c.Job.Paused || c.Job.Dismantling || !c.Job.Def.IsWorkplace || c.Job.Workers >= c.Job.Def.maxWorkers || !WantsWorkers(c.Job))) Unassign(c);
                 if (c.IsBuilder && builders >= wantBuilders) Unassign(c);
                 if (c.IsHauler && haulers >= wantHaulers) Unassign(c);
                 if (c.Job != null) c.Job.Workers++;
@@ -904,7 +931,7 @@ namespace Firstlight.Game
                 // Within a priority, fields come first: a few days of sowing or harvest feed people for months.
                 for (int pass = 0; pass < 2; pass++)
                     foreach (var b in Buildings)
-                        if (b.Active && !b.Paused && b.Def.IsWorkplace && (int)b.Priority == p && WantsWorkers(b) && b.Def.crop == (pass == 0)) _demand.Add(b);
+                        if (b.Active && !b.Paused && !b.Dismantling && b.Def.IsWorkplace && (int)b.Priority == p && WantsWorkers(b) && b.Def.crop == (pass == 0)) _demand.Add(b);
                 if (p == (int)Priority.High) { _demand.Add(null); _demand.Add(HaulSlot); }
             }
             for (int k = 0; k < _demand.Count; k++)
@@ -920,7 +947,7 @@ namespace Firstlight.Game
                 }
             }
             foreach (var b in Buildings)
-                if (b.Active && b.Def.IsWorkplace) b.Status = b.Paused ? "Paused" : b.Flooded ? "Flooded" : !WantsWorkers(b) ? (Season == 3 ? "Nothing to do this season" : "The harvest is in") : b.Workers == 0 ? "No workers" : b.Status == "No workers" || b.Status == "Paused" ? "" : b.Status;
+                if (b.Active && b.Def.IsWorkplace && !b.Dismantling) b.Status = b.Paused ? "Paused" : b.Flooded ? "Flooded" : !WantsWorkers(b) ? (Season == 3 ? "Nothing to do this season" : "The harvest is in") : b.Workers == 0 ? "No workers" : b.Status == "No workers" || b.Status == "Paused" ? "" : b.Status;
         }
 
         /// <summary>Stands for the haulers in the job queue (not a building anyone sees).</summary>

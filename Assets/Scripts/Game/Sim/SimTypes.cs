@@ -3,7 +3,9 @@ using Unity.Mathematics;
 
 namespace Firstlight.Game
 {
-    public enum BuildState : byte { Site, Active, Removed }
+    /// <summary>Pile: a dismantled building's goods lying on its footprint until they are carried to a store (added last:
+    /// saves keep the number).</summary>
+    public enum BuildState : byte { Site, Active, Removed, Pile }
     public enum Priority : byte { Low, Normal, High }
     public enum Severity : byte { Info, Warning, Bad }
 
@@ -117,7 +119,16 @@ namespace Firstlight.Game
         /// <summary>Under flood water: no work, no storing, a cold home, until the water goes down.</summary>
         public bool Flooded;
 
-        public bool Alive => State != BuildState.Removed;
+        /// <summary>Marked for dismantling: builders take it apart (Work runs down to 0). It takes no workers, no new
+        /// residents and no goods meanwhile; the player can cancel until the work is done.</summary>
+        public bool Dismantling;
+
+        /// <summary>A building or a site (not removed, and not the goods left by a dismantled one).</summary>
+        public bool Alive => State == BuildState.Site || State == BuildState.Active;
+        /// <summary>The goods a dismantled building left on its footprint, waiting to be carried to a store (in Out).</summary>
+        public bool IsPile => State == BuildState.Pile;
+        /// <summary>Still on the map: a building, a site or a pile.</summary>
+        public bool OnMap => State != BuildState.Removed;
         public bool Active => State == BuildState.Active;
         public bool IsSite => State == BuildState.Site;
         public bool IsStorage => Def.storageCapacity > 0;
@@ -140,7 +151,7 @@ namespace Firstlight.Game
         }
 
         /// <summary>Overall construction progress 0..1 for drawing a site rising: materials count 30%, work 70%.</summary>
-        public float Progress => UnderWork ? MaterialsFraction * 0.3f + Work * 0.7f : 1f;
+        public float Progress => UnderWork ? MaterialsFraction * 0.3f + Work * 0.7f : Dismantling ? 0.3f + Work * 0.7f : 1f;
 
         /// <summary>Cost entry i on its way to this site in builders' hands.</summary>
         public float InTransitOf(int i) => InTransit[i];

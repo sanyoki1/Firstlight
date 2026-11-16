@@ -20,9 +20,10 @@ namespace Firstlight.Game
         /// Save format. 1: the first format (goods by position, milestones by position, no map check). 2: the body starts
         /// with a hash of the map-generation settings and the goods list by id; goods and milestones are matched by id.
         /// 3: stores carry their settings (goods shut out, priority, keep at least / at most per good).
+        /// 4: buildings carry the marked-for-dismantling flag (and BuildState.Pile exists).
         /// Readers take a field added in version N as <c>r.Version &gt;= N ? r.X() : default</c>.
         /// </summary>
-        public const int Version = 3;
+        public const int Version = 4;
 
         /// <summary>The goods of format 1, in the order its per-good arrays and indices use (resources.json at the time).</summary>
         static readonly string[] V1Goods =

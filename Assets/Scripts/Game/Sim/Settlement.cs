@@ -232,6 +232,7 @@ namespace Firstlight.Game
 
         void Hourly()
         {
+            SweepPiles();        // (before the commit: the ground a carried-off pile frees is walkable from this hour)
             if (Map.CommitCostChanges()) PrefetchPaths();
             RecountReservations();
             RefreshFullness();
@@ -296,7 +297,7 @@ namespace Firstlight.Game
             b.Focus = outputIndex >= 0 && outputIndex < b.Def.outputs.Length ? outputIndex : b.Def.exclusiveOutputs ? 0 : -1;
         }
 
-        // Place / Demolish / CanPlace are in Settlement.Buildings.cs; a store's settings (SetStoreAllow, SetStorePriority,
+        // Place / Dismantle / CanPlace are in Settlement.Buildings.cs; a store's settings (SetStoreAllow, SetStorePriority,
         // SetKeepMin / SetKeepMax, Get / ApplyStoreSettings) in Settlement.Storage.cs.
 
         /// <summary>Queues a research topic, queueing any missing prerequisites ahead of it.</summary>
@@ -677,7 +678,7 @@ namespace Firstlight.Game
         void PrefetchPaths()
         {
             _doors.Clear();
-            foreach (var b in Buildings) if (b.Alive && !_doors.Contains(b.Door)) _doors.Add(b.Door);
+            foreach (var b in Buildings) if (b.OnMap && !_doors.Contains(b.Door)) _doors.Add(b.Door);
             if (_doors.Count > Map.Flow.Capacity / 2) _doors.RemoveRange(Map.Flow.Capacity / 2, _doors.Count - Map.Flow.Capacity / 2);
             Map.Flow.Prefetch(_doors);
         }

@@ -47,7 +47,7 @@ namespace Firstlight.Game
         public bool CanHold(Building s, int r) => r < 0 || s.Def.accepts.Length == 0 || Array.IndexOf(s.Def.accepts, Data.Resources[r].category) >= 0;
 
         /// <summary>The store takes this good now: the building can hold it and the player lets it in.</summary>
-        public bool Accepts(Building s, int r) => CanHold(s, r) && (r < 0 || s.Allow == null || s.Allow[r]);
+        public bool Accepts(Building s, int r) => !s.Dismantling && CanHold(s, r) && (r < 0 || s.Allow == null || s.Allow[r]);
 
         /// <summary>Keep at least this much of the good here (0 = no reserve). Only while the store takes the good: one shut out
         /// is moved out whatever its reserve said.</summary>
@@ -318,7 +318,14 @@ namespace Firstlight.Game
         float _ordersStamp = -1f; bool _orders;
 
         /// <summary>Whether the stores' settings ask for goods to be moved (the haulers are kept only then).</summary>
-        public bool StoreWorkWanted => StoreOrders();
+        public bool StoreWorkWanted => StoreOrders() || PilesWaiting();
+
+        /// <summary>Whether a dismantled building's goods lie waiting that some store has room for (haulers are kept for them).</summary>
+        bool PilesWaiting()
+        {
+            foreach (var b in Buildings) if (b.IsPile && HasRoomFor(b)) return true;
+            return false;
+        }
 
         /// <summary>Whether any store's settings could call for a move (a good shut out but still held, a limit, priorities
         /// that differ). Most settlements have none, and then idle haulers skip the search.</summary>
@@ -331,6 +338,7 @@ namespace Firstlight.Game
             foreach (var s in Buildings)
             {
                 if (!s.Active || s.Store == null) continue;
+                if (s.Dismantling) { if (s.Stored > 0.01f) return _orders = true; continue; }   // its goods are moved out to the other stores
                 if (s.KeepMin != null || s.KeepMax != null || pri >= 0 && (int)s.StorePriority != pri) return _orders = true;
                 pri = (int)s.StorePriority;
                 if (s.Allow != null) for (int r = 0; r < ResCount; r++) if (!s.Allow[r] && s.Store[r] > 0.01f) return _orders = true;

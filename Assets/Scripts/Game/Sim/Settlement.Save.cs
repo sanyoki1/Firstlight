@@ -86,6 +86,7 @@ namespace Firstlight.Game
                 for (int i = 0; i < b.Allow.Length; i++) if (!b.Allow[i]) shut.Add(Data.Resources[i].id);
                 w.Strs(shut); w.Byte((byte)b.StorePriority); w.Floats(b.KeepMin); w.Floats(b.KeepMax);
             }
+            w.Bool(b.Dismantling);                                              // v4
         }
 
         Building ReadBuilding(SaveReader r, int id)
@@ -112,7 +113,8 @@ namespace Firstlight.Game
                 if (b.KeepMin != null && b.KeepMin.Length != ResCount || b.KeepMax != null && b.KeepMax.Length != ResCount) throw new InvalidDataException("store limits do not match the game data");
                 TrimLimits(b);
             }
-            EnsureStoreSettings(b);     // older saves: as built (everything it can hold, Normal, no limits)
+            b.Dismantling = r.Version >= 4 && r.Bool();
+            if (b.Alive) EnsureStoreSettings(b);     // older saves: as built (everything it can hold, Normal, no limits)
             // Derived: where it stands and its resource indices (from the upgrade while one is under way).
             b.Center = FootprintCenter(d, b.Origin, b.Rot);
             var door = DoorCell(d, b.Origin, b.Rot);

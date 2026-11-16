@@ -40,7 +40,7 @@ namespace Firstlight.Game.UI
                 x += bw;
             }
             var dr = new Rect(x + 4, y + 8, 120, 34);
-            if (GUI.Button(dr, _demolishTxt ??= $"Demolish {Col("X", Faint)}", Mode == ToolMode.Demolish ? ButtonOn : Button))
+            if (GUI.Button(dr, _demolishTxt ??= $"Dismantle {Col("X", Faint)}", Mode == ToolMode.Demolish ? ButtonOn : Button))
             {
                 if (Mode == ToolMode.Demolish) CancelTool(); else StartDemolish();
             }
@@ -48,13 +48,13 @@ namespace Firstlight.Game.UI
             // Builders: how many people are kept on construction while there are sites.
             GUI.Label(new Rect(x, y + 4, 100, 20), "Builders", Small);
             int sites = 0;
-            foreach (var b in S.Buildings) if (b.UnderWork) sites++;
+            foreach (var b in S.Buildings) if (b.UnderWork || b.Dismantling) sites++;
             if (sites > 0) _tl.Begin().I(sites).S(sites == 1 ? " site open" : " sites open"); else _tl.Begin().C(Dim).S("no sites").E();
             GUI.Label(new Rect(x, y + 24, 110, 20), _tl.To(ref _sitesTxt), Small);
             if (GUI.Button(new Rect(x + 108, y + 11, 30, 28), "-", Button)) S.SetBuilders(S.BuildersWanted - 1);
             GUI.Label(new Rect(x + 140, y + 11, 36, 28), _tl.Begin().S("<b>").I(S.BuildersWanted).S("</b>").To(ref _buildersTxt), Center);
             if (GUI.Button(new Rect(x + 178, y + 11, 30, 28), "+", Button)) S.SetBuilders(S.BuildersWanted + 1);
-            Tip(new Rect(x, y, 210, 50), "How many people build and carry materials to sites, taken before normal-priority jobs. They go back to other work when there is nothing to build.");
+            Tip(new Rect(x, y, 210, 50), "How many people build, carry materials to sites and take apart buildings marked for dismantling, taken before normal-priority jobs. They go back to other work when there is nothing to build.");
             // Haulers: how many people are kept carrying goods to stores and between them.
             x += 220;
             GUI.Label(new Rect(x, y + 4, 80, 20), "Haulers", Small);
