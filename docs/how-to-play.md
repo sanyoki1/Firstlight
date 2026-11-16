@@ -81,6 +81,30 @@ Things worth knowing:
 - **If everyone dies or leaves**, the game stops and says so; load a save (the autosaves are not overwritten with
   the empty settlement) or start again from the main menu.
 
+## Storage
+
+Every store (the campfire's stash, Storage Piles, Granaries) has settings. Select it: its panel shows a **Priority**
+(Low / Normal / High), what it takes in a line, and **Storage settings**, **Copy** and **Paste**.
+
+- **Storage settings** opens a checklist of the goods the store can hold, grouped as Food, Materials, Fuel, Tools and
+  Goods (a group's box ticks or clears the whole group; *All* / *None* do every good). A Granary only lists food.
+- **Keep at least N** (per good): new goods of that kind come here first, haulers bring it from other stores until
+  there are N, and nobody takes it below N while another store has some. Once every other store is out, people do use
+  it (no one starves or freezes beside a full reserve). Traders never take it.
+- **Keep at most N** (per good): no more comes in, and anything above N is moved out.
+- **Priority**: new goods go to the highest-priority store that takes them, haulers move goods up from lower-priority
+  stores, and eating and burning take from low-priority stores first. A good the store no longer takes is moved out.
+- **Copy / Paste** copies a store's goods, priority and limits onto another (a Granary keeps to food).
+- **Haulers** (bottom bar, next to Builders; 1 at the start) carry goods between stores as the settings ask, and goods
+  waiting at workplaces to the stores. Like builders (kept only while there are sites), they are kept only while some
+  store's settings ask for goods to be moved; otherwise they do their usual jobs ("not needed"). They are filled after
+  high-priority jobs and builders and are never taken by them. People without a job haul too.
+- A store left as built takes everything it can hold at Normal priority with no limits, which is how storage worked
+  before settings. If a good is shut out of every store, a warning says so (it piles up where it is made), and the
+  **Goods in store** panel (T) names it in red; hovering a good there shows which stores hold it.
+- Number fields: type, then Enter, Tab or click elsewhere to set it (blank = no limit); Esc drops what you typed.
+  While a field has the keyboard, the game's keys wait.
+
 ## The auto-player and the tests
 
 - **F9** in a game lets the scripted auto-player run the settlement (it uses only the player's commands); F9 again
@@ -90,7 +114,9 @@ Things worth knowing:
 - Save/load check (save at a mid point, load it, both runs must write byte-identical reports):
   `Build/Firstlight.exe -batchmode -nographics -autotest -saveloadcheck -seed 2026 -years 30 -outdir runs/slc-2026`.
 - Fuzz test (a clumsy, hostile player with invariant checks after every game day; see `docs/quarter-qa-report.md`):
-  `tools/fuzztest.sh 15 1 2 3 4`. Other QA probes: `-autotest -savecheck`, `-autotest -sitecheck -seed N`,
+  `tools/fuzztest.sh 15 1 2 3 4`. Store settings at work (shut out, keep at most / least, priority, copy / paste, the
+  warning, save): `-autotest -storagecheck -seed N [-storageyears Y]` (writes `storage-check.md` to `-outdir`).
+  Other QA probes: `-autotest -savecheck`, `-autotest -sitecheck -seed N`,
   `-autotest -soundcheck`, `-load SAVE -soak MINUTES [-crowd N]`, `-reloadtest`, `-autotest -difficulty 0|1|2`.
 - Screenshots: `-uishots` (phases 2-3, see the build log) and `-p4shots -load <save>` (phase 4: menus, guide, hints,
   traders, path dragging, night, canopy cut-away, floods, top bar at two sizes), both run windowed.

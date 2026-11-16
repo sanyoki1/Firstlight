@@ -266,11 +266,20 @@ namespace Firstlight.Game.UI
             }
             for (int k = 0; k < items.Count; k += 2)
             {
-                GUI.Label(new Rect(_lx, _ly, _lw / 2, 20), $"{D.Resources[items[k]].name}  <b>{b.Store[items[k]]:0}</b>", Small);
-                if (k + 1 < items.Count) GUI.Label(new Rect(_lx + _lw / 2, _ly, _lw / 2, 20), $"{D.Resources[items[k + 1]].name}  <b>{b.Store[items[k + 1]]:0}</b>", Small);
+                GUI.Label(new Rect(_lx, _ly, _lw / 2, 20), StoreItem(b, items[k]), Small);
+                if (k + 1 < items.Count) GUI.Label(new Rect(_lx + _lw / 2, _ly, _lw / 2, 20), StoreItem(b, items[k + 1]), Small);
                 _ly += 20;
             }
             if (items.Count == 0) Row(Col("Empty", Dim), Small, 20);
+            DrawStoreControls(b);          // Hud.Storage.cs
+        }
+
+        /// <summary>"Wood  40", dimmed with "moving out" when the store no longer takes it or holds more than its limit.</summary>
+        string StoreItem(Building b, int r)
+        {
+            float amt = b.Store[r], cap = S.KeepMaxOf(b, r);
+            if (!S.Accepts(b, r) || cap > 0 && amt > cap + 0.5f) return Col($"{D.Resources[r].name}  <b>{amt:0}</b> (moving out)", Dim);
+            return $"{D.Resources[r].name}  <b>{amt:0}</b>";
         }
 
         // ------------------------------------------------------------------ citizens
@@ -305,7 +314,7 @@ namespace Firstlight.Game.UI
             string stage = c.Age < bal.adultAge ? "child" : c.Age >= bal.elderAge ? "elder" : "adult";
             Row($"{(c.Female ? "Woman" : "Man")}, {(int)c.Age} ({stage})", Small, 20);
             Gap(4);
-            string job = c.Job != null ? $"{c.Job.Def.workerTitle ?? "Worker"} at the {c.Job.Def.name}" : c.IsBuilder ? "Builder" : c.Age < bal.adultAge ? "Too young to work" : "No job: hauls goods and helps build";
+            string job = c.Job != null ? $"{c.Job.Def.workerTitle ?? "Worker"} at the {c.Job.Def.name}" : c.IsBuilder ? "Builder" : c.IsHauler ? "Hauler: carries goods to and between stores" : c.Age < bal.adultAge ? "Too young to work" : "No job: hauls goods and helps build";
             Row("Job  " + Col(job, Text), Label);
             Row("Home  " + (c.Home != null ? c.Home.Def.name : Col("none: sleeps by the fire", Warn)), Label);
             Row("Now  " + Doing(c), Label);

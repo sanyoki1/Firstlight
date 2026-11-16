@@ -82,10 +82,10 @@ namespace Firstlight.Game.UI
 
         public void SelectCitizen(Citizen c) { SelectedCitizen = c; if (c != null) Selected = null; }
 
-        public void ToggleResearch() { ResearchOpen = !ResearchOpen; if (ResearchOpen) { GoalsOpen = JobsOpen = StocksOpen = HelpOpen = EventsOpen = false; } }
-        public void ToggleGoals() { GoalsOpen = !GoalsOpen; if (GoalsOpen) JobsOpen = StocksOpen = LawsOpen = EventsOpen = false; }
-        public void ToggleJobs() { JobsOpen = !JobsOpen; if (JobsOpen) GoalsOpen = StocksOpen = LawsOpen = EventsOpen = false; }
-        public void ToggleStocks() { StocksOpen = !StocksOpen; if (StocksOpen) GoalsOpen = JobsOpen = LawsOpen = EventsOpen = false; }
+        public void ToggleResearch() { ResearchOpen = !ResearchOpen; if (ResearchOpen) { GoalsOpen = JobsOpen = StocksOpen = HelpOpen = EventsOpen = StorageOpen = false; } }
+        public void ToggleGoals() { GoalsOpen = !GoalsOpen; if (GoalsOpen) JobsOpen = StocksOpen = LawsOpen = EventsOpen = StorageOpen = false; }
+        public void ToggleJobs() { JobsOpen = !JobsOpen; if (JobsOpen) GoalsOpen = StocksOpen = LawsOpen = EventsOpen = StorageOpen = false; }
+        public void ToggleStocks() { StocksOpen = !StocksOpen; if (StocksOpen) GoalsOpen = JobsOpen = LawsOpen = EventsOpen = StorageOpen = false; }
         public void ToggleHelp() => HelpOpen = !HelpOpen;
         public void OpenCategory(string cat) { BuildCategory = BuildCategory == cat ? null : cat; }
 
@@ -99,7 +99,7 @@ namespace Firstlight.Game.UI
             else if (HelpOpen) HelpOpen = false;
             else if (Mode != ToolMode.None && !S.NeedsCampfire) CancelTool();
             else if (BuildCategory != null) BuildCategory = null;
-            else if (GoalsOpen || JobsOpen || StocksOpen || LawsOpen || EventsOpen) GoalsOpen = JobsOpen = StocksOpen = LawsOpen = EventsOpen = false;
+            else if (GoalsOpen || JobsOpen || StocksOpen || LawsOpen || EventsOpen || StorageOpen) GoalsOpen = JobsOpen = StocksOpen = LawsOpen = EventsOpen = StorageOpen = false;
             else if (Selected != null || SelectedCitizen != null) { Select(null); SelectCitizen(null); }
             else OpenMenu();                       // nothing left to close: the game menu
         }
@@ -243,7 +243,7 @@ namespace Firstlight.Game.UI
             if (S.NeedsCampfire && Mode != ToolMode.Place) StartPlacing(D.Buildings.Find(b => b.townCenter));
             bool overUI = PointerOverUI;
             OrbitCamera.PointerOverUI = overUI;
-            OrbitCamera.KeyboardCaptured = ResearchOpen && !Hidden;
+            OrbitCamera.KeyboardCaptured = ResearchOpen && !Hidden || Typing;     // or a number is being typed (Storage settings)
             Keys();
             UpdateHover();
             MouseInput(overUI);
@@ -280,6 +280,8 @@ namespace Firstlight.Game.UI
         {
             var kb = Keyboard.current;
             if (kb == null) return;
+            // Typing a number (Storage settings): the keys are the field's; Esc drops what was typed.
+            if (Typing) { if (kb.escapeKey.wasPressedThisFrame) _cancelEdit = true; return; }
             if (kb.f11Key.wasPressedThisFrame) Hidden = !Hidden;
             if (kb.escapeKey.wasPressedThisFrame) Back();
             if (kb.f1Key.wasPressedThisFrame) ToggleHelp();
@@ -469,6 +471,7 @@ namespace Firstlight.Game.UI
             CountTotals();
             var old = GUI.matrix;
             GUI.matrix = Matrix4x4.Scale(new Vector3(Scale, Scale, 1));
+            StorageInput();
             if (S.NeedsCampfire)
             {
                 DrawCampfirePrompt();
@@ -494,6 +497,7 @@ namespace Firstlight.Game.UI
                 if (StocksOpen) DrawStocks();
                 if (LawsOpen) DrawLaws();
                 if (EventsOpen) DrawEvents();
+                if (StorageOpen) DrawStorage();
                 PerfProbe.End(PerfProbe.S.GuiPanels);
                 DrawPlacementTip();
                 PerfProbe.Begin(PerfProbe.S.GuiTopBar); DrawTopBar(); PerfProbe.End(PerfProbe.S.GuiTopBar);
@@ -714,7 +718,7 @@ namespace Firstlight.Game.UI
             string text;
             if (c != null)
             {
-                string doing = c.Job != null ? c.Job.Def.workerTitle ?? c.Job.Def.name : c.IsBuilder ? "Builder" : c.Age < D.Balance.adultAge ? "Child" : "Hauler";
+                string doing = c.Job != null ? c.Job.Def.workerTitle ?? c.Job.Def.name : c.IsBuilder ? "Builder" : c.IsHauler ? "Hauler" : c.Age < D.Balance.adultAge ? "Child" : "No job";
                 text = _tl.Begin().S("<b>").S(c.Name).S("</b>  ").C(Dim).S(doing).E().To(ref _personTag);
             }
             else

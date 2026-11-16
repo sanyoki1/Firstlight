@@ -97,10 +97,13 @@ namespace Firstlight.EditorTools
         public static void BuildWindows()
         {
             Setup();
+            // -buildout PATH: build somewhere else (a test build while Build/ is busy with a gate run).
+            var args = System.Environment.GetCommandLineArgs();
+            int bo = System.Array.IndexOf(args, "-buildout");
             var options = new BuildPlayerOptions
             {
                 scenes = Scenes,
-                locationPathName = "Build/Firstlight.exe",
+                locationPathName = bo >= 0 && bo + 1 < args.Length ? args[bo + 1] : "Build/Firstlight.exe",
                 target = BuildTarget.StandaloneWindows64,
                 options = BuildOptions.None,
             };

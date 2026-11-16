@@ -90,17 +90,18 @@ namespace Firstlight.Game.UI
         void DrawJobs()
         {
             var r = BeginSide("Jobs", 470, _jobsH, () => JobsOpen = false);
-            int adults = _tAdults, jobs = 0, builders = 0, sick = 0;
+            int adults = _tAdults, jobs = 0, builders = 0, haulers = 0, sick = 0;
             foreach (var c in S.Citizens)
             {
                 if (c.Gone) continue;
                 if (c.Job != null) jobs++;
                 if (c.IsBuilder) builders++;
+                if (c.IsHauler) haulers++;
                 if (c.Sick && c.Age >= D.Balance.adultAge) sick++;
             }
-            int free = adults - jobs - builders - sick;
+            int free = adults - jobs - builders - haulers - sick;
             var (onlyAdults, elders, kids) = PeopleSplit();
-            _tl.Begin().I(onlyAdults).S(onlyAdults == 1 ? " adult and " : " adults and ").I(elders).S(elders == 1 ? " elder: " : " elders: ").I(jobs).S(" in jobs, ").I(builders).S(" building, ")
+            _tl.Begin().I(onlyAdults).S(onlyAdults == 1 ? " adult and " : " adults and ").I(elders).S(elders == 1 ? " elder: " : " elders: ").I(jobs).S(" in jobs, ").I(builders).S(" building, ").I(haulers).S(" hauling, ")
                .C(free > 0 ? Good : Dim).I(free).S(" free").E().S(" (they haul goods), ").I(sick).S(" sick. ").I(kids).S(kids == 1 ? " child." : " children.");
             Para(_tl.To(ref _jobsHead), Wrap);
             // Places that want workers now (not paused, flooded or out of season), how many are filled, and who carries.
@@ -116,7 +117,7 @@ namespace Firstlight.Game.UI
             if (places > filled) _tl.C(Warn).S(" · short of ").I(places - filled).S(places - filled == 1 ? " worker" : " workers").E();
             else _tl.C(Good).S(" · all filled").E();
             Row(_tl.To(ref _jobsPlaces), Label);
-            if (free <= 0) Row(_jobsNoHaul ??= Col("Nobody is free to haul: goods wait at workplaces", Warn), Label);
+            if (free <= 0 && haulers == 0) Row(_jobsNoHaul ??= Col("Nobody is free to haul: goods wait at workplaces (Haulers, bottom bar)", Warn), Label);
             Gap(2);
             GUI.Label(new Rect(_lx, _ly, 200, 20), "Workplace", Small);
             GUI.Label(new Rect(_lx + 200, _ly, 80, 20), "Workers", Small);
@@ -269,9 +270,12 @@ namespace Firstlight.Game.UI
             {
                 float amt = S.StockTotals[i];
                 if (amt < 0.05f && S.Produced[i] < 0.05f) continue;
-                GUI.Label(new Rect(_lx, _ly, 180, 22), _goodsName[i], Label);
+                // A good no store takes (the stores' settings shut it out everywhere) is named in red.
+                GUI.Label(new Rect(_lx, _ly, 180, 22), S.AnyStoreTakes(i) ? _goodsName[i] : Col(D.Resources[i].name + "  no store", Bad), Label);
                 GUI.Label(new Rect(_lx + 180, _ly, 80, 22), _tl.Begin().S("<b>").F(amt, "0").S("</b>").To(ref _goodsAmt[i]), Right);
                 GUI.Label(new Rect(_lx + 270, _ly, 90, 22), TrendText(Trend(i), ref _goodsTrend[i]), Right);
+                var row = new Rect(_lx, _ly, _lw, 22);
+                if (Over(row)) Tip(row, WhereKept(i));       // where it is kept (built only while hovered)
                 _ly += 23;
             }
             // Tools of all kinds together: the top bar's "Tools" figure.

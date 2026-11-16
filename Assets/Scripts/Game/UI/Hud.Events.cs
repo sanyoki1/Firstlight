@@ -14,7 +14,7 @@ namespace Firstlight.Game.UI
         Vector2 _eventsScroll;
         const int EventsShown = 200;
 
-        public void ToggleEvents() { EventsOpen = !EventsOpen; if (EventsOpen) GoalsOpen = JobsOpen = StocksOpen = LawsOpen = false; }
+        public void ToggleEvents() { EventsOpen = !EventsOpen; if (EventsOpen) GoalsOpen = JobsOpen = StocksOpen = LawsOpen = StorageOpen = false; }
         /// <summary>-p4shots: open the panel on a tab.</summary>
         public void ShowEvents(bool topics, bool problemsOnly) { if (!EventsOpen) ToggleEvents(); _eventsTopics = topics; _eventsProblems = problemsOnly; _eventsScroll = default; }
 

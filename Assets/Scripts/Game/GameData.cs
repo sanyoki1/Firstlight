@@ -170,6 +170,7 @@ namespace Firstlight.Game
         public int carryCapacity = 5;
         public float builderWorkPerDay = 1f;
         public int defaultBuilders = 3;
+        public int defaultHaulers = 1;                 // people kept carrying goods to and between stores
 
         public int startPeople = 10;
         public Amount[] startResources = Array.Empty<Amount>();

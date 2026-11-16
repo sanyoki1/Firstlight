@@ -152,7 +152,7 @@ namespace Firstlight.Game
         {
             for (int i = 0; i < n; i++)
             {
-                int k = R.Next(24);
+                int k = R.Next(25);
                 Guard($"action {k}", () => Action(k));
             }
         }
@@ -189,7 +189,13 @@ namespace Firstlight.Game
                 case 4: { var b = RandomBuilding(x => true); if (b != null) { S.SetPriority(b, (Priority)R.Next(3)); Act("priority"); } break; }
                 case 5: { var b = RandomBuilding(x => true); if (b != null) { S.SetPaused(b, R.NextDouble() < 0.5); Act("pause"); } break; }
                 case 6: { var b = RandomBuilding(x => true); if (b != null) { S.SetFocus(b, R.Next(-3, 6)); Act("focus"); } break; }
-                case 7: { int[] opts = { 0, 0, 1, 3, 50, 1000, -5 }; S.SetBuilders(opts[R.Next(opts.Length)]); Act("builders"); break; }
+                case 7:
+                {
+                    int[] opts = { 0, 0, 1, 3, 50, 1000, -5 };
+                    if (R.NextDouble() < 0.5) { S.SetBuilders(opts[R.Next(opts.Length)]); Act("builders"); }
+                    else { S.SetHaulers(opts[R.Next(opts.Length)]); Act("haulers"); }
+                    break;
+                }
                 case 8:
                 {
                     var r = D.Research[R.Next(D.Research.Count)];
@@ -241,7 +247,36 @@ namespace Firstlight.Game
                     break;
                 }
                 case 23: { var b = RandomBuilding(x => x.Active); if (b != null && S.UpgradeOption(b) != null && S.Upgrade(b, out _)) { Act("upgrade then demolish"); if (R.NextDouble() < 0.5) S.Demolish(b); } break; }
+                case 24: StoreSettingsChaos(); break;
             }
+        }
+
+        StoreSettings _clip;
+
+        /// <summary>A player fiddling with store settings: goods shut out and let in (one, a kind, all, none), priorities,
+        /// keep at least / at most (sane, huge, zero, negative, NaN), copy and paste, and commands on things that are not
+        /// stores.</summary>
+        void StoreSettingsChaos()
+        {
+            var b = RandomBuilding(x => x.Store != null || R.NextDouble() < 0.05);
+            int r = R.Next(-2, S.ResCount + 2);
+            float[] amounts = { 0, 1, 5, 20, 60, 200, 5000, -4, float.NaN, float.PositiveInfinity };
+            switch (R.Next(9))
+            {
+                case 0: S.SetStoreAllow(b, r, R.NextDouble() < 0.4); Act("store: allow one"); break;
+                case 1: { string[] cats = { "food", "material", "fuel", "tools", "goods", "nonsense", null }; S.SetStoreAllowAll(b, R.NextDouble() < 0.5, cats[R.Next(cats.Length)]); Act("store: allow a kind / all"); break; }
+                case 2: S.SetStorePriority(b, (Priority)R.Next(-1, 4)); Act("store: priority"); break;
+                case 3: S.SetKeepMin(b, r, amounts[R.Next(amounts.Length)]); Act("store: keep at least"); break;
+                case 4: S.SetKeepMax(b, r, amounts[R.Next(amounts.Length)]); Act("store: keep at most"); break;
+                case 5: _clip = S.GetStoreSettings(b) ?? _clip; Act("store: copy"); break;
+                case 6: S.ApplyStoreSettings(b, _clip); Act("store: paste"); break;
+                case 7:
+                    // Shut a good out of every store (goods with nowhere to go must still be kept track of).
+                    if (R.NextDouble() < 0.3 && r >= 0 && r < S.ResCount) { foreach (var s in S.Buildings) S.SetStoreAllow(s, r, false); Act("store: shut a good out everywhere"); }
+                    break;
+                case 8: foreach (var s in S.Buildings) if (s.Store != null && R.NextDouble() < 0.5) S.ApplyStoreSettings(s, new StoreSettings { Allow = Enumerable.Repeat(true, S.ResCount).ToArray() }); Act("store: reset"); break;
+            }
+            S.SetStoreAllow(null, 0, false); S.SetKeepMin(null, 0, 5); S.ApplyStoreSettings(null, _clip); S.GetStoreSettings(null);
         }
 
         BuildingDef RandomDef() => D.Buildings[R.Next(D.Buildings.Count)];
@@ -343,7 +378,19 @@ namespace Firstlight.Game
                     if (b.Active && Math.Abs(st - b.Stored) > 0.05 + st * 1e-4) Violation("store total", $"{b.Def.id}#{b.Id} Stored {b.Stored} but holds {st:F3}");
                     if (b.Active && b.Stored > S.Capacity(b) + 0.5f) Violation("over capacity", $"{b.Def.id}#{b.Id} holds {b.Stored:F1} of {S.Capacity(b):F0}");
                     if (!b.Active && b.State == BuildState.Removed && st > 0.01) Violation("goods in a removed store", $"{b.Def.id}#{b.Id} still holds {st:F1}");
+                    // Store settings: every finished store has them, limits are sane, a reserve never above a cap.
+                    if (b.Active && (b.Allow == null || b.Allow.Length != S.ResCount)) Violation("store settings", $"{b.Def.id}#{b.Id} has no settings");
+                    if (b.StorePriority < Priority.Low || b.StorePriority > Priority.High) Violation("store settings", $"{b.Def.id}#{b.Id} priority {b.StorePriority}");
+                    for (int r = 0; r < S.ResCount; r++)
+                    {
+                        float mn = b.KeepMin?[r] ?? 0, mx = b.KeepMax?[r] ?? 0;
+                        if (!float.IsFinite(mn) || !float.IsFinite(mx) || mn < 0 || mx < 0) Violation("store limits", $"{b.Def.id}#{b.Id} {D.Resources[r].id} {mn}/{mx}");
+                        if (mn > 0 && mx > 0 && mn > mx) Violation("store limits", $"{b.Def.id}#{b.Id} {D.Resources[r].id} keeps at least {mn} but at most {mx}");
+                        if ((mn > 0 || mx > 0) && !S.CanHold(b, r)) Violation("store limits", $"{b.Def.id}#{b.Id} has a limit on {D.Resources[r].id}, which it cannot hold");
+                    }
+                    if (b.KeepMin != null && b.KeepMin.All(v => v <= 0) || b.KeepMax != null && b.KeepMax.All(v => v <= 0)) Violation("store limits", $"{b.Def.id}#{b.Id} keeps an empty limits array");
                 }
+                else if (b.Allow != null) Violation("store settings", $"{b.Def.id}#{b.Id} has store settings but is not a store");
                 double ot = 0;
                 for (int r = 0; r < S.ResCount; r++)
                 {
@@ -375,10 +422,11 @@ namespace Firstlight.Game
                 if (c.Home != null && c.Home.Def.housing <= 0) Violation("dead reference", $"{who} lives in non-home {c.Home.Def.id}");
                 if (c.Job != null && (!c.Job.Active || !c.Job.Def.IsWorkplace)) Violation("dead reference", $"{who} works at {c.Job.Def.id}#{c.Job.Id} ({c.Job.State})");
                 if (c.Job != null && c.IsBuilder) Violation("two jobs", $"{who} has a job and is a builder");
+                if (c.IsHauler && (c.Job != null || c.IsBuilder)) Violation("two jobs", $"{who} is a hauler and has a job or builds");
                 if (c.TaskB != null && !c.TaskB.Alive || c.TaskB2 != null && !c.TaskB2.Alive) Violation("dead reference", $"{who} errand {c.Task} points at a removed building");
                 if (c.Job != null) jobCount[c.Job] = jobCount.TryGetValue(c.Job, out int j) ? j + 1 : 1;
                 if (c.Home != null) homeCount[c.Home] = homeCount.TryGetValue(c.Home, out int h) ? h + 1 : 1;
-                if (c.Age < S.Data.Balance.adultAge && (c.Job != null || c.IsBuilder)) Violation("child labour", $"{who} ({c.Age:F1}) has a job");
+                if (c.Age < S.Data.Balance.adultAge && (c.Job != null || c.IsBuilder || c.IsHauler)) Violation("child labour", $"{who} ({c.Age:F1}) has a job");
             }
             foreach (var kv in jobCount) if (kv.Value > kv.Key.Def.maxWorkers) Violation("too many workers", $"{kv.Key.Def.id}#{kv.Key.Id}: {kv.Value} of {kv.Key.Def.maxWorkers}");
             foreach (var kv in homeCount) if (kv.Value > kv.Key.Def.housing * 2 + 2) Violation("overcrowded", $"{kv.Key.Def.id}#{kv.Key.Id}: {kv.Value} in {kv.Key.Def.housing} beds");
@@ -424,6 +472,9 @@ namespace Firstlight.Game
             }
             if (S.KnowledgeBank < -eps || S.KnowledgeBank > 0.01f && S.ResearchQueue.Count > 0) Violation("knowledge bank", $"{S.KnowledgeBank} banked with {S.ResearchQueue.Count} queued");
             if (S.BuildersWanted < 0) Violation("builders", $"{S.BuildersWanted}");
+            if (S.HaulersWanted < 0) Violation("haulers", $"{S.HaulersWanted}");
+            int haulersNow = S.Citizens.Count(c => c.IsHauler);
+            if (haulersNow > S.HaulersWanted) Violation("haulers", $"{haulersNow} hauling, {S.HaulersWanted} wanted");
             CheckConservation();
         }
         int _homelessWithRoom;

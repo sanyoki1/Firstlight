@@ -117,7 +117,13 @@ These were left open by draft v1 and were decided while building the playable sl
   grow at 65%), harvested in autumn into grain (or flax fibre once Weaving is known: the crop is chosen per field and
   fixed at sowing), nothing in winter, when the farmers go to other work. Farmers work inside the field and carry grain
   in sacks (three times a normal load). Irrigation: +35% for fields with the river within 10 cells.
-- **Granary**: food only, food in it spoils at 30% of the open rate; idle haulers move food from open piles into it.
+- **Granary**: food only, food in it spoils at 30% of the open rate; haulers move food from open piles into it.
+- **Store settings (2026-11-15, RimWorld-style)**: every store has a per-good filter (within what the building can
+  hold), a priority (Low / Normal / High), and per good keep at least / keep at most. Keep-at-least is a reserve:
+  filled from other stores, used only once every other store is out, never traded. A **Haulers** count (bottom bar,
+  default 1, after high-priority jobs and builders and never taken by them, and like builders kept only while there is
+  such work: a store's settings changed from as built) does the moving between stores. Meant to
+  carry into later ages (warehouses keeping a set stock of goods). A store left as built behaves exactly as before.
 - **Housing upgrades in place**: Lean-to and Hide Tent → Thatched Hut (8, warm) → Stone-footed Hut (10, warmest;
   Masonry). The old building stays lived in while builders rebuild it.
 - **Needs arrive with the age**: clean water (from the Agricultural Age: homes near the river or a well), pottery (goods,

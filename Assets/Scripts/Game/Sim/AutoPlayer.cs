@@ -363,7 +363,7 @@ namespace Firstlight.Game
             // Idle hands and nowhere to put them: another woodcutter while wood is what holds things up, else food.
             if (!Careless)
             {
-                int idle = S.Citizens.Count(c => !c.Gone && c.Age >= D.Balance.adultAge && c.Job == null && !c.IsBuilder && !c.Sick);
+                int idle = S.Citizens.Count(c => !c.Gone && c.Age >= D.Balance.adultAge && c.Job == null && !c.IsBuilder && !c.IsHauler && !c.Sick);
                 int open = S.Buildings.Where(b => b.Active && !b.Paused && b.Def.IsWorkplace && !b.Def.crop).Sum(b => b.Def.maxWorkers - b.Workers);
                 if (idle >= 3 && open < idle)
                 {

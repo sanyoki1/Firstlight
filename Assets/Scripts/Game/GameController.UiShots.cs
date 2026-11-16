@@ -147,6 +147,29 @@ namespace Firstlight.Game
             Hud.ToggleStocks();
             yield return Shot("stocks");
             Hud.ToggleStocks();
+
+            // Storage: a pile's panel with settings set (High, food shut out, a reserve of stone, a cap on wood), then its
+            // Storage settings panel. Put back afterwards, so the rest of the run goes on as before.
+            var pile = Sim.Buildings.Where(b => b.Active && b.Def.id == "storage_pile").OrderByDescending(b => b.Stored).FirstOrDefault();
+            if (pile != null)
+            {
+                var asBuilt = Sim.GetStoreSettings(pile);
+                Sim.SetStorePriority(pile, Priority.High);
+                Sim.SetStoreAllowAll(pile, false, "food");
+                Sim.SetKeepMin(pile, Sim.ResIndex("stone"), 40);
+                Sim.SetKeepMax(pile, Sim.ResIndex("wood"), 80);
+                Hud.CopyStore(pile);
+                Hud.Select(pile);
+                LookAt(World(pile.Center), 22f, 56f, 15f);
+                yield return Settle(10);
+                yield return Shot("storage_panel");
+                Hud.ToggleStorage();
+                yield return Settle(3);
+                yield return Shot("storage_settings");
+                Hud.ToggleStorage();
+                Hud.Select(null);
+                Sim.ApplyStoreSettings(pile, asBuilt);
+            }
             Hud.ToggleHelp();
             yield return Shot("help");
             Hud.ToggleHelp();

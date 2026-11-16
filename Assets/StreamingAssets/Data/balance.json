@@ -14,6 +14,7 @@
   "carryCapacity": 5,
   "builderWorkPerDay": 1.5,
   "defaultBuilders": 3,
+  "defaultHaulers": 1,
 
   "startPeople": 12,
   "startChildren": 2,

@@ -16,7 +16,19 @@ namespace Firstlight.Game
         None, GoHome, Rest, GoWork, Work, DeliverOutput, FetchInput, DeliverInput,
         FetchMaterial, DeliverMaterial, GoBuild, Build, HaulPickup, Idle, Leave, Arrive,
         GoField, FieldReturn,      // field workers: walk out to a tree / rock / herd, and carry the load back
-        MoveStock,                 // haulers: take food from an open pile to a granary with room
+        MoveStock,                 // haulers: move a good from one store to another (settings, priority, a granary keeps food better)
+    }
+
+    /// <summary>
+    /// A store's settings as the player sets them (what <see cref="Settlement.GetStoreSettings"/> copies and
+    /// <see cref="Settlement.ApplyStoreSettings"/> pastes): which goods it takes, its priority and the keep-at-least /
+    /// keep-at-most amount per good (0 = no limit). Per good, indexed like the resources.
+    /// </summary>
+    public sealed class StoreSettings
+    {
+        public bool[] Allow;
+        public Priority Priority = Priority.Normal;
+        public float[] KeepMin, KeepMax;
     }
 
     /// <summary>An entry in the settlement's event log.</summary>
@@ -61,6 +73,15 @@ namespace Firstlight.Game
         internal float[] InTransit;          // per cost entry: on its way in a builder's hands
         public float[] Store;                // storage buildings only (per resource)
         public float Stored;                 // total in Store
+        // Stores only (null elsewhere): the player's settings. Allow: per good, whether it may come in (the building's own
+        // accepts list limits it further: a granary holds food only). StorePriority: haulers fill High stores first and move
+        // goods up from lower ones. KeepMin / KeepMax: per good, keep at least / at most this much here (0 = no limit;
+        // null = none set). A keep-at-least is filled from other stores and only used once every other store is out.
+        public bool[] Allow;
+        public Priority StorePriority = Priority.Normal;
+        public float[] KeepMin, KeepMax;
+        // Per good: what carriers are bringing here / taking away from here (worked out once a step; not saved).
+        internal float[] Incoming, Outgoing;
         public float[] Out, In;              // per resource
         public float OutTotal;
         internal float HaulReserved;
@@ -158,6 +179,7 @@ namespace Firstlight.Game
         public float Age;                    // years
         public Building Home, Job;
         public bool IsBuilder;
+        public bool IsHauler;                // one of the haulers (bottom bar): carries goods to and between stores
         public float2 Pos;
         public float2 PrevPos;               // Pos at the start of the last step (view only, not saved)
         public float Facing;

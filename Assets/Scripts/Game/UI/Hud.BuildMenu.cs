@@ -18,7 +18,7 @@ namespace Firstlight.Game.UI
             D.Buildings.Where(b => b.category == cat && !b.townCenter && D.AgeOrder(b.age) <= S.Age.order);
 
         /// <summary>The bottom bar's width: categories, Demolish, the builders control and the Problems toggle.</summary>
-        float BuildBarW => 12 + Categories.Length * (Categories.Length > 7 ? 100 : 118) + 130 + 220 + 136;
+        float BuildBarW => 12 + Categories.Length * (Categories.Length > 7 ? 100 : 118) + 130 + 220 + 192 + 136;
 
         void DrawBuildBar()
         {
@@ -54,15 +54,29 @@ namespace Firstlight.Game.UI
             if (GUI.Button(new Rect(x + 108, y + 11, 30, 28), "-", Button)) S.SetBuilders(S.BuildersWanted - 1);
             GUI.Label(new Rect(x + 140, y + 11, 36, 28), _tl.Begin().S("<b>").I(S.BuildersWanted).S("</b>").To(ref _buildersTxt), Center);
             if (GUI.Button(new Rect(x + 178, y + 11, 30, 28), "+", Button)) S.SetBuilders(S.BuildersWanted + 1);
-            BadgeButton(new Rect(x + 220, y + 8, 124, 34));
             Tip(new Rect(x, y, 210, 50), "How many people build and carry materials to sites, taken before normal-priority jobs. They go back to other work when there is nothing to build.");
+            // Haulers: how many people are kept carrying goods to stores and between them.
+            x += 220;
+            GUI.Label(new Rect(x, y + 4, 80, 20), "Haulers", Small);
+            int moving = 0, haulers = 0;
+            foreach (var c in S.Citizens) if (c.IsHauler) { haulers++; if (c.Activity == Activity.Carrying) moving++; }
+            // Wanted but nobody could be taken: every worker is on a high-priority job (those come first, as for builders).
+            if (!S.StoreWorkWanted) _tl.Begin().C(Dim).S("not needed").E();
+            else if (haulers == 0 && S.HaulersWanted > 0) _tl.Begin().C(Warn).S("none free").E();
+            else _tl.Begin().C(moving > 0 ? Text : Dim).I(moving).S(" carrying").E();
+            GUI.Label(new Rect(x, y + 24, 80, 20), _tl.To(ref _haulingTxt), Small);
+            if (GUI.Button(new Rect(x + 80, y + 11, 30, 28), "-", Button)) S.SetHaulers(S.HaulersWanted - 1);
+            GUI.Label(new Rect(x + 112, y + 11, 36, 28), _tl.Begin().S("<b>").I(S.HaulersWanted).S("</b>").To(ref _haulersTxt), Center);
+            if (GUI.Button(new Rect(x + 150, y + 11, 30, 28), "+", Button)) S.SetHaulers(S.HaulersWanted + 1);
+            Tip(new Rect(x, y, 182, 50), "How many people move goods between stores as the stores' settings ask (select a store: Storage settings), and carry goods waiting at workplaces to the stores. Like builders, they are kept only while there is such work (a store's settings changed from as built); taken after high-priority jobs and builders (and never taken by them), before normal-priority jobs: 'none free' means every worker is on a high-priority job. People without a job haul too.");
+            BadgeButton(new Rect(x + 192, y + 8, 124, 34));
 
             if (BuildCategory != null) DrawCategory(BuildCategory, y);
         }
 
         GUIStyle _costStyle, _summaryStyle;
         string[] _catFaint;
-        string _demolishTxt, _sitesTxt, _buildersTxt;
+        string _demolishTxt, _sitesTxt, _buildersTxt, _haulersTxt, _haulingTxt;
 
         // The open category's rows and their fixed texts, made when the category or the age changes (not on every call).
         sealed class BuildRow { public BuildingDef Def; public string Name, NameLocked, Needs, Summary, Cost; public int CostMask = -1; }

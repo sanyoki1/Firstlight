@@ -159,7 +159,7 @@ namespace Firstlight.Game
                 {
                     // Into the store if it still has room, else (no room anywhere) onto the workplace's pile.
                     var s = c.TaskB;
-                    if (s != null && c.TaskAmt > 0) s.HaulReserved = math.max(0, s.HaulReserved - c.TaskAmt);
+                    if (s != null && c.TaskAmt > 0) { s.HaulReserved = math.max(0, s.HaulReserved - c.TaskAmt); FlowChange(s, c.LoadRes, -c.TaskAmt, true); }
                     c.TaskAmt = 0;
                     for (int r = 0; r < ResCount && c.Load != null; r++)
                     {
@@ -176,28 +176,12 @@ namespace Firstlight.Game
                     c.Task = Task.Build;
                     break;
                 case Task.MoveStock:
-                {
-                    // At the open store: take the food and carry it on to the granary.
-                    var to = c.TaskB2;
-                    to.HaulReserved = math.max(0, to.HaulReserved - c.TaskAmt);
-                    // Only what still fits: others may have filled the granary meanwhile. (Taking a full sack anyway
-                    // sent haulers round in circles: granary full, back to the open pile, picked up again for the granary.)
-                    float fit = to.Active ? Free(to) - to.HaulReserved : 0;
-                    float got = c.TaskB.Active && fit >= 0.5f ? TakeFrom(c.TaskB, c.TaskIdx, math.min(c.TaskAmt, fit)) : 0;
-                    c.Task = Task.None;
-                    c.TaskAmt = 0;
-                    if (got > 0)
-                    {
-                        c.CarryRes = c.TaskIdx; c.CarryAmt = got;
-                        // The room stays promised on the way there.
-                        if (to.Active) { c.Task = Task.DeliverOutput; c.TaskB = to; c.TaskB2 = null; c.TaskAmt = got; to.HaulReserved += got; Walk(c, to.Door, Activity.Carrying); }
-                    }
+                    ArriveMoveStock(c);    // Settlement.Storage.cs
                     break;
-                }
                 case Task.DeliverOutput:
                 {
                     var s = c.TaskB;
-                    if (s != null && c.TaskAmt > 0) s.HaulReserved = math.max(0, s.HaulReserved - c.TaskAmt);
+                    if (s != null && c.TaskAmt > 0) { s.HaulReserved = math.max(0, s.HaulReserved - c.TaskAmt); FlowChange(s, c.CarryRes, -c.TaskAmt, true); }
                     c.TaskAmt = 0;
                     // Only into room nobody else is on the way to fill (taking more than was promised here sent the others
                     // round the stores for days).
@@ -209,7 +193,7 @@ namespace Firstlight.Game
                 }
                 case Task.FetchInput:
                 {
-                    float got = c.TaskB != null && c.TaskB.Active ? TakeFrom(c.TaskB, c.TaskIdx, c.TaskAmt) : 0;
+                    float got = c.TaskB != null && c.TaskB.Active ? TakeUsable(c.TaskB, c.TaskIdx, c.TaskAmt) : 0;
                     if (got > 0 && c.TaskB2 != null && c.TaskB2.Active)
                     {
                         c.CarryRes = c.TaskIdx; c.CarryAmt = got;
@@ -295,9 +279,19 @@ namespace Firstlight.Game
                 case Task.FetchMaterial: if (c.TaskB2 != null && c.TaskIdx < c.TaskB2.InTransit.Length) c.TaskB2.InTransit[c.TaskIdx] -= c.TaskAmt; break;
                 case Task.DeliverMaterial: if (c.TaskB2 != null && c.TaskIdx < c.TaskB2.InTransit.Length) c.TaskB2.InTransit[c.TaskIdx] -= c.CarryAmt; break;
                 case Task.HaulPickup: if (c.TaskB != null) c.TaskB.HaulReserved = math.max(0, c.TaskB.HaulReserved - c.TaskAmt); break;
-                case Task.MoveStock: if (c.TaskB2 != null) c.TaskB2.HaulReserved = math.max(0, c.TaskB2.HaulReserved - c.TaskAmt); break;
+                case Task.MoveStock:
+                    if (c.TaskB2 != null) c.TaskB2.HaulReserved = math.max(0, c.TaskB2.HaulReserved - c.TaskAmt);
+                    FlowChange(c.TaskB2, c.TaskIdx, -c.TaskAmt, true); FlowChange(c.TaskB, c.TaskIdx, -c.TaskAmt, false);
+                    break;
                 case Task.FieldReturn:
-                case Task.DeliverOutput: if (c.TaskB != null && c.TaskAmt > 0) { c.TaskB.HaulReserved = math.max(0, c.TaskB.HaulReserved - c.TaskAmt); c.TaskAmt = 0; } break;
+                case Task.DeliverOutput:
+                    if (c.TaskB != null && c.TaskAmt > 0)
+                    {
+                        c.TaskB.HaulReserved = math.max(0, c.TaskB.HaulReserved - c.TaskAmt);
+                        FlowChange(c.TaskB, c.Task == Task.FieldReturn ? c.LoadRes : c.CarryRes, -c.TaskAmt, true);
+                        c.TaskAmt = 0;
+                    }
+                    break;
             }
             if (c.Task == Task.Leave || c.Task == Task.Arrive) return;
             c.AtField = false;
@@ -346,6 +340,8 @@ namespace Firstlight.Game
             if (!adult) { GoIdle(c, Activity.Playing); return; }
             if (c.Job != null) { WorkerDecide(c); return; }
             if (c.IsBuilder) { if (BuilderDecide(c) || HaulDecide(c) || MoveStockDecide(c)) return; }
+            // Haulers: what the stores' settings ask first, then goods waiting at workplaces, then food into a granary.
+            else if (c.IsHauler) { if (StoreOrderDecide(c) || HaulDecide(c) || KeepBetterDecide(c)) return; }
             else if (HaulDecide(c) || BuilderDecide(c) || MoveStockDecide(c)) return;
             GoIdle(c, Activity.Idle);
         }
@@ -388,7 +384,9 @@ namespace Firstlight.Game
             c.Task = Task.DeliverOutput;
             c.TaskB = s;
             c.TaskAmt = math.min(c.CarryAmt, Free(s) - s.HaulReserved);     // the room is promised on the way
+            if (s.KeepMax != null) c.TaskAmt = math.min(c.TaskAmt, math.max(0, CapRoom(s, c.CarryRes, true)));
             s.HaulReserved += c.TaskAmt;
+            FlowChange(s, c.CarryRes, c.TaskAmt, true);
             Walk(c, s.Door, Activity.Carrying);
         }
 
@@ -425,7 +423,7 @@ namespace Firstlight.Game
                 foreach (var s in Buildings)
                 {
                     if (!s.Active || s.Store == null || s.Flooded || Free(s) - s.HaulReserved < 1f) continue;
-                    for (int k = 0; k < ResCount; k++) if (!_room[k] && Accepts(s, k)) _room[k] = true;
+                    for (int k = 0; k < ResCount; k++) if (!_room[k] && Accepts(s, k) && (s.KeepMax == null || CapRoom(s, k, true) >= 1f)) _room[k] = true;
                 }
             }
             return r >= 0 && r < ResCount && _room[r];
@@ -609,7 +607,7 @@ namespace Firstlight.Game
             c.TaskB = s; c.TaskB2 = s == null ? job : null;
             // Like every delivery, the room is promised on the way (field loads used to fill gaps others were walking to).
             c.TaskAmt = s != null ? math.max(0, math.min(c.LoadTotal, Free(s) - s.HaulReserved)) : 0;
-            if (s != null) s.HaulReserved += c.TaskAmt;
+            if (s != null) { s.HaulReserved += c.TaskAmt; FlowChange(s, c.LoadRes, c.TaskAmt, true); }
             Walk(c, s != null ? s.Door : job.Door, Activity.Carrying);
             return true;
         }
@@ -682,7 +680,7 @@ namespace Firstlight.Game
                 s = NearestStorageWith(c.Pos, r, 1f);
                 if (s != null) { better = r; break; }
             }
-            if (better < 0 || TakeFrom(s, better, 1f) < 1f) return;
+            if (better < 0 || TakeUsable(s, better, 1f) < 1f) return;
             if (c.Tool >= 0)
             {
                 if (c.ToolLife > B.toolWearDays * 0.5f) Lost[c.Tool] += 1f - Deposit(c.Tool, 1f, c.Pos);
@@ -709,6 +707,7 @@ namespace Firstlight.Game
         void RecountReservations()
         {
             foreach (var b in Buildings) { if (b.InTransit != null) Array.Clear(b.InTransit, 0, b.InTransit.Length); b.HaulReserved = 0; }
+            _flowStamp = -1f;      // goods on their way are counted afresh
             foreach (var c in Citizens)
             {
                 if (c.Gone) continue;
@@ -748,7 +747,7 @@ namespace Firstlight.Game
                         // leave a new storage pile waiting for the wood piled at the woodcutter's).
                         var s = NearestStorageWith(site.DoorPos, site.CostRes[i]) ?? NearestOutputOf(site.DoorPos, site.CostRes[i]);
                         if (s == null) continue;
-                        float have = s.Store != null ? s.Store[site.CostRes[i]] : s.Out[site.CostRes[i]] - s.HaulReserved;
+                        float have = s.Store != null ? Spare(s, site.CostRes[i]) : s.Out[site.CostRes[i]] - s.HaulReserved;
                         float amt = math.min(CarryCap(site.CostRes[i]), math.min(remaining, have));
                         site.InTransit[i] += amt;
                         c.Task = Task.FetchMaterial;
@@ -794,7 +793,7 @@ namespace Firstlight.Game
         /// <summary>Takes a good from a store, or from a workplace's output pile.</summary>
         float TakeAny(Building b, int r, float amt)
         {
-            if (b.Store != null) return TakeFrom(b, r, amt);
+            if (b.Store != null) return TakeUsable(b, r, amt);
             float take = math.min(amt, b.Out[r]);
             if (take <= 0) return 0;
             b.Out[r] -= take; b.OutTotal -= take;
@@ -871,8 +870,8 @@ namespace Firstlight.Game
         }
 
         /// <summary>
-        /// Fills jobs: high-priority workplaces first, then builders (only while there are sites), then normal and low
-        /// priority. Short jobs take people from strictly lower priorities (high jobs never take builders). Elders are preferred for knowledge work.
+        /// Fills jobs: high-priority workplaces first, then builders (only while there are sites), then haulers, then
+        /// normal and low priority. Short jobs take people from strictly lower priorities (high jobs never take builders or haulers). Elders are preferred for knowledge work.
         /// Anyone left over hauls and helps build.
         /// </summary>
         void AssignJobs()
@@ -883,34 +882,40 @@ namespace Firstlight.Game
             bool sites = false;
             foreach (var b in Buildings) if (b.UnderWork) { sites = true; break; }
             int wantBuilders = sites ? BuildersWanted : 0, builders = 0;
+            // Like builders only while there are sites: haulers only while a store's settings ask for goods to be moved
+            // (a permanent hauler slowed every young settlement by a worker it mostly did not need).
+            int wantHaulers = StoreOrders() ? HaulersWanted : 0, haulers = 0;
             _free.Clear();
             foreach (var c in Citizens)
             {
                 bool able = !c.Gone && IsAdult(c) && !c.Sick && c.DisputeDays == 0 && c.Task != Task.Arrive;
-                if (!able) { if (c.Job != null || c.IsBuilder) Unassign(c); continue; }
+                if (!able) { if (c.Job != null || c.IsBuilder || c.IsHauler) Unassign(c); continue; }
                 if (c.Job != null && (!c.Job.Active || c.Job.Paused || !c.Job.Def.IsWorkplace || c.Job.Workers >= c.Job.Def.maxWorkers || !WantsWorkers(c.Job))) Unassign(c);
                 if (c.IsBuilder && builders >= wantBuilders) Unassign(c);
+                if (c.IsHauler && haulers >= wantHaulers) Unassign(c);
                 if (c.Job != null) c.Job.Workers++;
                 else if (c.IsBuilder) builders++;
+                else if (c.IsHauler) haulers++;
                 else _free.Add(c);
             }
-            _demand.Clear();   // null = the builders
+            _demand.Clear();   // null = the builders, HaulSlot = the haulers
             for (int p = (int)Priority.High; p >= 0; p--)
             {
                 // Within a priority, fields come first: a few days of sowing or harvest feed people for months.
                 for (int pass = 0; pass < 2; pass++)
                     foreach (var b in Buildings)
                         if (b.Active && !b.Paused && b.Def.IsWorkplace && (int)b.Priority == p && WantsWorkers(b) && b.Def.crop == (pass == 0)) _demand.Add(b);
-                if (p == (int)Priority.High) _demand.Add(null);
+                if (p == (int)Priority.High) { _demand.Add(null); _demand.Add(HaulSlot); }
             }
             for (int k = 0; k < _demand.Count; k++)
             {
                 var b = _demand[k];
-                while (b == null ? builders < wantBuilders : b.Workers < b.Def.maxWorkers)
+                while (b == null ? builders < wantBuilders : b == HaulSlot ? haulers < wantHaulers : b.Workers < b.Def.maxWorkers)
                 {
-                    var pick = PickFree(b) ?? Steal(k, ref builders);
+                    var pick = PickFree(b) ?? Steal(k, ref builders, ref haulers);
                     if (pick == null) break;
                     if (b == null) { pick.IsBuilder = true; builders++; }
+                    else if (b == HaulSlot) { pick.IsHauler = true; haulers++; }
                     else { pick.Job = b; b.Workers++; }
                 }
             }
@@ -918,10 +923,14 @@ namespace Firstlight.Game
                 if (b.Active && b.Def.IsWorkplace) b.Status = b.Paused ? "Paused" : b.Flooded ? "Flooded" : !WantsWorkers(b) ? (Season == 3 ? "Nothing to do this season" : "The harvest is in") : b.Workers == 0 ? "No workers" : b.Status == "No workers" || b.Status == "Paused" ? "" : b.Status;
         }
 
-        // Builders share the top tier with high-priority jobs: filled after them, but never taken by them.
+        /// <summary>Stands for the haulers in the job queue (not a building anyone sees).</summary>
+        static readonly Building HaulSlot = new() { Def = new BuildingDef { id = "(haulers)" } };
+
+        // Builders and then haulers share the top tier with high-priority jobs: filled after them, but never taken by them
+        // (a hauler taken whenever work was short left the stores' settings undone for whole seasons).
         // A high-priority field in sowing or harvest time outranks everything else: it may take people from other
         // high-priority jobs (a few days there feed people for months).
-        int Tier(Building b) => b == null ? 0 : b.Priority == Priority.High ? (b.Def.crop && (Season == 0 || Season == 2) ? -1 : 0) : b.Priority == Priority.Normal ? 2 : 3;
+        int Tier(Building b) => b == null || b == HaulSlot ? 0 : b.Priority == Priority.High ? (b.Def.crop && (Season == 0 || Season == 2) ? -1 : 0) : b.Priority == Priority.Normal ? 2 : 3;
 
         Citizen PickFree(Building b)
         {
@@ -936,18 +945,18 @@ namespace Firstlight.Game
             return c;
         }
 
-        Citizen Steal(int k, ref int builders)
+        Citizen Steal(int k, ref int builders, ref int haulers)
         {
             int tier = Tier(_demand[k]);
             for (int j = _demand.Count - 1; j > k; j--)
             {
                 var d = _demand[j];
                 if (Tier(d) <= tier) break;
-                if (d == null ? builders == 0 : d.Workers == 0) continue;
+                if (d == null ? builders == 0 : d == HaulSlot ? haulers == 0 : d.Workers == 0) continue;
                 foreach (var c in Citizens)
                 {
-                    if (d == null ? !c.IsBuilder : c.Job != d) continue;
-                    if (d == null) builders--; else d.Workers--;
+                    if (d == null ? !c.IsBuilder : d == HaulSlot ? !c.IsHauler : c.Job != d) continue;
+                    if (d == null) builders--; else if (d == HaulSlot) haulers--; else d.Workers--;
                     Unassign(c);
                     return c;
                 }
@@ -959,6 +968,7 @@ namespace Firstlight.Game
         {
             c.Job = null;
             c.IsBuilder = false;
+            c.IsHauler = false;
             if (!c.Carrying) CancelTask(c);
         }
 

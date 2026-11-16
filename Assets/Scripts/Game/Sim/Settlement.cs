@@ -55,6 +55,8 @@ namespace Firstlight.Game
         public Building TownCenter { get; private set; }
         public bool NeedsCampfire => TownCenter == null;
         public int BuildersWanted { get; private set; }
+        /// <summary>How many people are kept hauling: goods to stores, and between stores as their settings ask.</summary>
+        public int HaulersWanted { get; private set; }
 
         // ------------------------------------------------------------------ counters (for HUD and the auto-test)
         public int Births, Migrants, Leavers;
@@ -119,6 +121,7 @@ namespace Firstlight.Game
             _fuel = ResIndex(B.fuelResource); _clothing = ResIndex(B.clothingResource); _herbs = ResIndex(B.herbsResource); _goods = ResIndex(B.goodsResource);
             _grain = ResIndex("grain");
             BuildersWanted = B.defaultBuilders;
+            HaulersWanted = B.defaultHaulers;
 
             foreach (var r in data.Research) if (r.known) _researched.Add(r.id);
             RebuildEffects();
@@ -275,6 +278,9 @@ namespace Firstlight.Game
         /// <summary>How many people are kept on construction (taken before normal-priority jobs).</summary>
         public void SetBuilders(int count) { BuildersWanted = math.clamp(count, 0, 50); _jobsDirty = true; }
 
+        /// <summary>How many people are kept hauling (taken right after builders, before normal-priority jobs).</summary>
+        public void SetHaulers(int count) { HaulersWanted = math.clamp(count, 0, 50); _jobsDirty = true; }
+
         public void SetPriority(Building b, Priority p) { if (b != null && b.Alive) { b.Priority = p; _jobsDirty = true; } }
 
         public void SetPaused(Building b, bool paused) { if (b != null && b.Alive) { b.Paused = paused; _jobsDirty = true; } }
@@ -287,7 +293,8 @@ namespace Firstlight.Game
             b.Focus = outputIndex >= 0 && outputIndex < b.Def.outputs.Length ? outputIndex : b.Def.exclusiveOutputs ? 0 : -1;
         }
 
-        // Place / Demolish / CanPlace are in Settlement.Buildings.cs.
+        // Place / Demolish / CanPlace are in Settlement.Buildings.cs; a store's settings (SetStoreAllow, SetStorePriority,
+        // SetKeepMin / SetKeepMax, Get / ApplyStoreSettings) in Settlement.Storage.cs.
 
         /// <summary>Queues a research topic, queueing any missing prerequisites ahead of it.</summary>
         public bool QueueResearch(string id, out string reason)
@@ -473,6 +480,7 @@ namespace Firstlight.Game
             int homeless = Homeless;
             if (homeless > 0) Warnings.Add($"{homeless} {(homeless == 1 ? "person has" : "people have")} no home: build more homes (Housing).");
             StorageWarning();
+            ShutOutWarning();
             ToolsWarning();
             int sick = 0;
             foreach (var c in Citizens) if (!c.Gone && c.Sick) sick++;

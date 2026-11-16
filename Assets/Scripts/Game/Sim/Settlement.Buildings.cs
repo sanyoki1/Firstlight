@@ -370,6 +370,7 @@ namespace Firstlight.Game
             b.YieldKey = "yield." + d.yieldTag;
             if (b.Focus >= 0) b.Focus = b.Focus < from.outputs.Length ? Array.FindIndex(d.outputs, o => o.id == from.outputs[b.Focus].id) : -1;   // same good, else the usual mix
             if (b.IsStorage && b.Store == null) b.Store = new float[ResCount];
+            EnsureStoreSettings(b);
             RefreshFullness(b);
             Upgrades++;
             Log(Severity.Info, $"{from.name} rebuilt as a {d.name}.", b.Center);
@@ -383,6 +384,7 @@ namespace Firstlight.Game
             b.State = BuildState.Active;
             b.Work = 1f;
             if (b.IsStorage && b.Store == null) b.Store = new float[ResCount];
+            EnsureStoreSettings(b);
             RefreshFullness(b);
             if (!b.Def.townCenter) Log(Severity.Info, $"{b.Def.name} finished.", b.Center);
             if (b.Def.enablesLaws) RebuildEffects();
@@ -415,112 +417,8 @@ namespace Firstlight.Game
             RefreshWarnings();
         }
 
-        // ------------------------------------------------------------------ storage
-
-        /// <summary>Recomputes stock totals from every store (the incremental totals are kept in step anyway).</summary>
-        void RefreshStock()
-        {
-            Array.Clear(StockTotals, 0, ResCount);
-            foreach (var b in Buildings)
-            {
-                if (!b.Active || b.Store == null) continue;
-                float sum = 0;
-                for (int r = 0; r < ResCount; r++) { StockTotals[r] += b.Store[r]; sum += b.Store[r]; }
-                b.Stored = sum;
-            }
-        }
-
-        /// <summary>A store's capacity with research (Pottery's jars) applied. The campfire's store grows with a gentle
-        /// start's extra goods, so they fit (they used to start it overfull).</summary>
-        public float Capacity(Building s) => s.Def.storageCapacity * Effect("storage") * (s.Def.townCenter ? math.max(1f, Diff.startGoods) : 1f);
-
-        float Free(Building s) => Capacity(s) - s.Stored;
-
-        /// <summary>Room not already promised to someone carrying goods here.</summary>
-        float Room(Building s) => Free(s) - s.HaulReserved;
-
-        /// <summary>A store with an accepts list (the granary) only takes those categories.</summary>
-        public bool Accepts(Building s, int r) => r < 0 || s.Def.accepts.Length == 0 || Array.IndexOf(s.Def.accepts, Data.Resources[r].category) >= 0;
-
-        float PutInto(Building s, int r, float amt)
-        {
-            float put = math.min(amt, math.max(0, Free(s)));
-            if (put <= 0) return 0;
-            s.Store[r] += put; s.Stored += put; StockTotals[r] += put;
-            return put;
-        }
-
-        float TakeFrom(Building s, int r, float amt)
-        {
-            float take = math.min(amt, s.Store[r]);
-            if (take <= 0) return 0;
-            s.Store[r] -= take; s.Stored -= take; StockTotals[r] -= take;
-            if (s.Store[r] < 1e-4f) { s.Stored -= s.Store[r]; StockTotals[r] -= s.Store[r]; Lost[r] += s.Store[r]; s.Store[r] = 0; }
-            return take;
-        }
-
-        /// <summary>Takes up to amt of a resource from any stores (nearest the town center first). Used for eating and burning.</summary>
-        float Withdraw(int r, float amt)
-        {
-            float got = 0;
-            foreach (var s in Buildings)
-            {
-                if (got >= amt) break;
-                if (s.Active && s.Store != null && s.Store[r] > 0) got += TakeFrom(s, r, amt - got);
-            }
-            Consumed[r] += got;
-            return got;
-        }
-
-        /// <summary>Puts goods into the nearest stores with room; whatever does not fit is lost.</summary>
-        float Deposit(int r, float amt, float2 near)
-        {
-            float left = amt;
-            // Room nobody is carrying goods to first; then, rather than lose it, any room.
-            for (int k = 0; k < 8 && left > 0.001f; k++)
-            {
-                var s = NearestStorageFor(near, r, 0.01f, true);
-                if (s == null) break;
-                left -= PutInto(s, r, math.min(left, Room(s)));
-            }
-            for (int k = 0; k < 8 && left > 0.001f; k++)
-            {
-                var s = NearestStorageFor(near, r, 0.01f);
-                if (s == null) break;
-                left -= PutInto(s, r, left);
-            }
-            return amt - left;
-        }
-
-        /// <summary>
-        /// The store to take a good to: the nearest with room that accepts it; goods that spoil prefer stores that keep
-        /// them (a granary up to about twice as far away wins over an open pile). r = -1: any good.
-        /// </summary>
-        Building NearestStorageFor(float2 from, int r, float min, bool unreserved = false)
-        {
-            Building best = null; float bd = float.MaxValue;
-            bool spoils = r >= 0 && Data.Resources[r].spoilPerDay > 0;
-            foreach (var s in Buildings)
-            {
-                if (!s.Active || s.Store == null || s.Flooded || Free(s) - (unreserved ? s.HaulReserved : 0) < min || !Accepts(s, r)) continue;
-                float d = math.distance(s.DoorPos, from) + 4f;
-                if (spoils) d *= 0.4f + s.Def.spoilMultiplier;
-                if (d < bd) { bd = d; best = s; }
-            }
-            return best;
-        }
-
-        Building NearestStorageWith(float2 from, int r, float min = 0.01f)
-        {
-            Building best = null; float bd = float.MaxValue;
-            foreach (var s in Buildings)
-            {
-                if (!s.Active || s.Store == null || s.Store[r] < min) continue;
-                float d = math.distancesq(s.DoorPos, from);
-                if (d < bd) { bd = d; best = s; }
-            }
-            return best;
-        }
+        // ------------------------------------------------------------------ spoilage
+        // (Storage itself, what stores take and the haulers between them, is in Settlement.Storage.cs.)
 
         void DailySpoilage()
         {

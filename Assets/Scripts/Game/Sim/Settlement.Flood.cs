@@ -206,7 +206,7 @@ namespace Firstlight.Game
 
         void DoTrade(int give, float giveAmt, int want, float getAmt)
         {
-            float took = Withdraw(give, giveAmt);
+            float took = Withdraw(give, giveAmt, reserves: false);   // traders never take what a store keeps back
             Consumed[give] -= took;            // traded away, not used up
             // Short of what was promised (the stores changed while the offer stood): fewer goods in return.
             if (giveAmt > 0 && took < giveAmt) getAmt = math.floor(getAmt * took / giveAmt);

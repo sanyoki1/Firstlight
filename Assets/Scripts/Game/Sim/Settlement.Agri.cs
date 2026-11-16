@@ -149,34 +149,6 @@ namespace Firstlight.Game
             c.FieldFeature = -1;
         }
 
-        // ------------------------------------------------------------------ granary
-
-        /// <summary>
-        /// Idle haulers move food that spoils from open stores into a granary with room (biggest pile first), so the
-        /// harvest and the meat keep through winter.
-        /// </summary>
-        bool MoveStockDecide(Citizen c)
-        {
-            Building to = null; float room = 0;
-            foreach (var s in Buildings)
-                if (s.Active && s.Store != null && s.Def.accepts.Length > 0 && s.Def.spoilMultiplier < 1f && Free(s) - s.HaulReserved > room) { room = Free(s) - s.HaulReserved; to = s; }
-            if (to == null || room < B.carryCapacity) return false;
-            Building from = null; int res = -1; float most = 2f;
-            foreach (var s in Buildings)
-            {
-                if (!s.Active || s.Store == null || s == to || s.Def.spoilMultiplier <= to.Def.spoilMultiplier) continue;
-                foreach (int r in _foodByPerish)
-                    if (Accepts(to, r) && s.Store[r] > most) { most = s.Store[r]; from = s; res = r; }
-            }
-            if (from == null) return false;
-            float amt = math.min(math.min(CarryCap(res), most), room);
-            to.HaulReserved += amt;
-            c.Task = Task.MoveStock;
-            c.TaskB = from; c.TaskB2 = to; c.TaskIdx = res; c.TaskAmt = amt;
-            Walk(c, from.Door, Activity.Walking);
-            return true;
-        }
-
         // ------------------------------------------------------------------ traders (Barter)
 
         public int Trades { get; private set; }
@@ -212,7 +184,7 @@ namespace Firstlight.Game
                 var rd = Data.Resources[r];
                 if (r == want || rd.toolSpeed > 0 || rd.value <= 0) continue;
                 float keep = rd.isFood ? DailyFoodNeed * 20f : r == _fuel ? FuelNeedUntilSpring() + 20f : 40f;
-                float v = (StockTotals[r] - keep) * rd.value;
+                float v = (StockTotals[r] - ReservedStock(r) - keep) * rd.value;   // never what the stores keep back
                 if (v > spare) { spare = v; give = r; }
             }
             if (give < 0 || spare < B.traderValue * 0.5f) return;

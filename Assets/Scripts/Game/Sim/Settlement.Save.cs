@@ -27,6 +27,7 @@ namespace Firstlight.Game
             w.Int(Disputes); w.Int(Thefts); w.Int(Outbreaks);
             w.Float(Unrest); w.Float(UnrestTarget); w.Float(OutbreakRisk);
             w.Bool(_needWater); w.Bool(_needGoods); w.Bool(_needFaith);
+            w.Int(HaulersWanted);                                               // v3
 
             // Research, ages, laws.
             var researched = new List<string>(); foreach (var r in Data.Research) if (_researched.Contains(r.id)) researched.Add(r.id);
@@ -77,6 +78,14 @@ namespace Firstlight.Game
             w.Str(b.Status); w.Str(b.UpgradeTo?.id);
             w.Float(b.Sown); w.Float(b.Growth); w.Float(b.Harvested); w.Int(b.CropOut); w.Float(b.TendedToday); w.Bool(b.Irrigated);
             w.Float(b.GoodsLife); w.Bool(b.HasWater); w.Bool(b.HasFaith); w.Bool(b.Flooded); w.Float(b.FloodBonus);
+            // v3: a store's settings. Goods it shuts out by id (a good new to the data is let in), limits per good.
+            w.Bool(b.Allow != null);
+            if (b.Allow != null)
+            {
+                var shut = new List<string>();
+                for (int i = 0; i < b.Allow.Length; i++) if (!b.Allow[i]) shut.Add(Data.Resources[i].id);
+                w.Strs(shut); w.Byte((byte)b.StorePriority); w.Floats(b.KeepMin); w.Floats(b.KeepMax);
+            }
         }
 
         Building ReadBuilding(SaveReader r, int id)
@@ -92,6 +101,18 @@ namespace Firstlight.Game
             b.Status = r.Str() ?? ""; string up = r.Str(); b.UpgradeTo = up != null ? Data.Building(up) : null;
             b.Sown = r.Float(); b.Growth = r.Float(); b.Harvested = r.Float(); b.CropOut = r.Int(); b.TendedToday = r.Float(); b.Irrigated = r.Bool();
             b.GoodsLife = r.Float(); b.HasWater = r.Bool(); b.HasFaith = r.Bool(); b.Flooded = r.Bool(); b.FloodBonus = r.Float();
+            if (r.Version >= 3 && r.Bool())
+            {
+                b.Allow = new bool[ResCount];
+                for (int i = 0; i < ResCount; i++) b.Allow[i] = true;
+                var shut = r.Strs();
+                if (shut != null) foreach (var gid in shut) { int k = ResIndex(gid); if (k >= 0) b.Allow[k] = false; }
+                b.StorePriority = (Priority)Math.Min((int)r.Byte(), (int)Priority.High);
+                b.KeepMin = r.ResFloats(); b.KeepMax = r.ResFloats();
+                if (b.KeepMin != null && b.KeepMin.Length != ResCount || b.KeepMax != null && b.KeepMax.Length != ResCount) throw new InvalidDataException("store limits do not match the game data");
+                TrimLimits(b);
+            }
+            EnsureStoreSettings(b);     // older saves: as built (everything it can hold, Normal, no limits)
             // Derived: where it stands and its resource indices (from the upgrade while one is under way).
             b.Center = FootprintCenter(d, b.Origin, b.Rot);
             var door = DoorCell(d, b.Origin, b.Rot);
@@ -123,6 +144,7 @@ namespace Firstlight.Game
             w.Int(c.DisputeDays); w.Float(c.BirthCooldown); w.Bool(c.Gone); w.Str(c.LastHarm);
             w.Byte((byte)c.Task); w.Int(Ref(c.TaskB)); w.Int(Ref(c.TaskB2)); w.Int(c.TaskIdx); w.Float(c.TaskAmt);
             w.Int(c.Target); w.Float(c.Stuck); w.Int(c.ShiftDay);
+            w.Bool(c.IsHauler);                                                 // v3
         }
 
         Citizen ReadCitizen(SaveReader r)
@@ -137,6 +159,7 @@ namespace Firstlight.Game
             c.DisputeDays = r.Int(); c.BirthCooldown = r.Float(); c.Gone = r.Bool(); c.LastHarm = r.Str() ?? "";
             c.Task = (Task)r.Byte(); c.TaskB = Ref(r.Int()); c.TaskB2 = Ref(r.Int()); c.TaskIdx = r.Int(); c.TaskAmt = r.Float();
             c.Target = r.Int(); c.Stuck = r.Float(); c.ShiftDay = r.Int();
+            c.IsHauler = r.Version >= 3 && r.Bool();
             if (r.GoodsRemapped)
             {
                 // Errands whose index is a good (the others index a building's cost list).
@@ -176,6 +199,7 @@ namespace Firstlight.Game
             Disputes = r.Int(); Thefts = r.Int(); Outbreaks = r.Int();
             Unrest = r.Float(); UnrestTarget = r.Float(); OutbreakRisk = r.Float();
             _needWater = r.Bool(); _needGoods = r.Bool(); _needFaith = r.Bool();
+            HaulersWanted = r.Version >= 3 ? r.Int() : B.defaultHaulers;      // older saves: the new default
 
             // Research and law ids the data no longer has are dropped (they would throw later, inside Tick).
             var unknown = new SortedSet<string>();
