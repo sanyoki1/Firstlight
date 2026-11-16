@@ -5,18 +5,21 @@ using UnityEngine;
 namespace Firstlight.Game
 {
     /// <summary>
-    /// Procedural sound, made in code at start (no imported assets): three ambience loops whose volume follows what is
-    /// near the camera's focus (wind, stronger high up and in winter; the river; fire crackle near a burning fire), a soft
+    /// Procedural sound, made in code at start (no imported assets): ambience loops whose volume follows what is near
+    /// the camera's focus (wind, stronger high up and in winter; the river; fire crackle near a burning fire), a soft
     /// click for the interface and a low tone for an age-up. Volumes come from the settings. Quiet by design.
+    /// <para>The river is two stereo loops from <see cref="WaterSynth"/>: a bubbling babble heard close in, which gives
+    /// way to a low rush as the camera pulls back. It leans to the side of the screen the water is on, a wide river
+    /// carries further than a narrow one, and a flood makes the rush louder and deeper.</para>
     /// </summary>
     public sealed class SoundScape
     {
         readonly GameController G;
-        readonly AudioSource _wind, _river, _fire, _ui;
+        readonly AudioSource _wind, _river, _rush, _fire, _ui;
         readonly AudioClip _click, _ageUp;
         int _ages = -1;
         float _scan;
-        float _riverNear, _fireNear;
+        float _riverNear, _riverWide, _riverSide, _fireNear;
         const int Rate = 44100;
 
         /// <summary>No audio in batch mode or without an output device.</summary>
@@ -34,28 +37,32 @@ namespace Firstlight.Game
                 _clips = new AudioClip[b.Length];
                 for (int i = 0; i < b.Length; i++)
                 {
-                    _clips[i] = AudioClip.Create(Names[i], b[i].Length, 1, Rate, false);
+                    _clips[i] = AudioClip.Create(Names[i], b[i].Length / Channels[i], Channels[i], Rate, false);
                     _clips[i].hideFlags = HideFlags.DontUnloadUnusedAsset;
                     _clips[i].SetData(b[i], 0);
                 }
             }
             _wind = Loop(host, _clips[0]);
             _river = Loop(host, _clips[1]);
-            _fire = Loop(host, _clips[2]);
+            _rush = Loop(host, _clips[2]);
+            _fire = Loop(host, _clips[3]);
             _ui = host.AddComponent<AudioSource>();
             _ui.playOnAwake = false; _ui.spatialBlend = 0;
-            _click = _clips[3];
-            _ageUp = _clips[4];
+            _click = _clips[4];
+            _ageUp = _clips[5];
         }
 
         static AudioClip[] _clips;
-        public static readonly string[] Names = { "wind", "river", "fire", "click", "ageup" };
+        public static readonly string[] Names = { "wind", "river", "rush", "fire", "click", "ageup" };
+        /// <summary>Channels per buffer (the stereo ones are interleaved).</summary>
+        public static readonly int[] Channels = { 1, 2, 2, 1, 1, 1 };
+        const int Loops = 4;                               // the first four repeat
 
-        /// <summary>The sample buffers (mono, 44.1 kHz): the three ambience loops, the click and the age-up tone.</summary>
+        /// <summary>The sample buffers (44.1 kHz): the four ambience loops, the click and the age-up tone.</summary>
         public static float[][] Buffers()
         {
             var rng = new System.Random(1234);
-            return new[] { Wind(rng), River(rng), Fire(rng), Click(rng), Tone() };
+            return new[] { Wind(rng), WaterSynth.Babble(), WaterSynth.Rush(), Fire(rng), Click(rng), Tone() };
         }
 
         /// <summary>
@@ -69,22 +76,25 @@ namespace Firstlight.Game
             var b = Buffers();
             for (int i = 0; i < b.Length; i++)
             {
-                var d = b[i]; double sum = 0, sq = 0, step = 0; float peak = 0; int bad = 0;
+                var d = b[i]; double sum = 0, sq = 0, step = 0; float peak = 0; int bad = 0, ch = Channels[i];
                 for (int k = 0; k < d.Length; k++)
                 {
                     if (!float.IsFinite(d[k])) { bad++; continue; }
                     sum += d[k]; sq += d[k] * d[k]; peak = math.max(peak, math.abs(d[k]));
-                    if (k > 0) step += math.abs(d[k] - d[k - 1]);
+                    if (k >= ch) step += math.abs(d[k] - d[k - ch]);
                 }
-                double mean = sum / d.Length, rms = math.sqrt(sq / d.Length), avgStep = step / (d.Length - 1);
-                bool loop = i < 3;
-                float join = math.abs(d[0] - d[d.Length - 1]);
+                double mean = sum / d.Length, rms = math.sqrt(sq / d.Length), avgStep = step / (d.Length - ch);
+                bool loop = i < Loops;
+                float join = 0;
+                for (int c = 0; c < ch; c++) join = math.max(join, math.abs(d[c] - d[d.Length - ch + c]));
                 bool good = bad == 0 && peak <= 0.95f && math.abs(mean) < 0.02 && rms > 0.01 && (!loop || join <= avgStep * 6 + 1e-4);
                 ok &= good;
-                sb.AppendLine($"{Names[i]}: {d.Length / (float)Rate:F2} s, peak {peak:F3}, rms {rms:F3}, dc {mean:F4}, nan {bad}" + (loop ? $", loop join step {join:F4} (typical {avgStep:F4})" : "") + (good ? "" : "  <-- BAD"));
+                sb.AppendLine($"{Names[i]}: {d.Length / ch / (float)Rate:F2} s{(ch == 2 ? " stereo" : "")}, peak {peak:F3}, rms {rms:F3}, dc {mean:F4}, nan {bad}" + (loop ? $", loop join step {join:F4} (typical {avgStep:F4})" : "") + (good ? "" : "  <-- BAD"));
             }
             // The worst case mix: every loop at its loudest volume at once, plus a click and the age-up tone.
-            float worst = 0.8f * (0.44f + 0.38f + 0.32f) + 0.5f * Peak(b[3]) + 0.6f * Peak(b[4]);
+            // The loops trade places with the zoom, so the worst is the louder of far out (winter wind and a flood's rush)
+            // and close in (a little wind, the babble, some rush, a fire).
+            float worst = 0.8f * math.max(0.44f + 0.36f, 0.22f + 0.30f + 0.09f + 0.32f) + 0.5f * Peak(b[4]) + 0.6f * Peak(b[5]);
             sb.AppendLine($"worst-case sum of peaks at full volume: {worst:F2}" + (worst > 1.2f ? "  <-- may clip" : ""));
             return sb.ToString();
         }
@@ -114,12 +124,27 @@ namespace Firstlight.Game
             {
                 _scan = 0.3f;
                 _riverNear = 0; _fireNear = 0;
-                int cx = (int)focus.x, cy = (int)focus.z, rad = 14;
-                float best = 99;
-                for (int y = cy - rad; y <= cy + rad; y += 2)
-                    for (int x = cx - rad; x <= cx + rad; x += 2)
-                        if (m.InBounds(x, y) && m.WaterClass[m.Cell(x, y)] >= 2) best = math.min(best, math.length(new float2(x - cx, y - cy)));
+                // The square looked at grows with the view, so a river on screen is heard from high up too.
+                int cx = (int)focus.x, cy = (int)focus.z, rad = (int)math.clamp(G.Cam.Distance * 0.5f, 14f, 36f), step = math.max(2, rad / 7);
+                float yaw = math.radians(G.Cam.Yaw);
+                var right = new float2(math.cos(yaw), -math.sin(yaw));           // screen right, on the ground
+                float best = 999, weight = 0, side = 0; int seen = 0;
+                for (int y = cy - rad; y <= cy + rad; y += step)
+                    for (int x = cx - rad; x <= cx + rad; x += step)
+                    {
+                        seen++;
+                        if (!m.InBounds(x, y)) continue;
+                        byte wc = m.WaterClass[m.Cell(x, y)];
+                        if (wc == 0) continue;
+                        var off = new float2(x - cx, y - cy);
+                        float dist = math.length(off);
+                        if (wc >= 2) best = math.min(best, dist);
+                        float wgt = (wc >= 2 ? 1f : 0.35f) * math.saturate(1f - dist / (rad * 1.3f));   // shallows count for less
+                        weight += wgt; side += wgt * math.dot(off, right) / rad;
+                    }
                 _riverNear = math.saturate(1f - best / rad);
+                _riverWide = math.saturate(weight / (seen * 0.10f));              // 1 = a broad river (or a flood) fills the view
+                _riverSide = weight > 0 ? math.clamp(side / weight * 1.6f, -1f, 1f) : 0f;
                 if (s != null && !s.NeedsCampfire)
                 {
                     float fb = 99;
@@ -137,7 +162,15 @@ namespace Firstlight.Game
             bool winter = s != null && !s.NeedsCampfire && s.Season == 3;
             float paused = G.Paused ? 0.4f : 1f;
             Ease(_wind, master * paused * (0.10f + 0.22f * zoom + (winter ? 0.12f : 0)), dt);
-            Ease(_river, master * paused * 0.38f * _riverNear * (1f - zoom * 0.7f), dt);
+            // The river: the babble close in, the rush from further off; a flood swells and deepens the rush.
+            float flood = G.Water != null ? math.saturate(G.Water.SourceBoost / GameController.FloodPeak) : 0f;
+            float close = (1f - zoom) * (1f - zoom);
+            Ease(_river, master * paused * 0.30f * _riverNear * close * (0.75f + 0.25f * _riverWide), dt);
+            Ease(_rush, master * paused * 0.20f * _riverNear * (0.25f + 0.75f * zoom) * (0.6f + 0.4f * _riverWide) * (1f + 0.8f * flood), dt);
+            float k = math.saturate(dt * 2f);
+            _river.panStereo = math.lerp(_river.panStereo, _riverSide * 0.55f, k);
+            _rush.panStereo = math.lerp(_rush.panStereo, _riverSide * 0.35f, k);
+            _rush.pitch = math.lerp(_rush.pitch, 1f - 0.1f * flood, k);
             Ease(_fire, master * paused * 0.32f * _fireNear * (1f - zoom), dt);
             // An age-up: a low, warm tone.
             if (s != null)
@@ -181,22 +214,6 @@ namespace Firstlight.Game
                 float t = i / (float)Rate;
                 float swell = 0.55f + 0.3f * math.sin(t * 0.7f) + 0.15f * math.sin(t * 1.9f + 1.3f);
                 d[i] = lp * swell;
-            }
-            return Make(d);
-        }
-
-        /// <summary>River: band-limited noise (a soft rush) with a slow, small burble.</summary>
-        static float[] River(System.Random r)
-        {
-            int n = Rate * 7; var d = new float[n];
-            float lp1 = 0, lp2 = 0, hp = 0, prev = 0;
-            for (int i = 0; i < n; i++)
-            {
-                float w = Noise(r);
-                lp1 += (w - lp1) * 0.25f; lp2 += (lp1 - lp2) * 0.25f;
-                hp = 0.97f * (hp + lp2 - prev); prev = lp2;
-                float t = i / (float)Rate;
-                d[i] = hp * (0.8f + 0.2f * math.sin(t * 5.1f) * math.sin(t * 2.3f));
             }
             return Make(d);
         }
