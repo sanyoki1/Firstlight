@@ -140,6 +140,7 @@ namespace Firstlight.Game
             if (_smoke > 0 || HasArg("-smoketest")) StartCoroutine(SmokeTest());
             if (HasArg("-soak")) StartCoroutine(Soak(ArgInt("-soak", 10)));
             if (HasArg("-reloadtest")) StartCoroutine(ReloadTest());
+            if (HasArg("-speedcheck")) StartCoroutine(SpeedCheck());
             if (Arg("-shot") != null) StartCoroutine(OneShot(Arg("-shot")));
             PerfProbe.Mark("Start done");
             if (PerfProbe.On) StartCoroutine(PerfRun());   // PERF PROBE
@@ -212,7 +213,10 @@ namespace Firstlight.Game
             {
                 Band?.Update(Time.deltaTime);     // first, so the deer see where people are this frame
                 PerfProbe.Begin(PerfProbe.S.Wild);
-                Wild.Update(Time.deltaTime);
+                // The deer keep the game's speed setting (and stand still while it is paused), in steps short enough
+                // for their steering at 4x or a slow frame. The title backdrop and the clip modes run at their own pace.
+                float wild = InMenu || _demo || Sim == null || Sim.NeedsCampfire ? Time.deltaTime : Paused ? 0f : FrameSeconds * Sim.Speed;
+                for (int n = 0; wild > 1e-5f && n < 16; n++) { float step = math.min(wild, 0.1f); Wild.Update(step); wild -= step; }
                 PerfProbe.End(PerfProbe.S.Wild);
             }
             catch (Exception e) { DrawFault(0, "wildlife", e); }
@@ -263,6 +267,14 @@ namespace Firstlight.Game
             catch (Exception e) { DrawFault(4, "sound", e); }
         }
 
+        /// <summary>
+        /// Real seconds this frame, for the game clock. Unity's own frame time stops counting at a third of a second
+        /// (so below 3 frames a second, and on every long hitch, the game fell behind the wall clock); this counts up to
+        /// a full second. The clip modes fix the time per frame themselves (captureFramerate), so they keep Unity's.
+        /// </summary>
+        static float FrameSeconds => Time.captureFramerate > 0 || OldClock ? Time.deltaTime : math.min(Time.unscaledDeltaTime, 1f);
+        static readonly bool OldClock = HasArg("-oldclock");   // test only (-speedcheck): the clock as it was, for a before/after
+
         /// <summary>The water, the walking costs, the settlement's step, the autosave and the auto-player: one frame's worth.</summary>
         void SimStep()
         {
@@ -284,14 +296,14 @@ namespace Firstlight.Game
             {
                 int dayBefore = Sim.Day;
                 PerfProbe.Begin(PerfProbe.S.Sim);
-                Sim.Update(Paused ? 0 : Time.deltaTime);
+                Sim.Update(Paused ? 0 : FrameSeconds);
                 PerfProbe.End(PerfProbe.S.Sim);
                 FaultTestCheck();
                 PerfProbe.Begin(PerfProbe.S.Autosave);
                 if (!_demo && !Paused) Autosave(Sim.Day != dayBefore);
                 PerfProbe.End(PerfProbe.S.Autosave);
                 // The auto-player thinks once per game hour, like in the auto-test.
-                _autoClock += Time.deltaTime * Sim.Speed;
+                _autoClock += Paused ? 0 : FrameSeconds * Sim.ClockRate;
                 PerfProbe.Begin(PerfProbe.S.Auto);
                 if (Auto != null && (_autoClock >= Data.Balance.dayLengthSeconds / 24f || Sim.NeedsCampfire)) { _autoClock = 0; Auto.Think(); }
                 PerfProbe.End(PerfProbe.S.Auto);

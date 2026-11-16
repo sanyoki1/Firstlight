@@ -160,7 +160,10 @@ namespace Firstlight.Game
         // ------------------------------------------------------------------ time
 
         /// <summary>Advances by real seconds times the game speed (what a frame calls).</summary>
-        public void Update(float realSeconds) => Tick(realSeconds * Speed);
+        public void Update(float realSeconds) => Tick(realSeconds * ClockRate);
+
+        /// <summary>Game seconds that pass per real second right now: the speed setting times the pace of 1x (balance.gamePace).</summary>
+        public float ClockRate => Speed * math.max(0.01f, B.gamePace);
 
         /// <summary>Advances the simulation by game seconds in fixed steps. Nothing happens until the campfire is placed.</summary>
         public void Tick(float gameSeconds)

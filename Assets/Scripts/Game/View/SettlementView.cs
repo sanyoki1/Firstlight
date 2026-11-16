@@ -268,7 +268,7 @@ namespace Firstlight.Game
         public void Draw(float dt)
         {
             _frame++;
-            _anim += dt * S.Speed;
+            _anim += dt * S.ClockRate;
             SyncPaths();
             _fires.Clear();
             _chimneys.Clear();
@@ -725,7 +725,7 @@ namespace Firstlight.Game
             // At most a little faster than the fastest walk (on a path tile): a slower cap made walkers on paths trail
             // behind their sim position at 4x and slide on after stopping. DrawPos already moves smoothly between steps.
             var bal = S.Data.Balance;
-            float maxStep = (bal.walkSpeed * math.max(1f, bal.pathSpeed) * math.max(S.Speed, 0.01f) * 1.25f + 0.5f) * dt;
+            float maxStep = (bal.walkSpeed * math.max(1f, bal.pathSpeed) * math.max(S.ClockRate, 0.01f) * 1.25f + 0.5f) * dt;
             bool moving = false;
             if (dist > 4f) v.Pos = target;
             else if (dist > 1e-3f)

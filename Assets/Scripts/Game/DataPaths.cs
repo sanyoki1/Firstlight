@@ -18,7 +18,7 @@ namespace Firstlight.Game
         {
             "-autotest", "-fuzztest", "-uishots", "-lookshots", "-p4shots", "-guideshots", "-panelshots", "-shots", "-shot", "-watershots", "-deershots", "-deerpair",
             "-huntshots", "-smoketest", "-smokecontinue", "-soak", "-perfprobe", "-faulttest", "-autoplay", "-reloadtest",
-            "-benchmark", "-quitafter", "-batchmode", "-nographics",
+            "-benchmark", "-quitafter", "-batchmode", "-nographics", "-speedcheck",
         };
 
         static string _root;

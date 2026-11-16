@@ -3,6 +3,7 @@
 
   "mapSize": 128,
   "dayLengthSeconds": 40,
+  "gamePace": 1.0,
   "daysPerSeason": 8,
   "seasonNames": ["Spring", "Summer", "Autumn", "Winter"],
   "seasonTemperature": [0.55, 0.9, 0.4, 0.05],

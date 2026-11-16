@@ -160,6 +160,9 @@ namespace Firstlight.Game
     {
         public int mapSize = 128;
         public float dayLengthSeconds = 24;
+        /// <summary>Game seconds that pass per real second at 1x. 1 = a day takes dayLengthSeconds at 1x. Lower slows the
+        /// whole game at every speed setting without changing what happens in a game day (0.3 = people walk at a natural pace).</summary>
+        public float gamePace = 1f;
         public int daysPerSeason = 8;
         public string[] seasonNames = { "Spring", "Summer", "Autumn", "Winter" };
         public float[] seasonTemperature = { 0.55f, 0.9f, 0.4f, 0.05f };

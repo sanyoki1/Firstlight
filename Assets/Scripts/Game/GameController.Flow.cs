@@ -196,7 +196,7 @@ namespace Firstlight.Game
 
         static bool? _noAutosaveMode;
         /// <summary>Started for screenshots or by the auto-player: no autosaves (the flags are looked up once).</summary>
-        static bool NoAutosaveMode => _noAutosaveMode ??= (HasArg("-uishots") || HasArg("-lookshots") || HasArg("-p4shots") || HasArg("-guideshots") || HasArg("-panelshots") || HasArg("-autoplay")) && !HasArg("-faulttest");   // -faulttest checks that a fault stops them
+        static bool NoAutosaveMode => _noAutosaveMode ??= (HasArg("-uishots") || HasArg("-lookshots") || HasArg("-p4shots") || HasArg("-guideshots") || HasArg("-panelshots") || HasArg("-autoplay") || HasArg("-speedcheck")) && !HasArg("-faulttest");   // -faulttest checks that a fault stops them
         float _autosaveDue = -1f;           // real time this season's autosave is due (-1 = none waiting)
 
         /// <summary>
